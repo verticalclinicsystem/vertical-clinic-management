@@ -1,0 +1,37 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Celery Worker Dockerfile
+# Shares the same base as the app image but starts a Celery worker process.
+# ══════════════════════════════════════════════════════════════════════════════
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev libcairo2-dev libpango1.0-dev \
+    libgdk-pixbuf2.0-dev libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+    && pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+
+FROM python:3.12-slim AS worker
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 libcairo2 libpango1.0-0 libgdk-pixbuf2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
+RUN useradd --no-create-home --shell /bin/false clinic
+RUN mkdir -p /app/uploads && chown -R clinic:clinic /app
+COPY --chown=clinic:clinic . .
+
+USER clinic
+
+# Default: run Celery worker. Override CMD in docker-compose for beat scheduler.
+CMD ["celery", "-A", "app.tasks.celery_app", "worker", \
+     "--loglevel=info", "--concurrency=4", "-Q", "default,ai,notifications"]

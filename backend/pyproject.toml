@@ -1,0 +1,35 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "TCH"]
+ignore = ["E501", "B008", "N818"]
+exclude = ["alembic/versions/"]
+
+[tool.ruff.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+filterwarnings = ["ignore::DeprecationWarning"]
+env = [
+    "APP_ENV=development",
+    "SECRET_KEY=test-secret-key-for-testing-only-32chars",
+    "DATABASE_URL=postgresql+asyncpg://clinic_user:clinic_secret@localhost:5432/clinic_test",
+    "SYNC_DATABASE_URL=postgresql://clinic_user:clinic_secret@localhost:5432/clinic_test",
+    "REDIS_URL=redis://localhost:6379/15",
+    "AI_PROVIDER=groq",
+    "GROQ_API_KEY=test-key",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/db/migrations/*", "tests/*"]

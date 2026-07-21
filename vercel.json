@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "name": "vertical-clinic-management-system",
+  "builds": [
+    {
+      "src": "dental-clinic-prototype.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/dental-clinic-prototype.html"
+    }
+  ]
+}

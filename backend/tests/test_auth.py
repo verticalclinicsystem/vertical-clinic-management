@@ -1,0 +1,361 @@
+"""
+Authentication endpoint tests.
+All tests use the test database with per-test rollback.
+"""
+import pytest
+from httpx import AsyncClient
+
+
+# ── Login Tests ───────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_login_with_email_success(client: AsyncClient):
+    """Seeded admin user should be able to login via email."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "identifier": "admin@verticalclinic.com",
+            "password": "Admin@verticalclinic.com",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert "access_token" in data
+    assert "refresh_token" in data
+    assert data["token_type"] == "bearer"
+    assert data["user"]["role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_login_wrong_password(client: AsyncClient):
+    """Login with wrong password must return 401."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "identifier": "admin@verticalclinic.com",
+            "password": "WrongPass!",
+        },
+    )
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "INVALID_CREDENTIALS"
+
+
+@pytest.mark.asyncio
+async def test_login_unknown_email(client: AsyncClient):
+    """Login with unknown email must return 401."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "nobody@example.com", "password": "Test@123"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_with_phone(client: AsyncClient):
+    """Login using phone number as identifier."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "+919825011234", "password": "Patient@verticalclinic.com"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["user"]["role"] == "patient"
+
+
+# ── Registration Tests ────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_patient_registration_success(client: AsyncClient):
+    """New patient should be able to self-register."""
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "Test Patient",
+            "email": "newpatient@example.com",
+            "phone": "+919999988888",
+            "password": "Test@1234",
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["email"] == "newpatient@example.com"
+
+
+@pytest.mark.asyncio
+async def test_registration_duplicate_email(client: AsyncClient):
+    """Duplicate email registration must return 409."""
+    # Register once
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "User One",
+            "email": "dup@example.com",
+            "phone": "+919111122222",
+            "password": "Test@1234",
+        },
+    )
+    # Register again with same email
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "User Two",
+            "email": "dup@example.com",
+            "phone": "+919333344444",
+            "password": "Test@1234",
+        },
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_weak_password_rejected(client: AsyncClient):
+    """Password without uppercase or digit should be rejected."""
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "Weak Pass",
+            "email": "weak@example.com",
+            "phone": "+919555566666",
+            "password": "weakpassword",
+        },
+    )
+    assert response.status_code == 422
+
+
+# ── Token & Profile Tests ─────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_get_me_authenticated(client: AsyncClient):
+    """Authenticated user should get their profile from /auth/me."""
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+
+    response = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["email"] == "patient@verticalclinic.com"
+    assert data["role"] == "patient"
+
+
+@pytest.mark.asyncio
+async def test_get_me_unauthenticated(client: AsyncClient):
+    """Calling /me without token must return 401."""
+    response = await client.get("/api/v1/auth/me")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_token_refresh(client: AsyncClient):
+    """Should return a new access token given a valid refresh token."""
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    refresh_token = login.json()["data"]["refresh_token"]
+
+    response = await client.post(
+        "/api/v1/auth/refresh-token",
+        json={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 200
+    assert "access_token" in response.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_change_password(client: AsyncClient):
+    """User should be able to change their password."""
+    # Login as pharmacist
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "pharmacist@verticalclinic.com", "password": "Pharmacist@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+
+    # Change password (new password must satisfy: uppercase + digit + special char)
+    response = await client.post(
+        "/api/v1/auth/change-password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"current_password": "Pharmacist@verticalclinic.com", "new_password": "NewPass@1234"},
+    )
+    assert response.status_code == 200
+
+    # Verify new password works
+    new_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "pharmacist@verticalclinic.com", "password": "NewPass@1234"},
+    )
+    assert new_login.status_code == 200
+
+
+# ── RBAC Tests ────────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_patient_cannot_access_admin_users(client: AsyncClient):
+    """A patient token must not be able to list all users."""
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+
+    response = await client.get(
+        "/api/v1/users/",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_can_list_users(client: AsyncClient):
+    """Admin should be able to list all users."""
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+
+    response = await client.get(
+        "/api/v1/users/",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    res_json = response.json()
+    assert res_json["success"] is True
+    assert isinstance(res_json["data"], list)
+
+
+@pytest.mark.asyncio
+async def test_health_check(client: AsyncClient):
+    """Health endpoint should always return 200."""
+    response = await client.get("/health")
+    assert response.status_code == 200
+    res_json = response.json()
+    assert res_json["success"] is True
+    assert res_json["data"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_role_specific_onboarding(client: AsyncClient):
+    """Admin should be able to create users via role-specific endpoints."""
+    # 1. Login as admin
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Retrieve branch ID
+    branch_res = await client.get("/api/v1/branches/", headers=headers)
+    branch_id = branch_res.json()["data"]["items"][0]["id"]
+
+    # 2. Create Doctor
+    doc_res = await client.post(
+        "/api/v1/users/doctor",
+        headers=headers,
+        json={
+            "full_name": "Dr. Onboarded Doctor",
+            "email": "onboarded_doc@example.com",
+            "phone": "+919876543210",
+            "password": "SecureDoctor123!",
+            "branch_id": branch_id,
+            "specialization": "Pediatrician",
+            "qualification": "MD",
+            "experience_years": 8,
+            "consultation_fee": 800.0,
+            "bio": "Expert pediatrician",
+            "registration_number": "DOC-12345",
+        }
+    )
+    assert doc_res.status_code == 201
+    assert doc_res.json()["data"]["role"] == "doctor"
+
+    # 3. Create Receptionist
+    recep_res = await client.post(
+        "/api/v1/users/receptionist",
+        headers=headers,
+        json={
+            "full_name": "Sarah Receptionist",
+            "email": "onboarded_recep@example.com",
+            "phone": "+919876543211",
+            "password": "SecureRecep123!",
+            "branch_id": branch_id,
+            "shift_start": "08:00",
+            "shift_end": "16:00",
+            "bio": "Reception manager",
+        }
+    )
+    assert recep_res.status_code == 201
+    assert recep_res.json()["data"]["role"] == "receptionist"
+
+    # 4. Create Pharmacist
+    pharm_res = await client.post(
+        "/api/v1/users/pharmacist",
+        headers=headers,
+        json={
+            "full_name": "John Pharmacist",
+            "email": "onboarded_pharm@example.com",
+            "phone": "+919876543212",
+            "password": "SecurePharm123!",
+            "branch_id": branch_id,
+        }
+    )
+    assert pharm_res.status_code == 201
+    assert pharm_res.json()["data"]["role"] == "pharmacist"
+
+    # 5. Create Admin
+    admin_res = await client.post(
+        "/api/v1/users/admin",
+        headers=headers,
+        json={
+            "full_name": "Alex Admin",
+            "email": "onboarded_admin@example.com",
+            "phone": "+919876543213",
+            "password": "SecureAdmin123!",
+            "branch_id": branch_id,
+        }
+    )
+    assert admin_res.status_code == 201
+    assert admin_res.json()["data"]["role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_delete_user(client: AsyncClient):
+    """Admin can delete a staff member but cannot delete their own account."""
+    # 1. Login as admin
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+    admin_id = login.json()["data"]["user"]["id"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Try to delete self -> must fail with 400
+    self_del = await client.delete(f"/api/v1/users/{admin_id}", headers=headers)
+    assert self_del.status_code == 400
+
+    # 3. Create a temporary staff user to delete
+    pharm_res = await client.post(
+        "/api/v1/users/pharmacist",
+        headers=headers,
+        json={
+            "full_name": "Temp Pharmacist",
+            "email": "temp_pharm@example.com",
+            "phone": "+919876543599",
+            "password": "SecurePharm123!",
+            "branch_id": None,
+        }
+    )
+    assert pharm_res.status_code == 201
+    temp_user_id = pharm_res.json()["data"]["id"]
+
+    # 4. Admin deletes the temp user -> must succeed with 200
+    del_res = await client.delete(f"/api/v1/users/{temp_user_id}", headers=headers)
+    assert del_res.status_code == 200
+
+    # 5. Try to retrieve deleted user -> must fail with 404
+    get_res = await client.get(f"/api/v1/users/{temp_user_id}", headers=headers)
+    assert get_res.status_code == 404
+

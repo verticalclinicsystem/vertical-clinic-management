@@ -1,0 +1,182 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Suvidha Clinic — Full Stack Development Compose
+# Services: app, worker, beat, db, redis, nginx
+# Optional: ollama (uncomment to run local LLM)
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── PostgreSQL Database ─────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: clinic_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-clinic_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinic_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-clinic_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"                         # expose for local psql / pgAdmin
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clinic_user} -d ${POSTGRES_DB:-clinic_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clinic_net
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: clinic_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clinic_net
+
+  # ── FastAPI Application ─────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: clinic_app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-clinic_user}:${POSTGRES_PASSWORD:-clinic_secret}@db:5432/${POSTGRES_DB:-clinic_db}
+      - SYNC_DATABASE_URL=postgresql://${POSTGRES_USER:-clinic_user}:${POSTGRES_PASSWORD:-clinic_secret}@db:5432/${POSTGRES_DB:-clinic_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - uploads_data:/app/uploads
+      - ./app:/app/app                      # hot-reload in dev (remove in prod)
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    networks:
+      - clinic_net
+
+  # ── Celery Worker (AI + Notifications + General) ────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+      target: worker
+    container_name: clinic_worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-clinic_user}:${POSTGRES_PASSWORD:-clinic_secret}@db:5432/${POSTGRES_DB:-clinic_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - uploads_data:/app/uploads
+      - ./app:/app/app
+    command: >
+      celery -A app.tasks.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      -Q default,ai,notifications
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - clinic_net
+
+  # ── Celery Beat Scheduler (Cron tasks) ──────────────────────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+      target: worker
+    container_name: clinic_beat
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-clinic_user}:${POSTGRES_PASSWORD:-clinic_secret}@db:5432/${POSTGRES_DB:-clinic_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./app:/app/app
+    command: >
+      celery -A app.tasks.celery_app beat
+      --loglevel=info
+      --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    depends_on:
+      - redis
+      - db
+    networks:
+      - clinic_net
+
+  # ── Nginx Reverse Proxy ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: clinic_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - uploads_data:/app/uploads:ro
+    depends_on:
+      - app
+    networks:
+      - clinic_net
+
+  # ── Ollama (Optional — Local LLM, uncomment to use) ─────────────────────────
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: clinic_ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - clinic_net
+
+# ── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    name: clinic_postgres_data
+  redis_data:
+    name: clinic_redis_data
+  uploads_data:
+    name: clinic_uploads_data
+  # ollama_data:
+  #   name: clinic_ollama_data
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  clinic_net:
+    name: clinic_network
+    driver: bridge

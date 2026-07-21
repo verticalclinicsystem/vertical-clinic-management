@@ -1,0 +1,48 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Production overrides — run with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  app:
+    restart: always
+    environment:
+      - APP_ENV=production
+      - DEBUG=false
+      - LOG_JSON=true
+    volumes: []                           # no source mounts in prod
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  worker:
+    restart: always
+    volumes: []
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  beat:
+    restart: always
+    volumes: []
+
+  db:
+    ports: []                             # do NOT expose DB port publicly
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"                         # enable HTTPS
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - uploads_data:/app/uploads:ro

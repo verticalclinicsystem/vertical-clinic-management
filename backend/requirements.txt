@@ -1,0 +1,54 @@
+# ── Web Framework ────────────────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12            # file uploads
+
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0                     # async PostgreSQL driver
+alembic==1.14.0
+greenlet==3.1.1                     # required by SQLAlchemy async
+
+# ── Validation & Settings ────────────────────────────────────────────────────
+pydantic[email]==2.10.3
+pydantic-settings==2.6.1
+
+# ── Authentication ───────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0    # JWT
+passlib[bcrypt]==1.7.4              # password hashing
+bcrypt==4.2.1
+
+# ── Async HTTP ───────────────────────────────────────────────────────────────
+httpx==0.28.1
+aiofiles==24.1.0
+
+# ── Redis & Celery ───────────────────────────────────────────────────────────
+celery[redis]==5.4.0
+redis==5.2.1
+
+# ── AI SDKs ──────────────────────────────────────────────────────────────────
+groq==0.13.1
+google-generativeai==0.8.3
+
+# ── Payments ─────────────────────────────────────────────────────────────────
+stripe==11.4.0
+
+# ── File Storage ─────────────────────────────────────────────────────────────
+boto3==1.35.90                      # AWS S3
+Pillow==11.0.0                      # image validation
+
+# ── PDF Generation ───────────────────────────────────────────────────────────
+weasyprint==63.1                    # prescription + invoice PDFs
+jinja2==3.1.4                       # HTML templates for PDFs
+
+# ── Notifications ────────────────────────────────────────────────────────────
+aiosmtplib==3.0.1                   # async SMTP
+twilio==9.4.3
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+structlog==24.4.0
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+python-slugify==8.0.4
+phonenumbers==8.13.52               # phone validation

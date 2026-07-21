@@ -1,0 +1,17 @@
+-r requirements.txt
+
+# ── Testing ──────────────────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1                       # test client
+pytest-cov==6.0.0
+factory-boy==3.3.1                  # test data factories
+
+# ── Code Quality ─────────────────────────────────────────────────────────────
+ruff==0.8.6                         # linter + formatter
+mypy==1.14.0
+sqlalchemy[mypy]                    # type stubs for SQLAlchemy
+
+# ── Dev Utilities ────────────────────────────────────────────────────────────
+ipython==8.31.0
+rich==13.9.4

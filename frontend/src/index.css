@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ── Colors — taken directly from dental-clinic-prototype.html ── */
+  --bg:              #F5F8FA;
+  --surface:         #FFFFFF;
+  --surface-2:       #F0F5F7;
+
+  --primary:         #0C6E8C;
+  --primary-dark:    #0A4F66;
+  --primary-light:   #E4F1F5;
+
+  /* Aliases used across the portal */
+  --primary-teal:       #0C6E8C;
+  --primary-teal-dark:  #0A4F66;
+  --primary-teal-light: #E4F1F5;
+
+  --accent:          #14B8A6;
+  --accent-light:    #E1F7F3;
+
+  /* Aliases */
+  --accent-green:       #14B8A6;
+  --accent-green-light: #E1F7F3;
+
+  --ink:             #132430;
+  --ink-2:           #33495A;
+  --muted:           #68808F;
+  --border:          #DDE7EB;
+
+  --success:         #1A9E5C;
+  --success-bg:      #E5F7ED;
+  --warning:         #C7790A;
+  --warning-bg:      #FDF1E1;
+  --danger:          #D2402F;
+  --danger-bg:       #FBEAE7;
+  --info:            #3563C9;
+  --info-bg:         #EAF0FC;
+
+  /* Aliases */
+  --error-red:       #D2402F;
+  --success-green:   #1A9E5C;
+  --text-dark:       #132430;
+  --text-muted:      #68808F;
+  --text-light:      #FFFFFF;
+  --bg-light:        #F5F8FA;
+  --bg-white:        #FFFFFF;
+  --border-color:    #DDE7EB;
+  --border-focus:    #0C6E8C;
+
+  /* Gradient tokens (login visual) */
+  --teal-gradient-start: #0E7C9C;
+  --teal-gradient-end:   #062F3D;
+
+  /* Typography */
+  --font-sans:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Sora', var(--font-sans);
+  --font-mono:    'IBM Plex Mono', monospace;
+
+  /* Radius */
+  --radius:    14px;
+  --radius-sm: 9px;
+  --radius-lg: 18px;
+
+  /* Shadows — taken directly from prototype */
+  --shadow-sm: 0 1px 2px rgba(19, 36, 48, 0.06);
+  --shadow-md: 0 6px 20px rgba(19, 36, 48, 0.08);
+  --shadow-lg: 0 16px 40px rgba(19, 36, 48, 0.14);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 0 0 1px rgba(0,0,0,0.02), 0 4px 20px -2px rgba(0,0,0,0.08);
+
+  /* Transitions */
+  --transition-all:       all 0.18s ease;
+  --transition-transform: transform 0.18s ease;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: var(--transition-all);
+}
+
+a:hover {
+  color: var(--primary-dark);
+  text-decoration: underline;
+}
+
+button {
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+::selection { background: var(--accent-light); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #C3D3D9; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
