@@ -3239,13 +3239,253 @@
   line-height: 1.4;
 }
 
-/* Responsive adjustments */
+/* Comprehensive Responsive Design Polish */
+
+/* 1. Large Tablet / Medium Screen (max-width: 992px) */
 @media (max-width: 992px) {
+  .portal-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .portal-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .portal-main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .topbar-menu-btn {
+    display: flex !important;
+  }
+
+  .topbar-search-input {
+    width: 160px !important;
+  }
+
   .doctor-selection-layout {
     grid-template-columns: 1fr;
   }
 
   .confirm-details-layout {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* 2. Tablet / Small Laptop (max-width: 850px) */
+@media (max-width: 850px) {
+  .booking-calendar-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+
+  .calendar-card {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .book-steps-panel-horizontal {
+    padding: 12px 16px;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .book-step-sub-horizontal {
+    display: none;
+  }
+
+  .book-step-arrow {
+    font-size: 1rem;
+  }
+
+  .topbar-subtitle {
+    display: none !important;
+  }
+}
+
+/* 3. Mobile Screens (max-width: 640px) */
+@media (max-width: 640px) {
+  .portal-topbar {
+    padding: 0 12px !important;
+    height: 56px !important;
+    gap: 8px !important;
+  }
+
+  .topbar-title {
+    font-size: 1.05rem !important;
+    max-width: 150px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .topbar-subtitle {
+    display: none !important;
+  }
+
+  .topbar-search-wrapper {
+    display: none !important;
+  }
+
+  .topbar-user-info {
+    display: none !important;
+  }
+
+  .topbar-actions {
+    gap: 6px !important;
+  }
+
+  .portal-content {
+    padding: 12px !important;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .hero-banner {
+    padding: 16px !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .hero-actions {
+    width: 100% !important;
+    flex-direction: column !important;
+  }
+
+  .hero-actions button, .hero-actions a {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .book-page-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .book-page-header .btn-secondary {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .book-steps-panel-horizontal {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .book-step-title-horizontal {
+    font-size: 0.8rem;
+  }
+
+  .book-step-arrow {
+    display: none;
+  }
+
+  .slot-category-grid, .slots-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .slot-item-btn, .slot-button {
+    padding: 8px 10px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .card {
+    padding: 16px !important;
+    border-radius: 12px !important;
+  }
+
+  .table-container {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-card {
+    width: 95vw !important;
+    max-height: 92vh !important;
+    margin: 10px !important;
+  }
+
+  .consultation-mode-cards {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .branch-card-horizontal {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .doctor-card-horizontal {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .doctor-card-right-info {
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    align-items: center !important;
+    border-top: 1px dashed var(--border);
+    padding-top: 10px;
+  }
+
+  .book-page-body {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+  }
+
+  .modal-footer button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
+/* 4. Small Phones (max-width: 420px) */
+@media (max-width: 420px) {
+  .topbar-title {
+    font-size: 0.92rem !important;
+    max-width: 110px !important;
+  }
+
+  .topbar-icon-btn {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .calendar-days-grid {
+    gap: 4px !important;
+  }
+
+  .calendar-day-cell {
+    min-height: 34px !important;
+    font-size: 0.78rem !important;
+  }
+
+  .slot-category-grid, .slots-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
   }
 }
