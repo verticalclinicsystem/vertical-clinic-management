@@ -56,6 +56,11 @@ const App: React.FC = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
+    localStorage.removeItem('patient_portal_tab');
+    localStorage.removeItem('doctor_portal_tab');
+    localStorage.removeItem('admin_portal_tab');
+    localStorage.removeItem('receptionist_portal_tab');
+    localStorage.removeItem('pharmacy_portal_tab');
     setUser(null);
     setActivePortal(null);
   };
