@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -125,7 +125,7 @@ class BranchService:
         patient_count = (await self.db.execute(patient_stmt)).scalar_one() or 0
 
         # 4. Today's registered patients (preferred branch and registered today)
-        today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=UTC)
+        today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
         today_patients_stmt = select(func.count(Patient.id)).where(
             Patient.preferred_branch_id == branch_id,
             Patient.created_at >= today_start
