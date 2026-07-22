@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int
 
     # ── OTP ──────────────────────────────────────────────────────────────────
-    OTP_LENGTH: int
-    OTP_EXPIRE_MINUTES: int
-    OTP_MAX_ATTEMPTS: int
-    RESET_TOKEN_EXPIRE_MINUTES: int
+    OTP_LENGTH: int = 6
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_MAX_ATTEMPTS: int = 5
+    RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str                       # asyncpg URL for async ops

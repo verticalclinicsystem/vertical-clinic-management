@@ -2,7 +2,7 @@
 OTP repository — CRUD and domain operations for otp_records table.
 All DB interaction lives here; the service layer only calls these methods.
 """
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ class OtpRepository(BaseRepository[OtpRecord]):
     # ── Lookups ────────────────────────────────────────────────────────────────
     async def get_latest_active(self, email: str, purpose: str) -> OtpRecord | None:
         """Return the most recent non-used, non-expired OTP for a given email+purpose."""
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(OtpRecord)
             .where(
@@ -45,7 +45,7 @@ class OtpRepository(BaseRepository[OtpRecord]):
         then persist a fresh OTP record.
         """
         await self.invalidate_all(email, purpose)
-        expires_at = datetime.now(UTC) + timedelta(minutes=expire_minutes)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
         return await self.create({
             "email": email.lower().strip(),
             "code": code,

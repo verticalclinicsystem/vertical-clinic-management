@@ -13,6 +13,7 @@ from app.config import settings
 from app.core.exceptions import ClinicAPIError
 from app.core.logging import setup_logging
 from app.db.init_db import check_db_connection, create_tables
+from app.utils.response import ApiResponse
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware ────────────────────────────────────────────────────────────
+    from app.middleware.request_tracking import RequestTrackingMiddleware
+    app.add_middleware(RequestTrackingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -150,12 +153,26 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             error_code="INTERNAL_ERROR",
         )
+    from app.exceptions.exception_handlers import register_exception_handlers
+    register_exception_handlers(app)
 
     # ── Routers ───────────────────────────────────────────────────────────────
     from app.api.v1 import router as v1_router
     app.include_router(v1_router, prefix="/api/v1")
 
-    # ── Health Check ──────────────────────────────────────────────────────────
+    # ── Root & Health Check ───────────────────────────────────────────────────
+    @app.get("/", tags=["System & Notifications"], summary="Root endpoint")
+    async def root() -> JSONResponse:
+        return ApiResponse.success(
+            data={
+                "app": settings.APP_NAME,
+                "version": settings.APP_VERSION,
+                "docs": "/docs",
+                "health": "/health",
+            },
+            message=f"Welcome to {settings.APP_NAME}. ",
+        )
+
     @app.get("/health", tags=["System & Notifications"], summary="Health check")
     async def health_check() -> JSONResponse:
         return ApiResponse.success(
