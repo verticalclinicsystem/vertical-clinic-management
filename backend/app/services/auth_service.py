@@ -435,6 +435,7 @@ class AuthService:
             purpose=purpose,
             expire_minutes=settings.OTP_EXPIRE_MINUTES,
         )
+        logger.info(f"🔑 [DEV OTP] Code for {email} ({purpose}): {code}")
         await send_otp_email(to=email, otp=code, purpose=purpose)
 
     async def _consume_otp(self, email: str, code: str, purpose: str) -> None:

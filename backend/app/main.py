@@ -13,6 +13,7 @@ from app.config import settings
 from app.core.exceptions import ClinicAPIError
 from app.core.logging import setup_logging
 from app.db.init_db import check_db_connection, create_tables
+from app.utils.response import ApiResponse
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware ────────────────────────────────────────────────────────────
+    from app.middleware.request_tracking import RequestTrackingMiddleware
+    app.add_middleware(RequestTrackingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -87,55 +90,26 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
     # ── Exception Handlers ────────────────────────────────────────────────────
-    from fastapi.exceptions import RequestValidationError
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-    from app.utils.response import ApiResponse
-
-    @app.exception_handler(ClinicAPIError)
-    async def clinic_error_handler(request: Request, exc: ClinicAPIError) -> JSONResponse:
-        return ApiResponse.error(
-            message=exc.detail,
-            status_code=exc.status_code,
-            error_code=getattr(exc, "error_code", "API_ERROR"),
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        errors = exc.errors()
-        message = "Validation failed"
-        if errors:
-            first_err = errors[0]
-            loc = " -> ".join(str(x) for x in first_err.get("loc", []))
-            message = f"Validation failed: {first_err.get('msg')} at {loc}"
-        
-        return ApiResponse.error(
-            message=message,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            error_code="VALIDATION_ERROR",
-        )
-
-    @app.exception_handler(StarletteHTTPException)
-    async def fastapi_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        return ApiResponse.error(
-            message=exc.detail,
-            status_code=exc.status_code,
-            error_code="HTTP_ERROR",
-        )
-
-    @app.exception_handler(Exception)
-    async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception(f"Unhandled exception: {exc}")
-        return ApiResponse.error(
-            message="An unexpected error occurred",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            error_code="INTERNAL_ERROR",
-        )
+    from app.exceptions.exception_handlers import register_exception_handlers
+    register_exception_handlers(app)
 
     # ── Routers ───────────────────────────────────────────────────────────────
     from app.api.v1 import router as v1_router
     app.include_router(v1_router, prefix="/api/v1")
 
-    # ── Health Check ──────────────────────────────────────────────────────────
+    # ── Root & Health Check ───────────────────────────────────────────────────
+    @app.get("/", tags=["System & Notifications"], summary="Root endpoint")
+    async def root() -> JSONResponse:
+        return ApiResponse.success(
+            data={
+                "app": settings.APP_NAME,
+                "version": settings.APP_VERSION,
+                "docs": "/docs",
+                "health": "/health",
+            },
+            message=f"Welcome to {settings.APP_NAME}. ",
+        )
+
     @app.get("/health", tags=["System & Notifications"], summary="Health check")
     async def health_check() -> JSONResponse:
         return ApiResponse.success(

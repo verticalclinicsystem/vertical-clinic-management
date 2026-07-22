@@ -3,7 +3,7 @@ User repository — queries and write operations on the users table.
 All DB interaction lives here; the service layer only calls these methods.
 """
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,7 +97,7 @@ class UserRepository(BaseRepository[User]):
 
     async def update_last_login(self, user: User) -> User:
         """Stamp last_login_at with the current UTC time."""
-        return await self.update(user, {"last_login_at": datetime.now(UTC)})
+        return await self.update(user, {"last_login_at": datetime.now(timezone.utc)})
 
     async def update_password(self, user: User, hashed_password: str) -> User:
         """Replace the stored password hash."""

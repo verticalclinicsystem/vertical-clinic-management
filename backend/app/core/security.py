@@ -1,41 +1,39 @@
 """
 JWT creation, decoding, and password hashing utilities.
 """
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from jose import JWTError, jwt
 
 import bcrypt
-if not hasattr(bcrypt, "__about__"):
-    class _About:
-        __version__ = getattr(bcrypt, "__version__", "4.0.0")
-    bcrypt.__about__ = _About()
-
-from passlib.context import CryptContext
 
 from app.config import settings
 from app.core.exceptions import InvalidTokenError, TokenExpiredError
 
 # ── Password Hashing ──────────────────────────────────────────────────────────
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
 def hash_password(plain_password: str) -> str:
-    """Return bcrypt hash of the given password."""
-    return _pwd_context.hash(plain_password)
+    """Return bcrypt hash of the given password, truncated to 72 bytes."""
+    pwd_bytes = plain_password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Return True if plain_password matches the stored hash."""
-    return _pwd_context.verify(plain_password, hashed_password)
+    try:
+        pwd_bytes = plain_password.encode("utf-8")[:72]
+        hash_bytes = hashed_password.encode("utf-8")
+        return bcrypt.checkpw(pwd_bytes, hash_bytes)
+    except Exception:
+        return False
 
 
 # ── JWT Token Helpers ─────────────────────────────────────────────────────────
 def _create_token(data: dict[str, Any], expires_delta: timedelta) -> str:
     payload = data.copy()
-    payload["exp"] = datetime.now(UTC) + expires_delta
-    payload["iat"] = datetime.now(UTC)
+    payload["exp"] = datetime.now(timezone.utc) + expires_delta
+    payload["iat"] = datetime.now(timezone.utc)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

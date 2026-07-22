@@ -2,7 +2,14 @@
 RBAC (Role-Based Access Control) permission matrix.
 Defines what each role can do throughout the system.
 """
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        pass
+
 
 from fastapi import Depends
 
