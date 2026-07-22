@@ -93,6 +93,14 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ClinicAPIError)
     async def clinic_error_handler(request: Request, exc: ClinicAPIError) -> JSONResponse:
+        logger.warning(
+            "API Failure - Exception: %s | Path: %s | Status: %d | Error Code: %s | Reason: %s",
+            exc.__class__.__name__,
+            request.url.path,
+            exc.status_code,
+            getattr(exc, "error_code", "API_ERROR"),
+            exc.detail
+        )
         return ApiResponse.error(
             message=exc.detail,
             status_code=exc.status_code,
@@ -108,6 +116,12 @@ def create_app() -> FastAPI:
             loc = " -> ".join(str(x) for x in first_err.get("loc", []))
             message = f"Validation failed: {first_err.get('msg')} at {loc}"
         
+        logger.warning(
+            "API Failure - RequestValidationError | Path: %s | Status: 422 | Reason: %s | Errors: %s",
+            request.url.path,
+            message,
+            errors
+        )
         return ApiResponse.error(
             message=message,
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -116,6 +130,12 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def fastapi_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        logger.warning(
+            "API Failure - StarletteHTTPException | Path: %s | Status: %d | Reason: %s",
+            request.url.path,
+            exc.status_code,
+            exc.detail
+        )
         return ApiResponse.error(
             message=exc.detail,
             status_code=exc.status_code,

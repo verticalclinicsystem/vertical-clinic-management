@@ -187,7 +187,7 @@ async def send_email(
         )
         logger.info("Email sent to=%r subject=%r", to, subject)
     except Exception as exc:
-        logger.warning("Failed to send email to=%r: %s", to, exc)
+        logger.warning("Failed to send email to=%r: %s (%s)", to, exc, type(exc).__name__, exc_info=True)
         if settings.is_production:
             raise
 

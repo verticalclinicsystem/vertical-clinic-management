@@ -25,9 +25,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
             <tr>
               <th>Invoice Code</th>
               <th>Due Date</th>
-              <th>Total Amount</th>
-              <th>Paid Amount</th>
-              <th>Balance Due</th>
+              <th>Consultation Fee</th>
               <th>Status</th>
               <th>Download</th>
             </tr>
@@ -48,10 +46,6 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                 <td style={{ fontFamily: 'monospace' }}>{bill.invoice_number}</td>
                 <td>{new Date(bill.due_date).toLocaleDateString()}</td>
                 <td>₹{bill.total_amount}</td>
-                <td>₹{bill.paid_amount}</td>
-                <td style={{ color: bill.balance_due > 0 ? 'var(--error-red)' : 'inherit', fontWeight: 600 }}>
-                  ₹{bill.balance_due}
-                </td>
                 <td>
                   <span className={`status-pill ${bill.status}`}>{bill.status}</span>
                 </td>
@@ -68,7 +62,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
             ))}
             {(!dashboardData.bills || dashboardData.bills.length === 0) && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No invoice statements available.</td>
+                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No invoice statements available.</td>
               </tr>
             )}
           </tbody>

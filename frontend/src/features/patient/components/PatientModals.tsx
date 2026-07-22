@@ -149,7 +149,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
   triggerToast,
 
   viewingInvoice,
-  patientProfile,
+  patientProfile: _patientProfile,
 
   conflictAppt,
   setConflictAppt,
@@ -893,46 +893,11 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <span style={{ color: 'var(--muted)' }}>Consultation Fee / Treatment:</span>
-                  <span>₹{viewingInvoice.total_amount}</span>
-                </div>
-                {viewingInvoice.discount_amount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#16a34a' }}>
-                    <span>Discount:</span>
-                    <span>- ₹{viewingInvoice.discount_amount}</span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <span>GST / Tax (18%):</span>
-                  <span>₹{viewingInvoice.tax_amount}</span>
-                </div>
-                {patientProfile?.insurance_provider && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--primary)' }}>
-                    <span>Insurance Covered ({patientProfile.insurance_provider}):</span>
-                    <span>₹{Math.max(0, Number(viewingInvoice.total_amount) + Number(viewingInvoice.tax_amount) - Number(viewingInvoice.discount_amount) - Number(viewingInvoice.grand_total)).toFixed(2)}</span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', fontWeight: 700, borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '5px' }}>
-                  <span>Grand Total:</span>
-                  <span>₹{viewingInvoice.grand_total}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--muted)' }}>
-                  <span>Amount Paid:</span>
-                  <span>₹{viewingInvoice.amount_paid}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 700, color: viewingInvoice.balance_due > 0 ? 'var(--error-red)' : '#16a34a' }}>
-                  <span>Balance Due:</span>
-                  <span>₹{viewingInvoice.balance_due}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 700 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Consultation Fee:</span>
+                  <span style={{ color: 'var(--primary)' }}>₹{viewingInvoice.total_amount}</span>
                 </div>
               </div>
-
-              {patientProfile?.insurance_provider && (
-                <div style={{ marginTop: '10px', padding: '10px', background: 'var(--surface-2)', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem' }}>
-                  <span style={{ fontWeight: 600, display: 'block', marginBottom: '2px' }}>Insurance Information</span>
-                  Provider: {patientProfile.insurance_provider} • Policy No: {patientProfile.insurance_policy_no || 'N/A'}
-                </div>
-              )}
             </div>
             <footer className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
               <button
