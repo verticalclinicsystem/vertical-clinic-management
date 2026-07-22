@@ -15,6 +15,7 @@ import { PreferencesTab } from './components/PreferencesTab';
 import { TeleconsultationTab } from './components/TeleconsultationTab';
 import { BookingWizard } from './components/BookingWizard';
 import { PatientModals } from './components/PatientModals';
+import { ProfileCompletionWizard } from './components/ProfileCompletionWizard';
 
 const getErrorMessage = (err: any, defaultMsg: string): string => {
   if (err.response?.data) {
@@ -122,7 +123,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
 
   const [viewingPrescription, setViewingPrescription] = useState<any>(null);
 
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -153,7 +154,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   // Conflict state
   const [conflictAppt, setConflictAppt] = useState<any>(null);
 
-  const triggerToast = (type: 'success' | 'error', message: string) => {
+  const triggerToast = (type: 'success' | 'error' | 'info', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   };
@@ -269,12 +270,28 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     setBookingStep(2);
   };
 
-  const handleDoctorSelect = (doctorId: string) => {
+  const handleDoctorSelect = async (doctorId: string) => {
     setSelectedDoctorId(doctorId);
-    setBookingDate('');
+    
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+    
+    setBookingDate(todayStr);
     setBookingSlot('');
     setAvailableSlots([]);
     setBookingStep(4);
+
+    if (doctorId && todayStr) {
+      try {
+        const res = await api.get(`/appointments/available-slots?doctor_id=${doctorId}&date=${todayStr}`);
+        setAvailableSlots(extractArrayData(res.data));
+      } catch (err: any) {
+        triggerToast('error', 'Failed to fetch doctor availability slots.');
+      }
+    }
   };
 
   const handleDateChange = async (date: string) => {
@@ -438,7 +455,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
         if (attachedReportId) payload.report_id = attachedReportId;
       }
 
-      await api.post('/appointments', payload);
+      await api.post('/appointments/', payload);
       triggerToast('success', 'Appointment scheduled successfully!');
       clearBookingWizardState();
       await fetchPortalData();
@@ -533,6 +550,23 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   };
 
   const startEditingProfile = () => {
+    let chronicDiseases = 'None';
+    let highRiskFlags = 'None';
+    let specialCondition = 'None';
+    let disability = 'None';
+
+    try {
+      if (patientProfile?.chronic_conditions) {
+        const parsed = JSON.parse(patientProfile.chronic_conditions);
+        chronicDiseases = parsed.chronicDiseases || 'None';
+        highRiskFlags = parsed.highRiskFlags || 'None';
+        specialCondition = parsed.specialCondition || 'None';
+        disability = parsed.disability || 'None';
+      }
+    } catch (e) {
+      chronicDiseases = patientProfile?.chronic_conditions || 'None';
+    }
+
     setProfileForm({
       phone: patientProfile?.user?.phone || '',
       emergency_contact_name: patientProfile?.emergency_contact_name || '',
@@ -542,6 +576,14 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
       insurance_provider: patientProfile?.insurance_provider || '',
       insurance_policy_no: patientProfile?.insurance_policy_no || '',
       address: patientProfile?.address || '',
+      blood_group: patientProfile?.blood_group || '',
+      date_of_birth: patientProfile?.date_of_birth ? patientProfile.date_of_birth.substring(0, 10) : '',
+      height: patientProfile?.height || '',
+      weight: patientProfile?.weight || '',
+      chronic_diseases: chronicDiseases,
+      high_risk_flags: highRiskFlags,
+      special_condition: specialCondition,
+      disability: disability,
     });
     setIsEditingProfile(true);
   };
@@ -549,8 +591,27 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const handleSaveProfile = async () => {
     setIsLoading(true);
     try {
-      const res = await api.put('/patients/me', profileForm);
-      setPatientProfile(res.data);
+      const compiledChronicConditions = JSON.stringify({
+        chronicDiseases: profileForm.chronic_diseases || 'None',
+        highRiskFlags: profileForm.high_risk_flags || 'None',
+        specialCondition: profileForm.special_condition || 'None',
+        disability: profileForm.disability || 'None',
+      });
+
+      const payload = {
+        ...profileForm,
+        chronic_conditions: compiledChronicConditions,
+        is_profile_completed: true,
+      };
+
+      // Remove temporary frontend properties
+      delete payload.chronic_diseases;
+      delete payload.high_risk_flags;
+      delete payload.special_condition;
+      delete payload.disability;
+
+      const res = await api.patch('/patients/me', payload);
+      setPatientProfile(res.data?.data || res.data);
       triggerToast('success', 'Profile updated successfully!');
       setIsEditingProfile(false);
     } catch (err: any) {
@@ -603,64 +664,74 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const renderSummarySidebar = () => {
     const selectedBranch = safeBranches.find((b: any) => b.id === selectedBranchId);
     const selectedDoctor = safeDoctors.find((d: any) => d.id === selectedDoctorId);
+    const doctorName = selectedDoctor?.user?.full_name || '';
+    const cleanDoctorName = doctorName.toLowerCase().startsWith('dr') ? doctorName : `Dr. ${doctorName}`;
 
     return (
-      <div className="book-summary-card">
-        <h4 className="summary-title">Appointment Summary</h4>
+      <div className="booking-summary-sidebar">
+        <h4 className="booking-summary-title">Appointment Summary</h4>
 
-        <div className="summary-section">
-          <span className="summary-label">Clinic Branch</span>
-          {selectedBranch ? (
-            <div className="summary-value highlight">
-              <span>📍 {selectedBranch.name} Branch</span>
-            </div>
-          ) : (
-            <div className="summary-placeholder">None Selected</div>
-          )}
-        </div>
-
-        <div className="summary-section">
-          <span className="summary-label">Consultation Mode</span>
-          <div className="summary-value">
-            <span>{consultationType === 'teleconsultation' ? '💻 Tele Consultation' : '🏥 In Clinic Visit'}</span>
+        <div className="summary-sidebar-item">
+          <div className="summary-sidebar-icon">📍</div>
+          <div className="summary-sidebar-info">
+            <span className="summary-sidebar-label">Clinic Branch</span>
+            {selectedBranch ? (
+              <span className="summary-sidebar-val">{selectedBranch.name} Branch</span>
+            ) : (
+              <span className="summary-sidebar-val empty">None Selected</span>
+            )}
           </div>
         </div>
 
-        <div className="summary-section">
-          <span className="summary-label">Clinician</span>
-          {selectedDoctor ? (
-            <div className="summary-value highlight">
-              <span>Dr. {selectedDoctor.user?.full_name}</span>
-              <span className="summary-subtext">{selectedDoctor.specialization || 'General Dentist'}</span>
-            </div>
-          ) : (
-            <div className="summary-placeholder">None Selected</div>
-          )}
+        <div className="summary-sidebar-item">
+          <div className="summary-sidebar-icon">{consultationType === 'teleconsultation' ? '💻' : '🏥'}</div>
+          <div className="summary-sidebar-info">
+            <span className="summary-sidebar-label">Consultation Mode</span>
+            <span className="summary-sidebar-val">
+              {consultationType === 'teleconsultation' ? 'Tele Consultation' : 'In Clinic Visit'}
+            </span>
+          </div>
         </div>
 
-        <div className="summary-section">
-          <span className="summary-label">Date &amp; Time Slot</span>
-          {bookingDate && bookingSlot ? (
-            <div className="summary-value highlight">
-              <span>📅 {new Date(bookingDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-              <span className="summary-subtext">🕐 {formatTimeToAMPM(bookingSlot)}</span>
-            </div>
-          ) : (
-            <div className="summary-placeholder">Not Selected</div>
-          )}
+        <div className="summary-sidebar-item">
+          <div className="summary-sidebar-icon">👨‍⚕️</div>
+          <div className="summary-sidebar-info">
+            <span className="summary-sidebar-label">Clinician</span>
+            {selectedDoctor ? (
+              <>
+                <span className="summary-sidebar-val">{cleanDoctorName}</span>
+                <span className="summary-sidebar-val" style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                  {selectedDoctor.specialization || 'General Dentist'}
+                </span>
+              </>
+            ) : (
+              <span className="summary-sidebar-val empty">None Selected</span>
+            )}
+          </div>
+        </div>
+
+        <div className="summary-sidebar-item">
+          <div className="summary-sidebar-icon">📅</div>
+          <div className="summary-sidebar-info">
+            <span className="summary-sidebar-label">Date &amp; Time Slot</span>
+            {bookingDate && bookingSlot ? (
+              <>
+                <span className="summary-sidebar-val">
+                  {new Date(bookingDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+                <span className="summary-sidebar-val" style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                  🕐 {formatTimeToAMPM(bookingSlot)}
+                </span>
+              </>
+            ) : (
+              <span className="summary-sidebar-val empty">Not Selected</span>
+            )}
+          </div>
         </div>
 
         <div className="summary-fee-box">
           <div className="fee-row">
             <span>Consultation Fee:</span>
-            <strong>₹{selectedDoctor ? selectedDoctor.consultation_fee : 0}</strong>
-          </div>
-          <div className="fee-row sub">
-            <span>Booking Charges:</span>
-            <span style={{ color: '#16a34a', fontWeight: '600' }}>FREE</span>
-          </div>
-          <div className="fee-row total">
-            <span>Total Payable at Clinic:</span>
             <strong>₹{selectedDoctor ? selectedDoctor.consultation_fee : 0}</strong>
           </div>
         </div>
@@ -684,279 +755,292 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
         </div>
       )}
 
-      <PatientSidebar
-        screen={screen}
-        setScreen={setScreen}
-        clearBookingWizardState={clearBookingWizardState}
-        isMobileSidebarOpen={isMobileSidebarOpen}
-        setIsMobileSidebarOpen={setIsMobileSidebarOpen}
-        onLogout={onLogout}
-      />
-
-      <main className="portal-main">
-        <PatientHeader
-          screen={screen}
+      {patientProfile && !patientProfile.is_profile_completed ? (
+        <ProfileCompletionWizard
           patientProfile={patientProfile}
-          getInitials={getInitials}
-          setIsMobileSidebarOpen={setIsMobileSidebarOpen}
-          setScreen={setScreen}
+          branches={branches}
+          doctors={doctors}
+          onComplete={fetchPortalData}
+          onLogout={onLogout}
+          triggerToast={triggerToast}
         />
+      ) : (
+        <>
+          <PatientSidebar
+            screen={screen}
+            setScreen={setScreen}
+            clearBookingWizardState={clearBookingWizardState}
+            isMobileSidebarOpen={isMobileSidebarOpen}
+            setIsMobileSidebarOpen={setIsMobileSidebarOpen}
+            onLogout={onLogout}
+          />
 
-        <div className="portal-content">
-          {isLoading && (
-            <div style={{ textAlign: 'center', padding: '40px' }}>
-              <div style={{
-                border: '4px solid var(--border-color)',
-                borderTop: '4px solid var(--primary-teal)',
-                borderRadius: '50%',
-                width: '36px',
-                height: '36px',
-                animation: 'spin 1s linear infinite',
-                margin: '0 auto 12px'
-              }} />
-              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Fetching clinic records...</p>
-            </div>
-          )}
-
-          {/* ── SCREEN: DASHBOARD ── */}
-          {screen === 'dashboard' && dashboardData && (
-            <DashboardTab
+          <main className="portal-main">
+            <PatientHeader
+              screen={screen}
               patientProfile={patientProfile}
-              dashboardData={dashboardData}
-              statistics={statistics}
-              setScreen={setScreen}
-              openBookingWizard={() => { setBookingStep(1); setScreen('book'); }}
-              openRescheduleModal={openRescheduleModal}
-              setCancelApptId={setCancelApptId}
-              setViewingAppointment={setViewingAppointment}
-              triggerToast={triggerToast}
-            />
-          )}
-
-          {/* ── SCREEN: APPOINTMENTS ── */}
-          {screen === 'appointments' && dashboardData && (
-            <AppointmentsTab
-              dashboardData={dashboardData}
-              appointmentFilter={appointmentFilter}
-              setAppointmentFilter={setAppointmentFilter}
-              appointmentDateFilter={appointmentDateFilter}
-              setAppointmentDateFilter={setAppointmentDateFilter}
-              setScreen={setScreen}
-              setBookingStep={setBookingStep}
-              openRescheduleModal={openRescheduleModal}
-              setCancelApptId={setCancelApptId}
-              handleJoinMeeting={handleJoinMeeting}
-              setViewingAppointment={setViewingAppointment}
-              triggerToast={triggerToast}
-            />
-          )}
-
-          {/* ── SCREEN: BOOKING WIZARD ── */}
-          {screen === 'book' && (
-            <BookingWizard
-              bookingStep={bookingStep}
-              setBookingStep={setBookingStep}
-              branches={branches}
-              selectedBranchId={selectedBranchId}
-              handleBranchSelect={handleBranchSelect}
-              consultationType={consultationType}
-              setConsultationType={setConsultationType}
-              doctors={doctors}
-              selectedDoctorId={selectedDoctorId}
-              handleDoctorSelect={handleDoctorSelect}
-              filterSpecialty={filterSpecialty}
-              setFilterSpecialty={setFilterSpecialty}
-              filterExperience={filterExperience}
-              setFilterExperience={setFilterExperience}
-              filterGender={filterGender}
-              setFilterGender={setFilterGender}
-              filterLanguage={filterLanguage}
-              setFilterLanguage={setFilterLanguage}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              sortOption={sortOption}
-              setSortOption={setSortOption}
-              filteredAndSortedDoctors={filteredAndSortedDoctors}
-              renderSummarySidebar={renderSummarySidebar}
-              bookingDate={bookingDate}
-              bookingSlot={bookingSlot}
-              setBookingSlot={setBookingSlot}
-              handleDateChange={handleDateChange}
-              calendarViewMonth={calendarViewMonth}
-              setCalendarViewMonth={setCalendarViewMonth}
-              calendarViewYear={calendarViewYear}
-              setCalendarViewYear={setCalendarViewYear}
-              handlePrevMonth={handlePrevMonth}
-              handleNextMonth={handleNextMonth}
-              getDaysArray={getDaysArray}
-              MONTH_NAMES={MONTH_NAMES}
-              formatTimeToAMPM={formatTimeToAMPM}
-              availableSlots={availableSlots}
-              patientProfile={patientProfile}
-              treatmentType={treatmentType}
-              setTreatmentType={setTreatmentType}
-              customTreatmentText={customTreatmentText}
-              setCustomTreatmentText={setCustomTreatmentText}
-              bookingSymptoms={bookingSymptoms}
-              setBookingSymptoms={setBookingSymptoms}
-              attachedReportId={attachedReportId}
-              setAttachedReportId={setAttachedReportId}
-              dashboardData={dashboardData}
-              bookingNotes={bookingNotes}
-              setBookingNotes={setBookingNotes}
-              clearBookingWizardState={clearBookingWizardState}
-              setScreen={setScreen}
-              setShowBookingConfirm={setShowBookingConfirm}
-              isLoading={isLoading}
-            />
-          )}
-
-          {/* ── SCREEN: PRESCRIPTIONS ── */}
-          {screen === 'prescriptions' && dashboardData && (
-            <PrescriptionsTab
-              dashboardData={dashboardData}
-              timeline={timeline}
-              setViewingPrescription={setViewingPrescription}
-              downloadPdf={downloadPdf}
-            />
-          )}
-
-          {/* ── SCREEN: BILLING ── */}
-          {screen === 'billing' && dashboardData && (
-            <BillingTab
-              dashboardData={dashboardData}
-              setViewingInvoice={setViewingInvoice}
-              downloadPdf={downloadPdf}
-            />
-          )}
-
-          {/* ── SCREEN: REPORTS ── */}
-          {screen === 'reports' && dashboardData && (
-            <ReportsTab
-              dashboardData={dashboardData}
-              setShowUploadModal={setShowUploadModal}
-              setViewingReport={setViewingReport}
-              setImageZoom={setImageZoom}
-              setImageRotate={setImageRotate}
-              handleDeleteReport={handleDeleteReport}
-            />
-          )}
-
-          {/* ── SCREEN: MEDICAL HISTORY TIMELINE ── */}
-          {screen === 'timeline' && (
-            <TimelineTab
-              timeline={timeline}
-              dashboardData={dashboardData}
-              setViewingHistoryEvent={setViewingHistoryEvent}
-              setViewingInvoice={setViewingInvoice}
-              setViewingReport={setViewingReport}
-            />
-          )}
-
-          {/* ── SCREEN: PROFILE ── */}
-          {screen === 'profile' && patientProfile && (
-            <ProfileTab
-              patientProfile={patientProfile}
-              isEditingProfile={isEditingProfile}
-              setIsEditingProfile={setIsEditingProfile}
-              profileForm={profileForm}
-              setProfileForm={setProfileForm}
-              startEditingProfile={startEditingProfile}
-              handleSaveProfile={handleSaveProfile}
               getInitials={getInitials}
-            />
-          )}
-
-          {/* ── SCREEN: TELECONSULTATION ── */}
-          {screen === 'teleconsultation' && (
-            <TeleconsultationTab
-              activeTele={dashboardData?.upcoming_appointments?.find((a: any) => a.consultation_type === 'teleconsultation')}
-              pastTeles={dashboardData?.past_teleconsultations || []}
-              selectedTeleId={selectedTeleId}
-              setSelectedTeleId={setSelectedTeleId}
-              checklist={checklist}
-              handleJoinMeeting={handleJoinMeeting}
-              triggerToast={triggerToast}
+              setIsMobileSidebarOpen={setIsMobileSidebarOpen}
               setScreen={setScreen}
             />
-          )}
 
-          {/* ── SCREEN: PREFERENCES ── */}
-          {screen === 'preferences' && (
-            <PreferencesTab
-              preferences={preferences}
-              setPreferences={setPreferences}
-              handlePreferencesSubmit={handlePreferencesSubmit}
-            />
-          )}
-        </div>
-      </main>
+            <div className="portal-content">
+              {isLoading && (
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                  <div style={{
+                    border: '4px solid var(--border-color)',
+                    borderTop: '4px solid var(--primary-teal)',
+                    borderRadius: '50%',
+                    width: '36px',
+                    height: '36px',
+                    animation: 'spin 1s linear infinite',
+                    margin: '0 auto 12px'
+                  }} />
+                  <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Fetching clinic records...</p>
+                </div>
+              )}
 
-      {/* Modals orchestrator */}
-      <PatientModals
-        rescheduleApptId={rescheduleApptId}
-        setRescheduleApptId={setRescheduleApptId}
-        rescheduleDate={rescheduleDate}
-        rescheduleSlot={rescheduleSlot}
-        rescheduleSlots={rescheduleSlots}
-        handleRescheduleDateSelect={handleRescheduleDateSelect}
-        setRescheduleSlot={setRescheduleSlot}
-        handleRescheduleSubmit={handleRescheduleSubmit}
-        formatTimeToAMPM={formatTimeToAMPM}
-        cancelApptId={cancelApptId}
-        setCancelApptId={setCancelApptId}
-        cancelReason={cancelReason}
-        setCancelReason={setCancelReason}
-        handleCancelSubmit={handleCancelSubmit}
-        viewingPrescription={viewingPrescription}
-        setViewingPrescription={setViewingPrescription}
-        downloadPdf={downloadPdf}
-        showBookingConfirm={showBookingConfirm}
-        setShowBookingConfirm={setShowBookingConfirm}
-        selectedBranchId={selectedBranchId}
-        selectedDoctorId={selectedDoctorId}
-        branches={branches}
-        doctors={doctors}
-        bookingDate={bookingDate}
-        bookingSlot={bookingSlot}
-        consultationType={consultationType}
-        treatmentType={treatmentType}
-        customTreatmentText={customTreatmentText}
-        bookingNotes={bookingNotes}
-        isLoading={isLoading}
-        handleBookingSubmit={handleBookingSubmit}
-        showUploadModal={showUploadModal}
-        setShowUploadModal={setShowUploadModal}
-        uploadTitle={uploadTitle}
-        setUploadTitle={setUploadTitle}
-        uploadType={uploadType}
-        setUploadType={setUploadType}
-        setUploadFile={setUploadFile}
-        handleReportUpload={handleReportUpload}
-        viewingReport={viewingReport}
-        setViewingReport={setViewingReport}
-        isImageFile={isImageFile}
-        imageZoom={imageZoom}
-        setImageZoom={setImageZoom}
-        imageRotate={imageRotate}
-        setImageRotate={setImageRotate}
-        viewingAppointment={viewingAppointment}
-        setViewingAppointment={setViewingAppointment}
-        handleJoinMeeting={handleJoinMeeting}
-        viewingHistoryEvent={viewingHistoryEvent}
-        setViewingHistoryEvent={setViewingHistoryEvent}
-        timeline={timeline}
-        dashboardData={dashboardData}
-        setViewingInvoice={setViewingInvoice}
-        triggerToast={triggerToast}
-        viewingInvoice={viewingInvoice}
-        patientProfile={patientProfile}
-        conflictAppt={conflictAppt}
-        setConflictAppt={setConflictAppt}
-        setScreen={setScreen}
-        openRescheduleModal={openRescheduleModal}
-      />
+              {/* ── SCREEN: DASHBOARD ── */}
+              {screen === 'dashboard' && dashboardData && (
+                <DashboardTab
+                  patientProfile={patientProfile}
+                  dashboardData={dashboardData}
+                  statistics={statistics}
+                  setScreen={setScreen}
+                  openBookingWizard={() => { setBookingStep(1); setScreen('book'); }}
+                  openRescheduleModal={openRescheduleModal}
+                  setCancelApptId={setCancelApptId}
+                  setViewingAppointment={setViewingAppointment}
+                  triggerToast={triggerToast}
+                />
+              )}
+
+              {/* ── SCREEN: APPOINTMENTS ── */}
+              {screen === 'appointments' && dashboardData && (
+                <AppointmentsTab
+                  dashboardData={dashboardData}
+                  appointmentFilter={appointmentFilter}
+                  setAppointmentFilter={setAppointmentFilter}
+                  appointmentDateFilter={appointmentDateFilter}
+                  setAppointmentDateFilter={setAppointmentDateFilter}
+                  setScreen={setScreen}
+                  setBookingStep={setBookingStep}
+                  openRescheduleModal={openRescheduleModal}
+                  setCancelApptId={setCancelApptId}
+                  handleJoinMeeting={handleJoinMeeting}
+                  setViewingAppointment={setViewingAppointment}
+                  triggerToast={triggerToast}
+                />
+              )}
+
+              {/* ── SCREEN: BOOKING WIZARD ── */}
+              {screen === 'book' && (
+                <BookingWizard
+                  bookingStep={bookingStep}
+                  setBookingStep={setBookingStep}
+                  branches={branches}
+                  selectedBranchId={selectedBranchId}
+                  handleBranchSelect={handleBranchSelect}
+                  consultationType={consultationType}
+                  setConsultationType={setConsultationType}
+                  doctors={doctors}
+                  selectedDoctorId={selectedDoctorId}
+                  handleDoctorSelect={handleDoctorSelect}
+                  filterSpecialty={filterSpecialty}
+                  setFilterSpecialty={setFilterSpecialty}
+                  filterExperience={filterExperience}
+                  setFilterExperience={setFilterExperience}
+                  filterGender={filterGender}
+                  setFilterGender={setFilterGender}
+                  filterLanguage={filterLanguage}
+                  setFilterLanguage={setFilterLanguage}
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  sortOption={sortOption}
+                  setSortOption={setSortOption}
+                  filteredAndSortedDoctors={filteredAndSortedDoctors}
+                  renderSummarySidebar={renderSummarySidebar}
+                  bookingDate={bookingDate}
+                  bookingSlot={bookingSlot}
+                  setBookingSlot={setBookingSlot}
+                  handleDateChange={handleDateChange}
+                  calendarViewMonth={calendarViewMonth}
+                  setCalendarViewMonth={setCalendarViewMonth}
+                  calendarViewYear={calendarViewYear}
+                  setCalendarViewYear={setCalendarViewYear}
+                  handlePrevMonth={handlePrevMonth}
+                  handleNextMonth={handleNextMonth}
+                  getDaysArray={getDaysArray}
+                  MONTH_NAMES={MONTH_NAMES}
+                  formatTimeToAMPM={formatTimeToAMPM}
+                  availableSlots={availableSlots}
+                  patientProfile={patientProfile}
+                  treatmentType={treatmentType}
+                  setTreatmentType={setTreatmentType}
+                  customTreatmentText={customTreatmentText}
+                  setCustomTreatmentText={setCustomTreatmentText}
+                  bookingSymptoms={bookingSymptoms}
+                  setBookingSymptoms={setBookingSymptoms}
+                  attachedReportId={attachedReportId}
+                  setAttachedReportId={setAttachedReportId}
+                  dashboardData={dashboardData}
+                  bookingNotes={bookingNotes}
+                  setBookingNotes={setBookingNotes}
+                  clearBookingWizardState={clearBookingWizardState}
+                  setScreen={setScreen}
+                  setShowBookingConfirm={setShowBookingConfirm}
+                  isLoading={isLoading}
+                />
+              )}
+
+              {/* ── SCREEN: PRESCRIPTIONS ── */}
+              {screen === 'prescriptions' && dashboardData && (
+                <PrescriptionsTab
+                  dashboardData={dashboardData}
+                  timeline={timeline}
+                  setViewingPrescription={setViewingPrescription}
+                  downloadPdf={downloadPdf}
+                />
+              )}
+
+              {/* ── SCREEN: BILLING ── */}
+              {screen === 'billing' && dashboardData && (
+                <BillingTab
+                  dashboardData={dashboardData}
+                  setViewingInvoice={setViewingInvoice}
+                  downloadPdf={downloadPdf}
+                />
+              )}
+
+              {/* ── SCREEN: REPORTS ── */}
+              {screen === 'reports' && dashboardData && (
+                <ReportsTab
+                  dashboardData={dashboardData}
+                  setShowUploadModal={setShowUploadModal}
+                  setViewingReport={setViewingReport}
+                  setImageZoom={setImageZoom}
+                  setImageRotate={setImageRotate}
+                  handleDeleteReport={handleDeleteReport}
+                />
+              )}
+
+              {/* ── SCREEN: MEDICAL HISTORY TIMELINE ── */}
+              {screen === 'timeline' && (
+                <TimelineTab
+                  timeline={timeline}
+                  dashboardData={dashboardData}
+                  setViewingHistoryEvent={setViewingHistoryEvent}
+                  setViewingInvoice={setViewingInvoice}
+                  setViewingReport={setViewingReport}
+                />
+              )}
+
+              {/* ── SCREEN: PROFILE ── */}
+              {screen === 'profile' && patientProfile && (
+                <ProfileTab
+                  patientProfile={patientProfile}
+                  isEditingProfile={isEditingProfile}
+                  setIsEditingProfile={setIsEditingProfile}
+                  profileForm={profileForm}
+                  setProfileForm={setProfileForm}
+                  startEditingProfile={startEditingProfile}
+                  handleSaveProfile={handleSaveProfile}
+                  getInitials={getInitials}
+                />
+              )}
+
+              {/* ── SCREEN: TELECONSULTATION ── */}
+              {screen === 'teleconsultation' && (
+                <TeleconsultationTab
+                  activeTele={dashboardData?.upcoming_appointments?.find((a: any) => a.consultation_type === 'teleconsultation')}
+                  pastTeles={dashboardData?.past_teleconsultations || []}
+                  selectedTeleId={selectedTeleId}
+                  setSelectedTeleId={setSelectedTeleId}
+                  checklist={checklist}
+                  handleJoinMeeting={handleJoinMeeting}
+                  triggerToast={triggerToast}
+                  setScreen={setScreen}
+                />
+              )}
+
+              {/* ── SCREEN: PREFERENCES ── */}
+              {screen === 'preferences' && (
+                <PreferencesTab
+                  preferences={preferences}
+                  setPreferences={setPreferences}
+                  handlePreferencesSubmit={handlePreferencesSubmit}
+                />
+              )}
+            </div>
+          </main>
+
+          {/* Modals orchestrator */}
+          <PatientModals
+            rescheduleApptId={rescheduleApptId}
+            setRescheduleApptId={setRescheduleApptId}
+            rescheduleDate={rescheduleDate}
+            rescheduleSlot={rescheduleSlot}
+            rescheduleSlots={rescheduleSlots}
+            handleRescheduleDateSelect={handleRescheduleDateSelect}
+            setRescheduleSlot={setRescheduleSlot}
+            handleRescheduleSubmit={handleRescheduleSubmit}
+            formatTimeToAMPM={formatTimeToAMPM}
+            cancelApptId={cancelApptId}
+            setCancelApptId={setCancelApptId}
+            cancelReason={cancelReason}
+            setCancelReason={setCancelReason}
+            handleCancelSubmit={handleCancelSubmit}
+            viewingPrescription={viewingPrescription}
+            setViewingPrescription={setViewingPrescription}
+            downloadPdf={downloadPdf}
+            showBookingConfirm={showBookingConfirm}
+            setShowBookingConfirm={setShowBookingConfirm}
+            selectedBranchId={selectedBranchId}
+            selectedDoctorId={selectedDoctorId}
+            branches={branches}
+            doctors={doctors}
+            bookingDate={bookingDate}
+            bookingSlot={bookingSlot}
+            consultationType={consultationType}
+            treatmentType={treatmentType}
+            customTreatmentText={customTreatmentText}
+            bookingNotes={bookingNotes}
+            isLoading={isLoading}
+            handleBookingSubmit={handleBookingSubmit}
+            showUploadModal={showUploadModal}
+            setShowUploadModal={setShowUploadModal}
+            uploadTitle={uploadTitle}
+            setUploadTitle={setUploadTitle}
+            uploadType={uploadType}
+            setUploadType={setUploadType}
+            setUploadFile={setUploadFile}
+            handleReportUpload={handleReportUpload}
+            viewingReport={viewingReport}
+            setViewingReport={setViewingReport}
+            isImageFile={isImageFile}
+            imageZoom={imageZoom}
+            setImageZoom={setImageZoom}
+            imageRotate={imageRotate}
+            setImageRotate={setImageRotate}
+            viewingAppointment={viewingAppointment}
+            setViewingAppointment={setViewingAppointment}
+            handleJoinMeeting={handleJoinMeeting}
+            viewingHistoryEvent={viewingHistoryEvent}
+            setViewingHistoryEvent={setViewingHistoryEvent}
+            timeline={timeline}
+            dashboardData={dashboardData}
+            setViewingInvoice={setViewingInvoice}
+            triggerToast={triggerToast}
+            viewingInvoice={viewingInvoice}
+            patientProfile={patientProfile}
+            conflictAppt={conflictAppt}
+            setConflictAppt={setConflictAppt}
+            setScreen={setScreen}
+            openRescheduleModal={openRescheduleModal}
+          />
+        </>
+      )}
     </div>
   );
 };

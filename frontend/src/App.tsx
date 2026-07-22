@@ -31,13 +31,17 @@ const App: React.FC = () => {
                   : 'patient'
         );
       } catch (e) {
-        localStorage.clear();
+        console.error("Error parsing user from localStorage:", e);
+        localStorage.removeItem('user');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
       }
     }
     setCheckingAuth(false);
   }, []);
 
   const handleLoginSuccess = (loggedInUser: any) => {
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
     setUser(loggedInUser);
     setActivePortal(
       loggedInUser.role === 'admin' 

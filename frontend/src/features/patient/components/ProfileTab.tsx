@@ -23,6 +23,21 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 }) => {
   if (!patientProfile) return null;
 
+  // Helper to parse chronic conditions JSON
+  const getChronicConditionVal = (key: string) => {
+    try {
+      if (patientProfile.chronic_conditions) {
+        const parsed = JSON.parse(patientProfile.chronic_conditions);
+        return parsed[key] || 'None';
+      }
+    } catch (e) {
+      if (key === 'chronicDiseases') {
+        return patientProfile.chronic_conditions || 'None';
+      }
+    }
+    return 'None';
+  };
+
   return (
     <div className="card">
       <div className="card-title-bar">
@@ -119,6 +134,34 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           )}
         </div>
         <div>
+          <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Height (cm)</label>
+          {isEditingProfile ? (
+            <input
+              type="text"
+              value={profileForm.height || ''}
+              onChange={e => setProfileForm({ ...profileForm, height: e.target.value })}
+              className="form-input"
+              placeholder="e.g. 175"
+            />
+          ) : (
+            <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{patientProfile.height || 'Not recorded'}</div>
+          )}
+        </div>
+        <div>
+          <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Weight (kg)</label>
+          {isEditingProfile ? (
+            <input
+              type="text"
+              value={profileForm.weight || ''}
+              onChange={e => setProfileForm({ ...profileForm, weight: e.target.value })}
+              className="form-input"
+              placeholder="e.g. 70"
+            />
+          ) : (
+            <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{patientProfile.weight || 'Not recorded'}</div>
+          )}
+        </div>
+        <div>
           <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Emergency Contact Name</label>
           {isEditingProfile ? (
             <input
@@ -158,19 +201,65 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{patientProfile.allergies || 'No known allergies'}</div>
           )}
         </div>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Chronic Conditions</label>
-          {isEditingProfile ? (
-            <textarea
-              rows={2}
-              value={profileForm.chronic_conditions}
-              onChange={e => setProfileForm({ ...profileForm, chronic_conditions: e.target.value })}
-              className="form-input"
-              placeholder="List any ongoing medical conditions (e.g. Diabetes, Hypertension)"
-            />
-          ) : (
-            <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{patientProfile.chronic_conditions || 'None reported'}</div>
-          )}
+        <div style={{ gridColumn: '1 / -1' }} className="form-grid-2">
+          <div>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Chronic Diseases</label>
+            {isEditingProfile ? (
+              <input
+                type="text"
+                value={profileForm.chronic_diseases || ''}
+                onChange={e => setProfileForm({ ...profileForm, chronic_diseases: e.target.value })}
+                className="form-input"
+                placeholder="e.g. Diabetes, Hypertension"
+              />
+            ) : (
+              <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{getChronicConditionVal('chronicDiseases')}</div>
+            )}
+          </div>
+          <div>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>High Risk Flags</label>
+            {isEditingProfile ? (
+              <input
+                type="text"
+                value={profileForm.high_risk_flags || ''}
+                onChange={e => setProfileForm({ ...profileForm, high_risk_flags: e.target.value })}
+                className="form-input"
+                placeholder="e.g. High Blood Pressure"
+              />
+            ) : (
+              <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{getChronicConditionVal('highRiskFlags')}</div>
+            )}
+          </div>
+        </div>
+        <div style={{ gridColumn: '1 / -1' }} className="form-grid-2">
+          <div>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Special Condition</label>
+            {isEditingProfile ? (
+              <input
+                type="text"
+                value={profileForm.special_condition || ''}
+                onChange={e => setProfileForm({ ...profileForm, special_condition: e.target.value })}
+                className="form-input"
+                placeholder="e.g. None"
+              />
+            ) : (
+              <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{getChronicConditionVal('specialCondition')}</div>
+            )}
+          </div>
+          <div>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Disability</label>
+            {isEditingProfile ? (
+              <input
+                type="text"
+                value={profileForm.disability || ''}
+                onChange={e => setProfileForm({ ...profileForm, disability: e.target.value })}
+                className="form-input"
+                placeholder="e.g. None"
+              />
+            ) : (
+              <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>{getChronicConditionVal('disability')}</div>
+            )}
+          </div>
         </div>
       </div>
     </div>

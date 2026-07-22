@@ -145,6 +145,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         }
 
         const user = authData.user || {};
+        localStorage.setItem('user', JSON.stringify(user));
         if (user.role) {
           localStorage.setItem('user_role', user.role.toLowerCase());
         }

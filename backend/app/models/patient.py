@@ -42,6 +42,8 @@ class Patient(Base):
         String(10), nullable=True
     )  # M | F | Other
     blood_group: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    height: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    weight: Mapped[str | None] = mapped_column(String(20), nullable=True)
     allergies: Mapped[str | None] = mapped_column(Text, nullable=True)
     chronic_conditions: Mapped[str | None] = mapped_column(Text, nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -77,6 +79,8 @@ class Patient(Base):
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_profile_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    current_treatment_details: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

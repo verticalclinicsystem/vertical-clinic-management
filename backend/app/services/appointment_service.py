@@ -346,7 +346,14 @@ class AppointmentService:
 
         created = await self.appointment_repo.create(appointment_data)
         await self.db.commit()
-        logger.info(f"Appointment created successfully: {created.id}")
+        logger.info(
+            "API Success - Appointment created successfully | ID: %s | Patient: %s | Doctor: %s | Datetime: %s | Mode: %s",
+            created.id,
+            patient_id,
+            request.doctor_id,
+            request.appointment_datetime,
+            request.consultation_type
+        )
         return await self.get_appointment(created.id)
 
     async def get_appointment(self, appointment_id: uuid.UUID) -> Appointment:

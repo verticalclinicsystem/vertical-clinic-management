@@ -175,7 +175,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         </div>
 
         {/* Main Content Area */}
-        <div className="book-step-content-area" style={{ flex: 1, marginTop: '24px' }}>
+        <div className="book-step-content-area" style={{ flex: 1, marginTop: '5px' }}>
 
           {/* Step 1: Branch */}
           {bookingStep === 1 && (
@@ -219,7 +219,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
           {/* Step 2: Mode */}
           {bookingStep === 2 && (
-            <div className="card" style={{ padding: '24px', animation: 'fadeIn 0.3s ease-out' }}>
+            <div className="card" style={{ padding: '20px', animation: 'fadeIn 0.3s ease-out' }}>
               <h3 style={{ marginBottom: '6px', fontSize: '1.1rem' }}>Select Consultation Mode</h3>
               <p style={{ color: 'var(--muted)', fontSize: '0.84rem', marginBottom: '20px' }}>Choose how you would like to connect with your doctor</p>
 
@@ -829,7 +829,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         </div>
 
         {/* Bottom: Wizard Footer Nav Bar */}
-        <div className="book-footer" style={{ marginTop: '24px', padding: '16px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="book-footer" style={{ marginTop: '5px', padding: '16px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {bookingStep > 1 ? (
             <button onClick={() => setBookingStep(bookingStep - 1)} className="btn-secondary" style={{ padding: '10px 20px' }}>
               ← Back

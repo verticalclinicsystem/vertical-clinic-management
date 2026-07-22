@@ -90,6 +90,69 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
     # ── Exception Handlers ────────────────────────────────────────────────────
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from app.utils.response import ApiResponse
+
+    @app.exception_handler(ClinicAPIError)
+    async def clinic_error_handler(request: Request, exc: ClinicAPIError) -> JSONResponse:
+        logger.warning(
+            "API Failure - Exception: %s | Path: %s | Status: %d | Error Code: %s | Reason: %s",
+            exc.__class__.__name__,
+            request.url.path,
+            exc.status_code,
+            getattr(exc, "error_code", "API_ERROR"),
+            exc.detail
+        )
+        return ApiResponse.error(
+            message=exc.detail,
+            status_code=exc.status_code,
+            error_code=getattr(exc, "error_code", "API_ERROR"),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = exc.errors()
+        message = "Validation failed"
+        if errors:
+            first_err = errors[0]
+            loc = " -> ".join(str(x) for x in first_err.get("loc", []))
+            message = f"Validation failed: {first_err.get('msg')} at {loc}"
+        
+        logger.warning(
+            "API Failure - RequestValidationError | Path: %s | Status: 422 | Reason: %s | Errors: %s",
+            request.url.path,
+            message,
+            errors
+        )
+        return ApiResponse.error(
+            message=message,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code="VALIDATION_ERROR",
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def fastapi_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        logger.warning(
+            "API Failure - StarletteHTTPException | Path: %s | Status: %d | Reason: %s",
+            request.url.path,
+            exc.status_code,
+            exc.detail
+        )
+        return ApiResponse.error(
+            message=exc.detail,
+            status_code=exc.status_code,
+            error_code="HTTP_ERROR",
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception(f"Unhandled exception: {exc}")
+        return ApiResponse.error(
+            message="An unexpected error occurred",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="INTERNAL_ERROR",
+        )
     from app.exceptions.exception_handlers import register_exception_handlers
     register_exception_handlers(app)
 

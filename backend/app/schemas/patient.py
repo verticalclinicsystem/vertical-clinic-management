@@ -14,6 +14,8 @@ class PatientBase(BaseModel):
     date_of_birth: datetime | None = None
     gender: str | None = None
     blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
     allergies: str | None = None
     chronic_conditions: str | None = None
     address: str | None = None
@@ -23,6 +25,8 @@ class PatientBase(BaseModel):
     insurance_provider: str | None = None
     insurance_policy_no: str | None = None
     preferred_payment_method: str | None = None
+    is_profile_completed: bool = False
+    current_treatment_details: str | None = None
 
 
 class PatientCreate(BaseModel):
@@ -32,6 +36,8 @@ class PatientCreate(BaseModel):
     date_of_birth: datetime | None = None
     gender: str | None = None
     blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
     allergies: str | None = None
     chronic_conditions: str | None = None
     address: str | None = None
@@ -50,6 +56,8 @@ class PatientUpdate(BaseModel):
     date_of_birth: datetime | None = None
     gender: str | None = None
     blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
     chronic_conditions: str | None = None
     allergies: str | None = None
     address: str | None = None
@@ -60,6 +68,8 @@ class PatientUpdate(BaseModel):
     insurance_policy_no: str | None = None
     preferred_payment_method: str | None = None
     preferred_branch_id: uuid.UUID | None = None
+    is_profile_completed: bool | None = None
+    current_treatment_details: str | None = None
 
 
 
