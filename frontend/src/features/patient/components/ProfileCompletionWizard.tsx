@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../../../services/api';
 
 interface Branch {
@@ -72,6 +72,98 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
   const [lifetimeReportFile, setLifetimeReportFile] = useState<File | null>(null);
   const [isUploadingLifetimeReport, setIsUploadingLifetimeReport] = useState<boolean>(false);
   const [lifetimeReports, setLifetimeReports] = useState<any[]>([]);
+
+  // Prefill existing patientProfile data on mount / update
+  useEffect(() => {
+    if (!patientProfile) return;
+
+    if (patientProfile.date_of_birth) {
+      setDob(patientProfile.date_of_birth.substring(0, 10));
+    }
+    if (patientProfile.gender) setGender(patientProfile.gender);
+    if (patientProfile.blood_group) setBloodGroup(patientProfile.blood_group);
+    if (patientProfile.height) setHeight(patientProfile.height);
+    if (patientProfile.weight) setWeight(patientProfile.weight);
+    if (patientProfile.user?.phone) setMobile(patientProfile.user.phone);
+    else if (patientProfile.phone) setMobile(patientProfile.phone);
+
+    if (patientProfile.preferred_branch_id) {
+      setPreferredBranchId(patientProfile.preferred_branch_id);
+    } else if (branches && branches.length > 0 && !preferredBranchId) {
+      setPreferredBranchId(branches[0].id);
+    }
+
+    if (doctors && doctors.length > 0 && !preferredDoctorId) {
+      setPreferredDoctorId(doctors[0].id);
+    }
+
+    if (patientProfile.allergies && patientProfile.allergies !== 'None') {
+      setAllergies(patientProfile.allergies);
+    }
+
+    if (patientProfile.chronic_conditions) {
+      try {
+        const parsed = typeof patientProfile.chronic_conditions === 'string'
+          ? JSON.parse(patientProfile.chronic_conditions)
+          : patientProfile.chronic_conditions;
+
+        if (parsed.chronicDiseases && parsed.chronicDiseases !== 'None') setChronicConditions(parsed.chronicDiseases);
+        if (parsed.highRiskFlags && parsed.highRiskFlags !== 'None') setHighRiskFlags(parsed.highRiskFlags);
+        if (parsed.specialCondition && parsed.specialCondition !== 'None') setSpecialCondition(parsed.specialCondition);
+        if (parsed.disability && parsed.disability !== 'None') setDisability(parsed.disability);
+      } catch (e) {
+        if (typeof patientProfile.chronic_conditions === 'string') {
+          setChronicConditions(patientProfile.chronic_conditions);
+        }
+      }
+    }
+
+    if (patientProfile.current_treatment_details) {
+      try {
+        const parsed = typeof patientProfile.current_treatment_details === 'string'
+          ? JSON.parse(patientProfile.current_treatment_details)
+          : patientProfile.current_treatment_details;
+
+        if (parsed) {
+          setUnderTreatment(true);
+          if (parsed.currentProblem) setCurrentProblem(parsed.currentProblem);
+          if (parsed.currentMedicines) setCurrentMedicines(parsed.currentMedicines);
+          if (parsed.treatmentSince) setTreatmentSince(parsed.treatmentSince);
+          if (parsed.prescriptionDate) setPrescriptionDate(parsed.prescriptionDate);
+          if (parsed.prescriptionUrl) setPrescriptionUploadUrl(parsed.prescriptionUrl);
+          if (Array.isArray(parsed.reports)) setLatestReports(parsed.reports);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [patientProfile, branches, doctors]);
+
+  const handleAutofillDemoData = () => {
+    setDob('1994-07-15');
+    setGender('M');
+    setBloodGroup('O+');
+    setHeight('172');
+    setWeight('74');
+    if (!mobile && patientProfile?.user?.phone) setMobile(patientProfile.user.phone);
+    if (!mobile) setMobile('7895325634');
+    if (branches && branches.length > 0) setPreferredBranchId(branches[0].id);
+    if (doctors && doctors.length > 0) setPreferredDoctorId(doctors[0].id);
+
+    setAllergies('Penicillin (Mild)');
+    setChronicConditions('Diabetes Type 2');
+    setHighRiskFlags('Hypertension');
+    setSpecialCondition('None');
+    setDisability('None');
+
+    setUnderTreatment(true);
+    setCurrentProblem('Tooth pain (Left Molar)');
+    setCurrentMedicines('Amoxicillin 500mg, Ibuprofen 400mg');
+    setTreatmentSince('2026-07-12');
+    setPrescriptionDate('2026-07-15');
+
+    triggerToast('success', 'Sample clinical profile auto-filled! You can now click Next Step.');
+  };
 
   // Helpers
   const calculateAge = (dobString: string): string => {
@@ -239,6 +331,44 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
     }
   };
 
+  // Helper for chip toggling
+  const handleChipToggle = (current: string, tag: string, setter: (val: string) => void) => {
+    if (tag === 'None' || tag === 'No Known Allergies') {
+      setter(tag);
+      return;
+    }
+    if (!current || current === 'None' || current === 'No Known Allergies') {
+      setter(tag);
+      return;
+    }
+    const items = current.split(',').map((s) => s.trim()).filter(Boolean);
+    if (items.includes(tag)) {
+      const remaining = items.filter((i) => i !== tag);
+      setter(remaining.length > 0 ? remaining.join(', ') : 'None');
+    } else {
+      items.push(tag);
+      setter(items.join(', '));
+    }
+  };
+
+  const isChipSelected = (current: string, tag: string) => {
+    if (!current) return false;
+    if (current === tag) return true;
+    return current.split(',').map((s) => s.trim()).includes(tag);
+  };
+
+  const handleRemoveLatestReport = (idx: number) => {
+    setLatestReports((prev) => prev.filter((_, i) => i !== idx));
+    triggerToast('info', 'Report removed');
+  };
+
+  const handleRemoveLifetimeReport = (idx: number) => {
+    setLifetimeReports((prev) => prev.filter((_, i) => i !== idx));
+    triggerToast('info', 'Historic report removed');
+  };
+
+  const progressPercentage = step === 1 ? 33 : step === 2 ? 66 : 100;
+
   return (
     <div className="wizard-screen-container">
       <div className="wizard-glass-card">
@@ -247,27 +377,51 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
           <div className="wizard-header-logo">
             <span className="logo-v">V</span> Vertical Clinic
           </div>
-          <button className="wizard-logout-btn" onClick={onLogout}>
-            🚪 Sign Out
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={handleAutofillDemoData}
+              style={{
+                fontSize: '0.82rem',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                backgroundColor: '#e0f2fe',
+                color: '#0369a1',
+                border: '1px solid #bae6fd',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              ⚡ Auto-Fill Demo Clinical Data
+            </button>
+            <button className="wizard-logout-btn" onClick={onLogout}>
+              🚪 Sign Out
+            </button>
+          </div>
         </div>
 
         <h2 className="wizard-title">Complete Your Clinical Profile</h2>
         <p className="wizard-subtitle">Help us understand your health profile to provide the best clinical care.</p>
 
+        {/* Animated Progress Track */}
+        <div className="wizard-progress-track">
+          <div className="wizard-progress-bar" style={{ width: `${progressPercentage}%` }} />
+        </div>
+
         {/* Stepper Indicators */}
         <div className="wizard-stepper">
-          <div className={`step-node ${step >= 1 ? 'active' : ''}`}>
-            <span className="step-num">1</span>
+          <div className={`step-node ${step === 1 ? 'active' : ''} ${step > 1 ? 'completed' : ''}`}>
+            <span className="step-num">{step > 1 ? '✓' : '1'}</span>
             <span className="step-label">Personal Info</span>
           </div>
           <div className="step-line" />
-          <div className={`step-node ${step >= 2 ? 'active' : ''}`}>
-            <span className="step-num">2</span>
+          <div className={`step-node ${step === 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`}>
+            <span className="step-num">{step > 2 ? '✓' : '2'}</span>
             <span className="step-label">Current Treatment</span>
           </div>
           <div className="step-line" />
-          <div className={`step-node ${step >= 3 ? 'active' : ''}`}>
+          <div className={`step-node ${step === 3 ? 'active' : ''}`}>
             <span className="step-num">3</span>
             <span className="step-label">Medical Reports</span>
           </div>
@@ -280,17 +434,32 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
               {/* Left Column: Personal details */}
               <div className="wizard-card-sub">
                 <h3 className="wizard-sub-title">👤 Patient Information</h3>
+                
                 <div className="form-group">
-                  <label>Full Name</label>
-                  <input type="text" className="form-input read-only" value={patientProfile?.user?.full_name || ''} readOnly />
+                  <label>
+                    Full Name <span className="required-tag">*</span>
+                  </label>
+                  <div className="readonly-field-wrapper">
+                    <input type="text" className="form-input read-only" value={patientProfile?.user?.full_name || ''} readOnly />
+                    <span className="readonly-lock-badge">🔒 System Record</span>
+                  </div>
                 </div>
+
                 <div className="form-group">
-                  <label>Patient ID</label>
-                  <input type="text" className="form-input read-only" value={patientProfile?.patient_code || ''} readOnly />
+                  <label>
+                    Patient ID <span className="required-tag">*</span>
+                  </label>
+                  <div className="readonly-field-wrapper">
+                    <input type="text" className="form-input read-only" value={patientProfile?.patient_code || ''} readOnly />
+                    <span className="readonly-lock-badge">🔒 System Record</span>
+                  </div>
                 </div>
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Date of Birth</label>
+                    <label>
+                      📅 Date of Birth <span className="required-tag">*</span>
+                    </label>
                     <input
                       type="date"
                       className="form-input"
@@ -299,13 +468,17 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     />
                   </div>
                   <div className="form-group">
-                    <label>Age</label>
-                    <input type="text" className="form-input read-only" value={calculateAge(dob) || '--'} readOnly />
+                    <label>⏳ Calculated Age</label>
+                    <div className="readonly-field-wrapper">
+                      <input type="text" className="form-input read-only" value={calculateAge(dob) || '--'} readOnly />
+                      <span className="readonly-lock-badge">Auto</span>
+                    </div>
                   </div>
                 </div>
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Gender</label>
+                    <label>👤 Gender</label>
                     <select className="form-input" value={gender} onChange={(e) => setGender(e.target.value)}>
                       <option value="M">Male</option>
                       <option value="F">Female</option>
@@ -313,7 +486,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>Blood Group</label>
+                    <label>🩸 Blood Group</label>
                     <select className="form-input" value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)}>
                       <option value="O+">O+</option>
                       <option value="O-">O-</option>
@@ -326,9 +499,10 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     </select>
                   </div>
                 </div>
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Height (cm)</label>
+                    <label>📏 Height (cm)</label>
                     <input
                       type="text"
                       className="form-input"
@@ -338,7 +512,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     />
                   </div>
                   <div className="form-group">
-                    <label>Weight (kg)</label>
+                    <label>⚖️ Weight (kg)</label>
                     <input
                       type="text"
                       className="form-input"
@@ -348,8 +522,11 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     />
                   </div>
                 </div>
+
                 <div className="form-group">
-                  <label>Mobile Number</label>
+                  <label>
+                    📱 Mobile Number <span className="required-tag">*</span>
+                  </label>
                   <input
                     type="tel"
                     className="form-input"
@@ -358,9 +535,12 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     placeholder="+91 XXXXX XXXXX"
                   />
                 </div>
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Preferred Branch</label>
+                    <label>
+                      🏥 Preferred Branch <span className="required-tag">*</span>
+                    </label>
                     <select
                       className="form-input"
                       value={preferredBranchId}
@@ -375,7 +555,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>Primary Doctor</label>
+                    <label>👨‍⚕️ Primary Doctor</label>
                     <select
                       className="form-input"
                       value={preferredDoctorId}
@@ -392,9 +572,11 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                 </div>
               </div>
 
-              {/* Right Column: Medical Alerts */}
+              {/* Right Column: Medical Alerts with Quick Select Chips */}
               <div className="wizard-card-sub alert-card">
                 <h3 className="wizard-sub-title" style={{ color: '#ef4444' }}>⚠️ Medical Alerts</h3>
+                
+                {/* Allergies */}
                 <div className="form-group">
                   <label>🚨 Allergies</label>
                   <input
@@ -402,9 +584,24 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     className="form-input"
                     value={allergies}
                     onChange={(e) => setAllergies(e.target.value)}
-                    placeholder="e.g. Penicillin (Mild)"
+                    placeholder="e.g. Penicillin (Mild), Sulfa"
                   />
+                  <div className="quick-select-label">Quick select common allergies:</div>
+                  <div className="quick-chips-container">
+                    {['No Known Allergies', 'Penicillin', 'Sulfa Drugs', 'Aspirin', 'Latex'].map((tag) => (
+                      <span
+                        key={tag}
+                        className={`chip-tag danger-tag ${isChipSelected(allergies, tag) ? 'selected' : ''}`}
+                        onClick={() => handleChipToggle(allergies, tag, setAllergies)}
+                      >
+                        {isChipSelected(allergies, tag) ? '✓ ' : '+ '}
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Chronic Diseases */}
                 <div className="form-group">
                   <label>🩺 Chronic Diseases</label>
                   <input
@@ -414,7 +611,22 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     onChange={(e) => setChronicConditions(e.target.value)}
                     placeholder="e.g. Diabetes Type 2"
                   />
+                  <div className="quick-select-label">Quick select:</div>
+                  <div className="quick-chips-container">
+                    {['None', 'Diabetes Type 2', 'Hypertension', 'Asthma', 'Thyroid'].map((tag) => (
+                      <span
+                        key={tag}
+                        className={`chip-tag ${isChipSelected(chronicConditions, tag) ? 'selected' : ''}`}
+                        onClick={() => handleChipToggle(chronicConditions, tag, setChronicConditions)}
+                      >
+                        {isChipSelected(chronicConditions, tag) ? '✓ ' : '+ '}
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+
+                {/* High Risk Flags */}
                 <div className="form-group">
                   <label>❤️ High Risk Flags</label>
                   <input
@@ -422,9 +634,23 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     className="form-input"
                     value={highRiskFlags}
                     onChange={(e) => setHighRiskFlags(e.target.value)}
-                    placeholder="e.g. Hypertension"
+                    placeholder="e.g. Hypertension, Cardiac"
                   />
+                  <div className="quick-chips-container">
+                    {['None', 'Hypertension', 'Cardiac History', 'Bleeding Risk'].map((tag) => (
+                      <span
+                        key={tag}
+                        className={`chip-tag danger-tag ${isChipSelected(highRiskFlags, tag) ? 'selected' : ''}`}
+                        onClick={() => handleChipToggle(highRiskFlags, tag, setHighRiskFlags)}
+                      >
+                        {isChipSelected(highRiskFlags, tag) ? '✓ ' : '+ '}
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Special Condition */}
                 <div className="form-group">
                   <label>🤰 Special Condition</label>
                   <input
@@ -434,7 +660,21 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     onChange={(e) => setSpecialCondition(e.target.value)}
                     placeholder="e.g. None"
                   />
+                  <div className="quick-chips-container">
+                    {['None', 'Pregnancy', 'Lactating'].map((tag) => (
+                      <span
+                        key={tag}
+                        className={`chip-tag ${isChipSelected(specialCondition, tag) ? 'selected' : ''}`}
+                        onClick={() => handleChipToggle(specialCondition, tag, setSpecialCondition)}
+                      >
+                        {isChipSelected(specialCondition, tag) ? '✓ ' : '+ '}
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Disability */}
                 <div className="form-group">
                   <label>🦽 Disability</label>
                   <input
@@ -444,11 +684,24 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     onChange={(e) => setDisability(e.target.value)}
                     placeholder="e.g. None"
                   />
+                  <div className="quick-chips-container">
+                    {['None', 'Mobility Impairment', 'Hearing Impairment'].map((tag) => (
+                      <span
+                        key={tag}
+                        className={`chip-tag ${isChipSelected(disability, tag) ? 'selected' : ''}`}
+                        onClick={() => handleChipToggle(disability, tag, setDisability)}
+                      >
+                        {isChipSelected(disability, tag) ? '✓ ' : '+ '}
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="wizard-footer-actions">
+              <div />
               <button className="wizard-btn-primary" onClick={handleNextStep1}>
                 Next Step ➔
               </button>
@@ -460,38 +713,50 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
         {step === 2 && (
           <div className="wizard-step-content fade-in">
             <div className="treatment-question-box">
-              <h3 className="treatment-question-title">Are you currently under treatment?</h3>
+              <h3 className="treatment-question-title">Are you currently under medical treatment?</h3>
+              
               <div className="treatment-choice-btns">
-                <button
-                  type="button"
+                <div
                   className={`choice-card-btn ${underTreatment === true ? 'active-yes' : ''}`}
                   onClick={() => setUnderTreatment(true)}
                 >
-                  🟢 Yes, I am under treatment
-                </button>
-                <button
-                  type="button"
+                  <div className="choice-card-header">
+                    <span>🟢</span> Yes, I am under active treatment
+                  </div>
+                  <div className="choice-card-desc">
+                    I am currently taking medications, receiving dental/medical procedures, or consulting a specialist.
+                  </div>
+                </div>
+
+                <div
                   className={`choice-card-btn ${underTreatment === false ? 'active-no' : ''}`}
                   onClick={() => setUnderTreatment(false)}
                 >
-                  🔴 No, I am not
-                </button>
+                  <div className="choice-card-header">
+                    <span>🔴</span> No, routine checkup / healthy
+                  </div>
+                  <div className="choice-card-desc">
+                    I am not currently taking regular prescription medicines or undergoing active medical treatment.
+                  </div>
+                </div>
               </div>
             </div>
 
             {underTreatment === true && (
               <div className="treatment-inputs-block fade-in">
-                <h3 className="wizard-sub-title">🟢 Current Treatment Details</h3>
+                <h3 className="wizard-sub-title">🩺 Current Treatment Details</h3>
+                
                 <div className="form-group">
-                  <label>Current Problem</label>
+                  <label>Current Problem / Chief Complaint</label>
                   <input
                     type="text"
                     className="form-input"
                     value={currentProblem}
                     onChange={(e) => setCurrentProblem(e.target.value)}
-                    placeholder="e.g. Tooth pain (Left Molar)"
+                    placeholder="e.g. Severe tooth pain (Left lower molar), Sensitivity"
                   />
                 </div>
+
                 <div className="form-group">
                   <label>Current Medicines</label>
                   <input
@@ -499,12 +764,13 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     className="form-input"
                     value={currentMedicines}
                     onChange={(e) => setCurrentMedicines(e.target.value)}
-                    placeholder="e.g. Amoxicillin 500mg, Ibuprofen 400mg"
+                    placeholder="e.g. Amoxicillin 500mg (2x daily), Ibuprofen 400mg"
                   />
                 </div>
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Current Treatment Since</label>
+                    <label>Treatment Start Date</label>
                     <input
                       type="date"
                       className="form-input"
@@ -523,37 +789,40 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                   </div>
                 </div>
 
-                {/* Prescription File Upload */}
-                <div className="form-group file-upload-wrapper">
-                  <label>Latest Prescription Copy (Photo / PDF)</label>
-                  <div className="file-upload-row">
+                {/* Prescription File Upload Dropzone */}
+                <div className="upload-dropzone-card">
+                  <div className="upload-zone-title">📄 Upload Latest Prescription (Photo / PDF)</div>
+                  <div className="file-upload-row-3">
                     <input
                       type="file"
                       className="form-file-input"
                       onChange={(e) => setPrescriptionFile(e.target.files?.[0] || null)}
                     />
+                    <div />
                     <button
                       type="button"
                       className="wizard-upload-btn"
                       onClick={handlePrescriptionUpload}
                       disabled={!prescriptionFile || isUploadingPrescription}
                     >
-                      {isUploadingPrescription ? 'Uploading...' : 'Upload File'}
+                      {isUploadingPrescription ? 'Uploading...' : 'Upload Prescription'}
                     </button>
                   </div>
                   {prescriptionUploadUrl && (
-                    <span className="upload-badge-success">✓ Prescription document uploaded successfully!</span>
+                    <div style={{ marginTop: '10px' }}>
+                      <span className="upload-badge-success">✓ Prescription document attached successfully!</span>
+                    </div>
                   )}
                 </div>
 
-                {/* Treatment Reports */}
-                <div className="form-group file-upload-wrapper">
-                  <label>Latest Reports (related to current problem)</label>
+                {/* Treatment Reports Dropzone */}
+                <div className="upload-dropzone-card">
+                  <div className="upload-zone-title">📊 Add Diagnostic Reports (X-Rays, Lab Reports)</div>
                   <div className="file-upload-row-3">
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Report Name (e.g. OPG X-Ray)"
+                      placeholder="Report Name (e.g. OPG Dental X-Ray)"
                       value={latestReportTitle}
                       onChange={(e) => setLatestReportTitle(e.target.value)}
                     />
@@ -569,17 +838,25 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                       onClick={handleAddReportStep2}
                       disabled={!latestReportFile || !latestReportTitle || isUploadingReport}
                     >
-                      {isUploadingReport ? 'Uploading...' : 'Add Report'}
+                      {isUploadingReport ? 'Uploading...' : '+ Attach Report'}
                     </button>
                   </div>
 
                   {latestReports.length > 0 && (
                     <div className="uploaded-files-list">
-                      <h4>Added Reports:</h4>
+                      <h4>Attached Diagnostic Reports ({latestReports.length}):</h4>
                       <ul>
                         {latestReports.map((r, i) => (
-                          <li key={i}>
-                            📄 {r.title} ({r.name})
+                          <li key={i} className="uploaded-file-chip">
+                            <span>📄 <strong>{r.title}</strong> <small style={{ color: '#64748b' }}>({r.name})</small></span>
+                            <button
+                              type="button"
+                              className="remove-file-btn"
+                              onClick={() => handleRemoveLatestReport(i)}
+                              title="Remove file"
+                            >
+                              ✕ Remove
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -591,7 +868,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
 
             <div className="wizard-footer-actions">
               <button className="wizard-btn-secondary" onClick={() => setStep(1)}>
-                Back
+                ⬅ Back
               </button>
               <button className="wizard-btn-primary" onClick={handleNextStep2}>
                 Next Step ➔
@@ -600,21 +877,21 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
           </div>
         )}
 
-        {/* STEP 3: Lifetime Medical Reports */}
+        {/* STEP 3: Lifetime Medical Reports & Profile Summary */}
         {step === 3 && (
           <div className="wizard-step-content fade-in">
-            <h3 className="wizard-sub-title">📁 Lifetime Medical Reports</h3>
+            <h3 className="wizard-sub-title">📁 Lifetime Medical Records & Reports</h3>
             <p className="wizard-sub-description">
-              Upload any historic dental reports, general wellness reports, or previous clinic files you want to keep saved in your record. You can skip this if you do not have any files.
+              Upload any historic dental reports, general wellness reports, or previous clinic files you want saved in your electronic medical health record. You may proceed even if you do not have files to upload.
             </p>
 
-            <div className="form-group file-upload-wrapper" style={{ marginTop: '20px' }}>
-              <label>Add Medical Report</label>
+            <div className="upload-dropzone-card">
+              <div className="upload-zone-title">📁 Upload Historic Report</div>
               <div className="file-upload-row-3">
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Report Name (e.g. Blood Report)"
+                  placeholder="Report Name (e.g. Previous Dental X-Ray 2025)"
                   value={lifetimeReportTitle}
                   onChange={(e) => setLifetimeReportTitle(e.target.value)}
                 />
@@ -630,17 +907,25 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                   onClick={handleAddReportStep3}
                   disabled={!lifetimeReportFile || !lifetimeReportTitle || isUploadingLifetimeReport}
                 >
-                  {isUploadingLifetimeReport ? 'Uploading...' : 'Add Report'}
+                  {isUploadingLifetimeReport ? 'Uploading...' : '+ Attach Historic Report'}
                 </button>
               </div>
 
               {lifetimeReports.length > 0 && (
-                <div className="uploaded-files-list" style={{ marginTop: '20px' }}>
-                  <h4>Added Historic Reports:</h4>
+                <div className="uploaded-files-list">
+                  <h4>Attached Historic Files ({lifetimeReports.length}):</h4>
                   <ul>
                     {lifetimeReports.map((r, i) => (
-                      <li key={i}>
-                        📄 {r.title} ({r.name})
+                      <li key={i} className="uploaded-file-chip">
+                        <span>📄 <strong>{r.title}</strong> <small style={{ color: '#64748b' }}>({r.name})</small></span>
+                        <button
+                          type="button"
+                          className="remove-file-btn"
+                          onClick={() => handleRemoveLifetimeReport(i)}
+                          title="Remove file"
+                        >
+                          ✕ Remove
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -648,9 +933,44 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
               )}
             </div>
 
+            {/* Profile Summary Card Before Finalizing */}
+            <div className="profile-summary-review-card">
+              <div className="summary-card-title">
+                📋 Profile Completion Summary Review
+              </div>
+              <div className="summary-grid">
+                <div className="summary-item">
+                  <div className="summary-item-label">Patient Name</div>
+                  <div className="summary-item-val">{patientProfile?.user?.full_name || 'N/A'}</div>
+                </div>
+                <div className="summary-item">
+                  <div className="summary-item-label">Mobile Number</div>
+                  <div className="summary-item-val">{mobile || 'N/A'}</div>
+                </div>
+                <div className="summary-item">
+                  <div className="summary-item-label">Blood Group & Gender</div>
+                  <div className="summary-item-val">{bloodGroup} | {gender === 'M' ? 'Male' : gender === 'F' ? 'Female' : 'Other'}</div>
+                </div>
+                <div className="summary-item">
+                  <div className="summary-item-label">Active Treatment</div>
+                  <div className="summary-item-val" style={{ color: underTreatment ? '#15803d' : '#475569' }}>
+                    {underTreatment === true ? 'Yes (Details Entered)' : underTreatment === false ? 'No (Routine Care)' : 'Not Specified'}
+                  </div>
+                </div>
+                <div className="summary-item">
+                  <div className="summary-item-label">Allergies Listed</div>
+                  <div className="summary-item-val">{allergies || 'None'}</div>
+                </div>
+                <div className="summary-item">
+                  <div className="summary-item-label">Reports Attached</div>
+                  <div className="summary-item-val">{latestReports.length + lifetimeReports.length} file(s)</div>
+                </div>
+              </div>
+            </div>
+
             <div className="wizard-footer-actions">
               <button className="wizard-btn-secondary" onClick={() => setStep(2)}>
-                Back
+                ⬅ Back
               </button>
               <button className="wizard-btn-primary success" onClick={handleCompleteProfile} disabled={isSubmitting}>
                 {isSubmitting ? 'Finalizing Profile...' : 'Complete Profile & Open Dashboard ✔'}
@@ -662,3 +982,4 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
     </div>
   );
 };
+

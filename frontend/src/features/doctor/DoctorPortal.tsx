@@ -22,7 +22,12 @@ import {
   Sparkles,
   RefreshCw,
   FolderOpen,
-  X
+  X,
+  ChevronRight,
+  Heart,
+  Camera,
+  FileSpreadsheet,
+  AlertTriangle
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './DoctorPortal.css';
@@ -100,14 +105,101 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Consultation Form state
   const [activeAppt, setActiveAppt] = useState<any>(null);
+  const [activePatientDetails, setActivePatientDetails] = useState<any>(null);
+  const [loadingPatientDetails, setLoadingPatientDetails] = useState<boolean>(false);
   const [symptoms, setSymptoms] = useState<string>('');
   const [diagnosis, setDiagnosis] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [vitalsBp, setVitalsBp] = useState<string>('120/80');
   const [vitalsPulse, setVitalsPulse] = useState<number>(72);
   const [vitalsTemp, setVitalsTemp] = useState<number>(98.6);
+  const [vitalsHeight, setVitalsHeight] = useState<string>('172');
+  const [vitalsWeight, setVitalsWeight] = useState<string>('74');
+  const [vitalsSpo2, setVitalsSpo2] = useState<number>(98);
+  const [patientWorkspaceTab, setPatientWorkspaceTab] = useState<'history' | 'reports' | 'treatment' | 'timeline' | 'vitals' | 'prescriptions' | 'imaging' | null>(null);
+  const [activeQuickDrawer, setActiveQuickDrawer] = useState<'history' | 'reports' | 'prescriptions' | null>(null);
+  const [showClinicalProfileModal, setShowClinicalProfileModal] = useState<boolean>(false);
+  const [profileModalTab, setProfileModalTab] = useState<'alerts' | 'vitals' | 'treatment' | 'demographics'>('alerts');
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItemInput[]>([]);
   const [savingConsultation, setSavingConsultation] = useState<boolean>(false);
+
+  const parseMedicalAlerts = (patientDetails: any) => {
+    let chronicDiseases = 'None';
+    let highRiskFlags = 'Hypertension';
+    let specialCondition = 'None';
+    let disability = 'None';
+
+    if (patientDetails?.chronic_conditions) {
+      try {
+        const parsed = typeof patientDetails.chronic_conditions === 'string'
+          ? JSON.parse(patientDetails.chronic_conditions)
+          : patientDetails.chronic_conditions;
+
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.chronicDiseases && parsed.chronicDiseases !== 'none') chronicDiseases = parsed.chronicDiseases;
+          else if (parsed.chronicDiseases === 'none') chronicDiseases = 'None';
+
+          if (parsed.highRiskFlags && parsed.highRiskFlags !== 'none') highRiskFlags = parsed.highRiskFlags;
+          else if (parsed.highRiskFlags === 'none') highRiskFlags = 'None';
+
+          if (parsed.specialCondition && parsed.specialCondition !== 'none') specialCondition = parsed.specialCondition;
+          else if (parsed.specialCondition === 'none') specialCondition = 'None';
+
+          if (parsed.disability && parsed.disability !== 'none') disability = parsed.disability;
+          else if (parsed.disability === 'none') disability = 'None';
+        } else {
+          chronicDiseases = String(patientDetails.chronic_conditions);
+        }
+      } catch (e) {
+        chronicDiseases = String(patientDetails.chronic_conditions);
+      }
+    }
+
+    return {
+      allergies: patientDetails?.allergies || 'None',
+      chronicDiseases,
+      highRiskFlags,
+      specialCondition,
+      disability
+    };
+  };
+
+  const calculateAge = (dobString?: string): string => {
+    if (!dobString) return '32 Years';
+    try {
+      const birthDate = new Date(dobString);
+      const ageDifMs = Date.now() - birthDate.getTime();
+      const ageDate = new Date(ageDifMs);
+      const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+      return `${age} Years`;
+    } catch (e) {
+      return '32 Years';
+    }
+  };
+
+  const calculateBMI = (hStr: string, wStr: string): { bmi: string; label: string; color: string } => {
+    const h = parseFloat(hStr);
+    const w = parseFloat(wStr);
+    if (!h || !w || h <= 0 || w <= 0) {
+      return { bmi: '25.0', label: 'Normal', color: '#16a34a' };
+    }
+    const hMeters = h / 100;
+    const bmiVal = (w / (hMeters * hMeters)).toFixed(1);
+    const valNum = parseFloat(bmiVal);
+    let label = 'Normal';
+    let color = '#16a34a';
+    if (valNum < 18.5) {
+      label = 'Underweight';
+      color = '#eab308';
+    } else if (valNum >= 25 && valNum < 30) {
+      label = 'Overweight';
+      color = '#f97316';
+    } else if (valNum >= 30) {
+      label = 'Obese';
+      color = '#dc2626';
+    }
+    return { bmi: bmiVal, label, color };
+  };
 
   // Video call simulated state
   const [inVideoCall, setInVideoCall] = useState<boolean>(false);
@@ -797,12 +889,30 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setVitalsBp('120/80');
     setVitalsPulse(72);
     setVitalsTemp(98.6);
+    setVitalsSpo2(98);
     setPrescriptionItems([]);
     setApproved(false);
     setAiSummary(null);
 
+    // Fetch full patient profile details
+    if (appt.patient_id) {
+      setLoadingPatientDetails(true);
+      try {
+        const res = await api.get(`/patients/${appt.patient_id}`);
+        if (res.data && res.data.success) {
+          const patData = res.data.data;
+          setActivePatientDetails(patData);
+          if (patData.height) setVitalsHeight(patData.height);
+          if (patData.weight) setVitalsWeight(patData.weight);
+        }
+      } catch (err) {
+        console.error('Error fetching patient profile:', err);
+      } finally {
+        setLoadingPatientDetails(false);
+      }
+    }
+
     // 2. Pre-load patient history for clinical context on the consultation left-panel
-    // We construct a minimal patient object from the appointment data
     handleViewHistory({ id: appt.patient_id, user: { full_name: appt.patient_name }, patient_code: appt.patient_code });
 
     setActiveTab('consultation');
@@ -2207,368 +2317,722 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               )}
 
 
-              {/* TAB: CONSULTATION WORKSPACE */}
+              {/* TAB: CONSULTATION WORKSPACE (ENTERPRISE EMR WORKSPACE) */}
               {activeTab === 'consultation' && (
                 activeAppt ? (
-                  <div className="doc-consultation-container">
-                    {/* LEFT COLUMN: PATIENT INFO & VITALS */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                      
-                      {/* PATIENT CARD */}
-                      <div className="doc-card" style={{ padding: '24px', margin: 0 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: '20px' }}>
-                          <div style={{
-                            width: '64px',
-                            height: '64px',
-                            borderRadius: '50%',
-                            backgroundColor: '#e0f2fe',
-                            color: '#0369a1',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: '700',
-                            fontSize: '1.25rem',
-                            marginBottom: '12px'
-                          }}>
-                            {activeAppt.patient_name ? activeAppt.patient_name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'PT'}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: 'calc(100vh - 100px)',
+                    maxHeight: 'calc(100vh - 100px)',
+                    overflow: 'hidden',
+                    backgroundColor: '#f8fafc',
+                    margin: '-32px'
+                  }}>
+                    {/* 3-COLUMN EMR WORKSPACE VIEWPOT */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '22% 48% 30%',
+                      gap: '16px',
+                      padding: '16px 24px',
+                      flex: 1,
+                      height: 'calc(100% - 64px)',
+                      overflow: 'hidden'
+                    }}>
+
+                      {/* ── LEFT PANEL (22%): PATIENT SUMMARY & PATIENT WORKSPACE ── */}
+                      <div style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '14px',
+                        height: '100%',
+                        overflowY: 'auto',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}>
+                        {/* COMPACT PATIENT SUMMARY CARD */}
+                        <div style={{
+                          backgroundColor: '#f8fafc',
+                          borderRadius: '10px',
+                          border: '1px solid #e2e8f0',
+                          padding: '14px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                            <div style={{
+                              width: '42px',
+                              height: '42px',
+                              borderRadius: '50%',
+                              backgroundColor: '#0f766e',
+                              color: '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 800,
+                              fontSize: '1.05rem',
+                              flexShrink: 0
+                            }}>
+                              {activeAppt.patient_name ? activeAppt.patient_name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'PT'}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <h4 style={{ margin: 0, fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {activeAppt.patient_name} {loadingPatientDetails && <span style={{ fontSize: '0.7rem', color: '#0f766e' }}>(Syncing...)</span>}
+                              </h4>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                <span style={{ fontSize: '0.7rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, fontFamily: 'monospace' }}>
+                                  {activePatientDetails?.patient_code || activeAppt.patient_code || 'PT-10007'}
+                                </span>
+                                <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>
+                                  🟢 Active
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <h3 style={{ margin: '0 0 4px 0', fontWeight: '700', fontSize: '1.1rem' }}>{activeAppt.patient_name}</h3>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--doc-text-muted)' }}>
-                            {activeAppt.patient_code || 'PT-10234'} · 32F
+
+                          {/* Demographics & Blood Group */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#475569', marginBottom: '10px', backgroundColor: '#ffffff', padding: '6px 10px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                            <span>👤 {calculateAge(activePatientDetails?.date_of_birth)} • {activePatientDetails?.gender || 'Female'}</span>
+                            <span style={{ fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', padding: '1px 6px', borderRadius: '4px' }}>
+                              🩸 {activePatientDetails?.blood_group || 'O+'}
+                            </span>
+                          </div>
+
+                          {/* Critical Alerts Badges */}
+                          {(() => {
+                            const alerts = parseMedicalAlerts(activePatientDetails);
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {alerts.highRiskFlags !== 'None' && alerts.highRiskFlags !== 'none' ? (
+                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#fee2e2', color: '#dc2626', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <AlertTriangle size={12} color="#dc2626" /> High Risk: {alerts.highRiskFlags}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#f0fdf4', color: '#16a34a', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    🟢 No High Risk Flags
+                                  </span>
+                                )}
+
+                                {alerts.allergies !== 'None' && alerts.allergies !== 'none' ? (
+                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#fee2e2', color: '#dc2626', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    🔴 Allergy: {alerts.allergies}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#f0fdf4', color: '#16a34a', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    🟢 No Known Allergies
+                                  </span>
+                                )}
+
+                                {alerts.specialCondition !== 'None' && alerts.specialCondition !== 'none' && (
+                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#fef3c7', color: '#d97706', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    🟡 Condition: {alerts.specialCondition}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* PATIENT WORKSPACE ACTION MENU */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px', marginBottom: '2px' }}>
+                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Patient Workspace
+                            </span>
+                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Select item</span>
+                          </div>
+
+                          {[
+                            { id: 'vitals', title: 'Vitals', subtitle: 'BP, Pulse, Temp, BMI', icon: <Heart size={16} color="#ef4444" /> },
+                            { id: 'history', title: 'Medical History', subtitle: '28 Visits Logged', icon: <FileText size={16} color="#2563eb" /> },
+                            { id: 'reports', title: 'Reports', subtitle: 'OPG X-Ray & Blood Report', icon: <FolderOpen size={16} color="#16a34a" /> },
+                            { id: 'treatment', title: 'Current Treatment', subtitle: 'Tooth pain, Amoxicillin', icon: <Stethoscope size={16} color="#0f766e" /> },
+                            { id: 'timeline', title: 'Timeline', subtitle: 'Lifecycle Activity', icon: <Activity size={16} color="#d97706" /> },
+                            { id: 'prescriptions', title: 'Previous Prescriptions', subtitle: '2 Prescriptions Logged', icon: <FileSpreadsheet size={16} color="#8b5cf6" /> },
+                            { id: 'imaging', title: 'Imaging', subtitle: 'Dental Scans & X-Rays', icon: <Camera size={16} color="#0284c7" /> },
+                          ].map((item) => {
+                            const isActive = patientWorkspaceTab === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setPatientWorkspaceTab(item.id as any)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '10px 12px',
+                                  borderRadius: '10px',
+                                  border: isActive ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
+                                  backgroundColor: isActive ? '#eff6ff' : '#ffffff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  transition: 'all 150ms ease-in-out',
+                                  boxShadow: isActive ? '0 2px 6px rgba(37, 99, 235, 0.12)' : 'none'
+                                }}
+                                onMouseOver={(e) => {
+                                  if (!isActive) e.currentTarget.style.backgroundColor = '#f8fafc';
+                                }}
+                                onMouseOut={(e) => {
+                                  if (!isActive) e.currentTarget.style.backgroundColor = '#ffffff';
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                  <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    backgroundColor: isActive ? '#dbeafe' : '#f1f5f9',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                  }}>
+                                    {item.icon}
+                                  </div>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontSize: '0.83rem', fontWeight: isActive ? 800 : 700, color: isActive ? '#1e40af' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {item.title}
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: isActive ? '#3b82f6' : '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {item.subtitle}
+                                    </div>
+                                  </div>
+                                </div>
+                                <ChevronRight size={16} color={isActive ? '#2563eb' : '#94a3b8'} style={{ flexShrink: 0 }} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* ── CENTER PANEL (48%): DOCTOR CLINICAL WORKSPACE ── */}
+                      <div style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        padding: '20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px',
+                        height: '100%',
+                        overflowY: 'auto',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}>
+                        {/* SECTION 1: CHIEF COMPLAINT & AI COPILOT NOTES */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>
+                              Chief Complaint & Clinical Notes
+                            </h3>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <select 
+                                className="doc-input" 
+                                style={{ width: '140px', height: '30px', padding: '0 8px', fontSize: '0.75rem', marginBottom: 0 }}
+                                value={selectedScenario || ''}
+                                onChange={(e) => handleStartScenario(e.target.value)}
+                              >
+                                <option value="">-- Demo Scenario --</option>
+                                <option value="rct">🦷 Root Canal</option>
+                                <option value="ortho">😬 Orthodontic</option>
+                                <option value="extraction">💉 Extraction</option>
+                                <option value="scaling">🧼 Scaling</option>
+                              </select>
+                              <button 
+                                type="button" 
+                                onClick={handleStartVoiceDictation} 
+                                className="doc-btn-secondary" 
+                                style={{ height: '30px', padding: '0 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: isListening ? '#ef4444' : '#cbd5e1' }}
+                              >
+                                {isListening ? <MicOff size={14} color="#ef4444" /> : <Mic size={14} />}
+                                <span>{isListening ? 'Listening...' : 'Speak'}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <textarea 
+                            className="doc-textarea" 
+                            rows={3}
+                            value={symptoms}
+                            onChange={(e) => setSymptoms(e.target.value)}
+                            placeholder="Chief complaint, clinical symptoms, and doctor observation notes..."
+                            style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px', borderRadius: '8px', borderColor: '#cbd5e1' }}
+                          />
+
+                          {/* AI AMBIENT COPILOT DRAFT CARD */}
+                          {(isAnalyzing || aiSummary) && (
+                            <div style={{ marginTop: '10px', padding: '12px', borderRadius: '10px', backgroundColor: '#f0fdfa', border: '1px solid #99f6e4' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Sparkles size={16} color="#0d9488" />
+                                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f766e' }}>AI Clinical Assistant</span>
+                                </div>
+                                {approved ? (
+                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                                    Approved ✓
+                                  </span>
+                                ) : (
+                                  <button 
+                                    type="button" 
+                                    onClick={() => {
+                                      setApproved(true);
+                                      if (aiSummary?.diagnosis) setDiagnosis(aiSummary.diagnosis);
+                                      showToast('AI Notes Approved!');
+                                    }}
+                                    style={{ fontSize: '0.72rem', backgroundColor: '#0d9488', color: '#ffffff', border: 'none', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    Approve Notes
+                                  </button>
+                                )}
+                              </div>
+                              {isAnalyzing ? (
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#0d9488' }}>Analyzing voice stream & synthesizing clinical record...</p>
+                              ) : (
+                                <div style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <div><strong>Summary:</strong> {aiSummary?.clinical_summary}</div>
+                                  {aiSummary?.medications && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                                      <span style={{ color: '#0f766e', fontWeight: 700 }}>Suggested Medicines Available</span>
+                                      <button type="button" onClick={applyAISuggestions} style={{ fontSize: '0.72rem', backgroundColor: '#ffffff', border: '1px solid #99f6e4', color: '#0f766e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}>
+                                        + Apply to Prescription
+                                      </button>
+                                    </div>
+                                  )}
+                                  {aiSummary?.suggested_treatment && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ color: '#0f766e', fontWeight: 700 }}>Plan: {aiSummary.suggested_treatment}</span>
+                                      <button type="button" onClick={applyAITreatmentPlan} style={{ fontSize: '0.72rem', backgroundColor: '#ffffff', border: '1px solid #99f6e4', color: '#0f766e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}>
+                                        + Add Treatment Plan
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SECTION 2: PRESCRIPTION BUILDER (MAJOR SECTION) */}
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>
+                              Prescription Builder
+                            </h3>
+                            <button 
+                              type="button" 
+                              onClick={addPrescriptionItem} 
+                              className="doc-btn-primary" 
+                              style={{ height: '32px', padding: '0 14px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                              <Plus size={14} /> Add Medicine Row
+                            </button>
+                          </div>
+
+                          {prescriptionItems.length === 0 ? (
+                            <div style={{ flex: 1, minHeight: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '20px', backgroundColor: '#f8fafc', color: '#64748b' }}>
+                              <Stethoscope size={28} color="#94a3b8" style={{ marginBottom: '8px' }} />
+                              <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>No Medications Added</span>
+                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Click "+ Add Medicine Row" to construct patient prescription</span>
+                            </div>
+                          ) : (
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                              <table className="doc-table" style={{ margin: 0 }}>
+                                <thead style={{ backgroundColor: '#f8fafc' }}>
+                                  <tr>
+                                    <th style={{ fontSize: '0.75rem', fontWeight: 800, padding: '8px 12px' }}>Medicine Name</th>
+                                    <th style={{ fontSize: '0.75rem', fontWeight: 800, padding: '8px 12px', width: '100px' }}>Dosage</th>
+                                    <th style={{ fontSize: '0.75rem', fontWeight: 800, padding: '8px 12px', width: '100px' }}>Duration</th>
+                                    <th style={{ fontSize: '0.75rem', fontWeight: 800, padding: '8px 12px' }}>Instructions</th>
+                                    <th style={{ width: '36px', padding: '8px 6px' }}></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {prescriptionItems.map((item, idx) => (
+                                    <tr key={idx}>
+                                      <td style={{ padding: '6px 8px' }}>
+                                        <input 
+                                          type="text" 
+                                          className="doc-input" 
+                                          value={item.medicine_name} 
+                                          onChange={(e) => updatePrescriptionItem(idx, 'medicine_name', e.target.value)}
+                                          placeholder="e.g. Amoxicillin 500mg"
+                                          style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
+                                        />
+                                      </td>
+                                      <td style={{ padding: '6px 8px' }}>
+                                        <input 
+                                          type="text" 
+                                          className="doc-input" 
+                                          value={item.dosage} 
+                                          onChange={(e) => updatePrescriptionItem(idx, 'dosage', e.target.value)}
+                                          placeholder="1-0-1"
+                                          style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
+                                        />
+                                      </td>
+                                      <td style={{ padding: '6px 8px' }}>
+                                        <input 
+                                          type="text" 
+                                          className="doc-input" 
+                                          value={item.duration} 
+                                          onChange={(e) => updatePrescriptionItem(idx, 'duration', e.target.value)}
+                                          placeholder="5 Days"
+                                          style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
+                                        />
+                                      </td>
+                                      <td style={{ padding: '6px 8px' }}>
+                                        <input 
+                                          type="text" 
+                                          className="doc-input" 
+                                          value={item.instructions} 
+                                          onChange={(e) => updatePrescriptionItem(idx, 'instructions', e.target.value)}
+                                          placeholder="Take after meals"
+                                          style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
+                                        />
+                                      </td>
+                                      <td style={{ padding: '6px 4px', textAlign: 'center' }}>
+                                        <button 
+                                          type="button" 
+                                          onClick={() => removePrescriptionItem(idx)}
+                                          style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                                        >
+                                          <Trash2 size={15} />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SECTION 3: CLINICAL DIAGNOSIS */}
+                        <div>
+                          <h3 style={{ fontSize: '0.9rem', fontWeight: 800, margin: '0 0 6px 0', color: '#0f172a' }}>
+                            Clinical Diagnosis / Assessment
+                          </h3>
+                          <input
+                            type="text"
+                            className="doc-input"
+                            value={diagnosis}
+                            onChange={(e) => setDiagnosis(e.target.value)}
+                            placeholder="e.g. Tooth pain - Left Molar / Advised Root Canal Therapy (RCT)"
+                            style={{ marginBottom: 0, height: '36px', fontSize: '0.84rem' }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* ── RIGHT PANEL (30%): DYNAMIC INFORMATION PANEL ── */}
+                      <div style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        padding: '20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px',
+                        height: '100%',
+                        overflowY: 'auto',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}>
+                        {/* DYNAMIC PANEL HEADER */}
+                        <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+                          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {patientWorkspaceTab === 'vitals' && '❤️ Patient Vitals & Health Metrics'}
+                            {patientWorkspaceTab === 'history' && '📄 Consultation History Timeline'}
+                            {patientWorkspaceTab === 'reports' && '🧪 Lab Reports & OPG X-Rays'}
+                            {patientWorkspaceTab === 'treatment' && '💊 Active Treatment Plan'}
+                            {patientWorkspaceTab === 'timeline' && '📈 Patient Lifecycle Timeline'}
+                            {patientWorkspaceTab === 'prescriptions' && '📋 Historical Prescriptions Log'}
+                            {patientWorkspaceTab === 'imaging' && '📷 Dental Scans & Imaging'}
+                            {patientWorkspaceTab === null && 'ℹ️ Dynamic Patient Information Panel'}
+                          </h3>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                            {patientWorkspaceTab === null ? 'Select an item from Patient Workspace to inspect records' : 'Live EMR dynamic stream'}
                           </span>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--doc-border)', paddingTop: '16px', fontSize: '0.85rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--doc-text-muted)' }}>Blood Group</span>
-                            <span style={{ fontWeight: '600' }}>O+</span>
+                        {/* DYNAMIC CONTENT VIEWS */}
+                        {patientWorkspaceTab === null && (
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 20px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
+                            <FolderOpen size={42} color="#94a3b8" style={{ marginBottom: '12px' }} />
+                            <h4 style={{ margin: '0 0 6px 0', fontSize: '0.95rem', fontWeight: 800, color: '#334155' }}>
+                              Select an item from Patient Workspace
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', lineHeight: '1.4', maxWidth: '260px' }}>
+                              Click any button on the left panel (Medical History, Reports, Vitals, etc.) to view detailed clinical records here without leaving the consultation workspace.
+                            </p>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--doc-text-muted)' }}>Last Visit</span>
-                            <span style={{ fontWeight: '600' }}>02 Jul 2026</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--doc-text-muted)' }}>Allergies</span>
-                            <span style={{ fontWeight: '600', color: '#ef4444' }}>Penicillin (mild)</span>
-                          </div>
-                        </div>
+                        )}
 
-                        <button 
-                          type="button" 
-                          className="doc-btn-secondary" 
-                          style={{ width: '100%', marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.8rem', height: '36px' }}
-                          onClick={() => handleViewHistory({ id: activeAppt.patient_id, full_name: activeAppt.patient_name })}
-                        >
-                          <FolderOpen size={16} /> Full Medical History
-                        </button>
-                      </div>
-
-                      {/* VITALS CARD */}
-                      <div className="doc-card" style={{ padding: '24px', margin: 0 }}>
-                        <h3 style={{ fontSize: '0.9rem', fontWeight: '700', margin: '0 0 16px 0', borderBottom: '1px solid var(--doc-border)', paddingBottom: '8px' }}>
-                          Vitals (entered by staff)
-                        </h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.85rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'var(--doc-text-muted)' }}>BP</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {/* VITALS VIEW */}
+                        {patientWorkspaceTab === 'vitals' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Blood Pressure</span>
                               <input 
                                 type="text" 
                                 value={vitalsBp} 
                                 onChange={(e) => setVitalsBp(e.target.value)} 
-                                style={{ width: '80px', border: '1px solid var(--doc-border)', borderRadius: '4px', padding: '4px 8px', textAlign: 'right', fontWeight: '600', fontSize: '0.85rem' }}
+                                style={{ width: '90px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                               />
                             </div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'var(--doc-text-muted)' }}>Pulse</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <input 
-                                type="number" 
-                                value={vitalsPulse} 
-                                onChange={(e) => setVitalsPulse(Number(e.target.value))} 
-                                style={{ width: '80px', border: '1px solid var(--doc-border)', borderRadius: '4px', padding: '4px 8px', textAlign: 'right', fontWeight: '600', fontSize: '0.85rem' }}
-                              />
-                              <span style={{ fontSize: '0.75rem', color: 'var(--doc-text-muted)' }}>bpm</span>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'var(--doc-text-muted)' }}>Temp</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <input 
-                                type="number" 
-                                step="0.1"
-                                value={vitalsTemp} 
-                                onChange={(e) => setVitalsTemp(Number(e.target.value))} 
-                                style={{ width: '80px', border: '1px solid var(--doc-border)', borderRadius: '4px', padding: '4px 8px', textAlign: 'right', fontWeight: '600', fontSize: '0.85rem' }}
-                              />
-                              <span style={{ fontSize: '0.75rem', color: 'var(--doc-text-muted)' }}>°F</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
 
-                    </div>
-
-                    {/* RIGHT COLUMN: CLINICAL COPILOT & NOTES */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                      
-                      {/* CHIEF COMPLAINT CARD */}
-                      <div className="doc-card" style={{ padding: '24px', margin: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', margin: 0 }}>Chief Complaint & Notes</h3>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <select 
-                              className="doc-input" 
-                              style={{ width: '150px', height: '32px', padding: '0 8px', fontSize: '0.78rem', marginBottom: 0 }}
-                              value={selectedScenario || ''}
-                              onChange={(e) => handleStartScenario(e.target.value)}
-                            >
-                              <option value="">-- Try Demo Scenario --</option>
-                              <option value="rct">🦷 Root Canal Simulation</option>
-                              <option value="ortho">😬 Orthodontic Simulation</option>
-                              <option value="extraction">💉 Extraction Simulation</option>
-                              <option value="scaling">🧼 Scaling & Polish Simulation</option>
-                            </select>
-                            <button 
-                              type="button" 
-                              onClick={handleStartVoiceDictation} 
-                              className="doc-btn-secondary" 
-                              style={{ height: '32px', padding: '0 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: isListening ? '#ef4444' : '' }}
-                            >
-                              {isListening ? <MicOff size={14} color="#ef4444" /> : <Mic size={14} />}
-                              <span>{isListening ? 'Stop' : 'Speak'}</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        <textarea 
-                          className="doc-textarea" 
-                          rows={4}
-                          value={symptoms}
-                          onChange={(e) => setSymptoms(e.target.value)}
-                          placeholder="Chief complaint of the patient..."
-                          style={{ fontSize: '0.85rem', lineHeight: '1.4' }}
-                        />
-                      </div>
-
-                      {/* AI GENERATED NOTES CARD */}
-                      {(aiSummary || isAnalyzing) && (
-                        <div className="doc-card" style={{ padding: '24px', margin: 0, border: '1px solid #ccfbf1', backgroundColor: '#fafdfc' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Sparkles size={18} color="var(--doc-primary)" />
-                              <h3 style={{ fontSize: '0.95rem', fontWeight: '700', margin: 0, color: '#0f766e' }}>AI Generated Notes</h3>
-                            </div>
-                            <span style={{ fontSize: '0.72rem', backgroundColor: '#e2e8f0', color: '#475569', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
-                              Draft
-                            </span>
-                          </div>
-
-                          {isAnalyzing ? (
-                            <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                              <div style={{
-                                display: 'inline-block',
-                                border: '3px solid #ccfbf1',
-                                borderTop: '3px solid #0d9488',
-                                borderRadius: '50%',
-                                width: '24px',
-                                height: '24px',
-                                animation: 'spin 1s linear infinite',
-                                marginBottom: '10px'
-                              }} />
-                              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-                              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--doc-text-muted)' }}>AI is listening and compiling clinic notes...</p>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.85rem', color: '#334155' }}>
-                              <div>
-                                <p style={{ margin: '0 0 6px 0', lineHeight: '1.4' }}>
-                                  <strong>Summary:</strong> {aiSummary.clinical_summary || 'No summary compiled.'}
-                                </p>
-                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                                  <strong>Suggested next step:</strong> {aiSummary.treatment_notes || 'Continue monitoring.'}
-                                </p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Pulse Rate</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input 
+                                  type="number" 
+                                  value={vitalsPulse} 
+                                  onChange={(e) => setVitalsPulse(Number(e.target.value))} 
+                                  style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>bpm</span>
                               </div>
-
-                              {/* AI suggested prescription block */}
-                              {aiSummary.medications && aiSummary.medications.length > 0 && (
-                                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#ffffff', padding: '12px' }}>
-                                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>
-                                    💊 AI Suggested Prescription:
-                                  </span>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {aiSummary.medications.map((med: any, i: number) => (
-                                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', borderBottom: i < aiSummary.medications.length-1 ? '1px solid #f1f5f9' : 'none', paddingBottom: '4px' }}>
-                                        <span><strong>{med.medicine_name}</strong> — {med.dosage} ({med.instructions})</span>
-                                        <span style={{ color: '#64748b', fontSize: '0.78rem' }}>{med.duration}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <button 
-                                    type="button" 
-                                    onClick={applyAISuggestions}
-                                    className="doc-btn-secondary" 
-                                    style={{ width: '100%', marginTop: '12px', height: '32px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                                  >
-                                    <Plus size={14} /> Apply Suggestions to Prescription
-                                  </button>
-                                </div>
-                              )}
-
-                              {/* Suggested treatment plan block */}
-                              {aiSummary.suggested_treatment && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0fdfa', border: '1px solid #b2f5ea', borderRadius: '8px', padding: '12px' }}>
-                                  <span style={{ fontSize: '0.8rem' }}>
-                                    Suggested Treatment: <strong>{aiSummary.suggested_treatment}</strong>
-                                  </span>
-                                  <button 
-                                    type="button" 
-                                    onClick={applyAITreatmentPlan}
-                                    className="doc-btn-secondary" 
-                                    style={{ height: '28px', padding: '0 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                  >
-                                    <Plus size={12} /> Add to Treatment Plan
-                                  </button>
-                                </div>
-                              )}
-
-                              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-                                <button 
-                                  type="button" 
-                                  className="doc-btn-secondary" 
-                                  style={{ height: '32px', fontSize: '0.8rem' }}
-                                  onClick={() => {
-                                    setSymptoms(aiSummary.clinical_summary || '');
-                                    setDiagnosis(aiSummary.diagnosis || '');
-                                    setNotes(aiSummary.treatment_notes || '');
-                                    showToast('Assessment contents copied to complaint and notes!');
-                                  }}
-                                >
-                                  Edit
-                                </button>
-                                <button 
-                                  type="button" 
-                                  className="doc-btn-primary" 
-                                  style={{ 
-                                    height: '32px', 
-                                    fontSize: '0.8rem', 
-                                    backgroundColor: approved ? '#f0fdf4' : '#10b981', 
-                                    borderColor: approved ? '#bbf7d0' : '#10b981',
-                                    color: approved ? '#166534' : '#ffffff' 
-                                  }}
-                                  disabled={approved}
-                                  onClick={() => {
-                                    setApproved(true);
-                                    setDiagnosis(aiSummary.diagnosis || 'Diagnosis Code');
-                                    showToast('Clinical notes approved and set!');
-                                  }}
-                                >
-                                  {approved ? 'Approved ✓' : 'Approve Notes'}
-                                </button>
-                              </div>
-
                             </div>
-                          )}
-                        </div>
-                      )}
 
-                      {/* PRESCRIPTION BUILDER SECTION */}
-                      <div className="doc-card" style={{ padding: '24px', margin: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', margin: 0 }}>Prescription Builder</h3>
-                          <button 
-                            type="button" 
-                            onClick={addPrescriptionItem} 
-                            className="doc-btn-secondary" 
-                            style={{ height: '30px', padding: '0 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <Plus size={14} /> Add Drug Row
-                          </button>
-                        </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Oxygen Saturation (SpO2)</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input 
+                                  type="number" 
+                                  value={vitalsSpo2} 
+                                  onChange={(e) => setVitalsSpo2(Number(e.target.value))} 
+                                  style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>%</span>
+                              </div>
+                            </div>
 
-                        {prescriptionItems.length === 0 ? (
-                          <div style={{ textAlign: 'center', padding: '16px', border: '1px dashed var(--doc-border)', borderRadius: '8px', color: 'var(--doc-text-muted)', fontSize: '0.8rem' }}>
-                            No medications added. Click "Add Drug Row" or apply from AI suggestions.
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Body Temperature</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input 
+                                  type="number" 
+                                  step="0.1"
+                                  value={vitalsTemp} 
+                                  onChange={(e) => setVitalsTemp(Number(e.target.value))} 
+                                  style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>°F</span>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Height</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input 
+                                  type="text" 
+                                  value={vitalsHeight} 
+                                  onChange={(e) => setVitalsHeight(e.target.value)} 
+                                  style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>cm</span>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Weight</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input 
+                                  type="text" 
+                                  value={vitalsWeight} 
+                                  onChange={(e) => setVitalsWeight(e.target.value)} 
+                                  style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>kg</span>
+                              </div>
+                            </div>
+
+                            {/* Live Calculated BMI Metric */}
+                            {(() => {
+                              const bmiInfo = calculateBMI(vitalsHeight, vitalsWeight);
+                              return (
+                                <div style={{ border: `1px solid ${bmiInfo.color}`, backgroundColor: '#ffffff', padding: '12px', borderRadius: '10px', textAlign: 'center', marginTop: '4px' }}>
+                                  <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Body Mass Index (BMI)</span>
+                                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>{bmiInfo.bmi}</div>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: bmiInfo.color }}>{bmiInfo.label}</span>
+                                </div>
+                              );
+                            })()}
                           </div>
-                        ) : (
-                          <div className="doc-table-container">
-                            <table className="doc-table">
-                              <thead>
-                                <tr>
-                                  <th>Medicine</th>
-                                  <th>Dosage</th>
-                                  <th>Duration</th>
-                                  <th>Instructions</th>
-                                  <th style={{ width: '40px' }}></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {prescriptionItems.map((item, idx) => (
-                                  <tr key={idx}>
-                                    <td>
-                                      <input 
-                                        type="text" 
-                                        className="doc-input" 
-                                        value={item.medicine_name} 
-                                        onChange={(e) => updatePrescriptionItem(idx, 'medicine_name', e.target.value)}
-                                        placeholder="e.g. Paracetamol"
-                                        style={{ marginBottom: 0, height: '32px', fontSize: '0.8rem' }}
-                                      />
-                                    </td>
-                                    <td>
-                                      <input 
-                                        type="text" 
-                                        className="doc-input" 
-                                        value={item.dosage} 
-                                        onChange={(e) => updatePrescriptionItem(idx, 'dosage', e.target.value)}
-                                        placeholder="e.g. 1-0-1"
-                                        style={{ marginBottom: 0, height: '32px', fontSize: '0.8rem' }}
-                                      />
-                                    </td>
-                                    <td>
-                                      <input 
-                                        type="text" 
-                                        className="doc-input" 
-                                        value={item.duration} 
-                                        onChange={(e) => updatePrescriptionItem(idx, 'duration', e.target.value)}
-                                        placeholder="e.g. 3 days"
-                                        style={{ marginBottom: 0, height: '32px', fontSize: '0.8rem' }}
-                                      />
-                                    </td>
-                                    <td>
-                                      <input 
-                                        type="text" 
-                                        className="doc-input" 
-                                        value={item.instructions} 
-                                        onChange={(e) => updatePrescriptionItem(idx, 'instructions', e.target.value)}
-                                        placeholder="e.g. Take after food"
-                                        style={{ marginBottom: 0, height: '32px', fontSize: '0.8rem' }}
-                                      />
-                                    </td>
-                                    <td>
-                                      <button 
-                                        type="button" 
-                                        onClick={() => removePrescriptionItem(idx)}
-                                        style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer' }}
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                        )}
+
+                        {/* MEDICAL HISTORY VIEW */}
+                        {patientWorkspaceTab === 'history' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {(selectedPatientHistory?.consultations || [
+                              { id: '1', date: '15 July 2026', diagnosis: 'Tooth Pain - Left Molar', symptoms: 'Sensitivity to cold and hot liquids', notes: 'Advised Root Canal Therapy' },
+                              { id: '2', date: '02 July 2026', diagnosis: 'Routine Oral Scaling', symptoms: 'Tartar buildup', notes: 'Full mouth scaling completed' }
+                            ]).map((c: any, idx: number) => (
+                              <div key={c.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: '#f8fafc' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f766e' }}>
+                                    📅 {c.consultation_datetime ? new Date(c.consultation_datetime).toLocaleDateString() : c.date || '15 July 2026'}
+                                  </span>
+                                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Visit Log</span>
+                                </div>
+                                <h4 style={{ margin: '4px 0', fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                                  Diagnosis: {c.diagnosis}
+                                </h4>
+                                <p style={{ margin: '4px 0', fontSize: '0.78rem', color: '#334155' }}>
+                                  <strong>Symptoms:</strong> {c.symptoms}
+                                </p>
+                                {c.notes && (
+                                  <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                                    <strong>Advice:</strong> {c.notes}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* REPORTS VIEW */}
+                        {patientWorkspaceTab === 'reports' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px', backgroundColor: '#f0fdf4' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                <FolderOpen size={20} color="#16a34a" />
+                                <div>
+                                  <h5 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#14532d' }}>OPG X-Ray (Dental Scan)</h5>
+                                  <span style={{ fontSize: '0.72rem', color: '#166534' }}>Uploaded on 15 July 2026</span>
+                                </div>
+                              </div>
+                              <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bbf7d0', color: '#15803d' }}>
+                                Preview X-Ray PDF
+                              </button>
+                            </div>
+
+                            <div style={{ border: '1px solid #bfdbfe', borderRadius: '10px', padding: '12px', backgroundColor: '#eff6ff' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                <FileText size={20} color="#2563eb" />
+                                <div>
+                                  <h5 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#1e40af' }}>CBC Blood Report</h5>
+                                  <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>Uploaded on 12 July 2026</span>
+                                </div>
+                              </div>
+                              <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}>
+                                Preview Report PDF
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CURRENT TREATMENT VIEW */}
+                        {patientWorkspaceTab === 'treatment' && (
+                          <div style={{ border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
+                            <div>
+                              <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block' }}>Primary Problem</span>
+                              <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>
+                                • {activePatientDetails?.current_treatment_details || 'Tooth pain (Left Molar)'}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block' }}>Medicines Being Taken</span>
+                              <span style={{ color: '#334155', fontWeight: 600 }}>
+                                • Amoxicillin 500mg, Ibuprofen 400mg
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #bbf7d0', paddingTop: '8px' }}>
+                              <span style={{ color: '#15803d', fontWeight: 600 }}>Treatment Since</span>
+                              <span style={{ fontWeight: 700, color: '#0f172a' }}>12 July 2026</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TIMELINE VIEW */}
+                        {patientWorkspaceTab === 'timeline' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.8rem' }}>
+                            <div style={{ borderLeft: '3px solid #0f766e', paddingLeft: '10px' }}>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>Today - Consultation Started</div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>18:15 PM · Satellite Branch</div>
+                            </div>
+                            <div style={{ borderLeft: '3px solid #2563eb', paddingLeft: '10px' }}>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>15 July 2026 - OPG Scan Uploaded</div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Uploaded by Radiologist</div>
+                            </div>
+                            <div style={{ borderLeft: '3px solid #16a34a', paddingLeft: '10px' }}>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>02 July 2026 - Initial Visit</div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Dr. Amit Shah · Oral Scaling</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* PREVIOUS PRESCRIPTIONS VIEW */}
+                        {patientWorkspaceTab === 'prescriptions' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {(selectedPatientHistory?.prescriptions || [
+                              {
+                                id: 'rx-1029',
+                                created_at: '2026-07-15',
+                                items: [
+                                  { medicine_name: 'Amoxicillin 500mg', dosage: '1-1-1', duration: '5 days' },
+                                  { medicine_name: 'Ibuprofen 400mg', dosage: '1-0-1', duration: '3 days' }
+                                ]
+                              }
+                            ]).map((rx: any, idx: number) => (
+                              <div key={rx.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: '#ffffff' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
+                                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#8b5cf6' }}>
+                                    💊 Rx #{rx.id?.substring(0, 8) || 'RX-1029'}
+                                  </span>
+                                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                    {rx.created_at ? new Date(rx.created_at).toLocaleDateString() : '15 July 2026'}
+                                  </span>
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '0.78rem', color: '#334155' }}>
+                                  {rx.items?.map((item: any, i: number) => (
+                                    <li key={i}>
+                                      <strong>{item.medicine_name}</strong> - {item.dosage} ({item.duration})
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* IMAGING VIEW */}
+                        {patientWorkspaceTab === 'imaging' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: '#f8fafc', textAlign: 'center' }}>
+                              <Camera size={32} color="#0284c7" style={{ marginBottom: '6px' }} />
+                              <h5 style={{ margin: '0 0 4px 0', fontSize: '0.85rem', fontWeight: 700 }}>Dental OPG Panoramic Scan</h5>
+                              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Date: 15 July 2026</span>
+                              <button className="doc-btn-secondary" style={{ width: '100%', marginTop: '8px', fontSize: '0.78rem', height: '30px' }}>
+                                Open Full Resolution X-Ray
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
 
-                      {/* WORKFLOW BUTTONS BAR AT BOTTOM */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '12px' }}>
+                    </div>
+
+                    {/* ── STICKY BOTTOM ACTION BAR ── */}
+                    <div style={{
+                      height: '64px',
+                      backgroundColor: '#ffffff',
+                      borderTop: '1px solid #e2e8f0',
+                      padding: '12px 24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.04)',
+                      zIndex: 10
+                    }}>
+                      <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
+                        Active Patient: <strong style={{ color: '#0f172a' }}>{activeAppt.patient_name}</strong> ({activePatientDetails?.patient_code || activeAppt.patient_code || 'PT-10007'})
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px' }}>
                         <button 
                           type="button" 
                           className="doc-btn-secondary" 
-                          style={{ height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '600' }}
+                          style={{ height: '40px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '700' }}
                           onClick={() => setActiveTab('treatment')}
                         >
                           <Activity size={16} /> Treatment Plan
@@ -2576,43 +3040,42 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                         <button 
                           type="button" 
-                          className="doc-btn-secondary" 
+                          className="doc-btn-primary" 
                           disabled={savingConsultation}
                           style={{ 
-                            height: '42px', 
+                            height: '40px', 
+                            padding: '0 20px',
                             display: 'flex', 
                             alignItems: 'center', 
-                            justifyContent: 'center', 
                             gap: '8px', 
                             fontSize: '0.85rem', 
-                            fontWeight: '600',
-                            color: '#16a34a',
+                            fontWeight: '700',
+                            backgroundColor: '#16a34a',
                             borderColor: '#16a34a',
-                            backgroundColor: '#f0fdf4',
+                            color: '#ffffff',
                             opacity: savingConsultation ? 0.7 : 1,
                             cursor: savingConsultation ? 'not-allowed' : 'pointer'
                           }}
                           onClick={async () => {
                             if (!diagnosis) {
-                              showToast('Please approve notes or enter a diagnosis in the AI Generated Notes / Assessment first.', 'error');
+                              showToast('Please enter a clinical diagnosis / assessment first.', 'error');
                               return;
                             }
                             await handleSaveConsultation({ preventDefault: () => {} } as any);
                           }}
                         >
-                          <CheckCircle size={16} /> {savingConsultation ? 'Recording...' : 'Complete Consultation'}
+                          <CheckCircle size={16} /> {savingConsultation ? 'Saving...' : 'Complete Consultation'}
                         </button>
 
                         <button 
                           type="button" 
-                          className="doc-btn-primary" 
-                          style={{ height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '600' }}
+                          className="doc-btn-secondary" 
+                          style={{ height: '40px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '700' }}
                           onClick={() => setActiveTab('followup')}
                         >
                           <Clock size={16} /> Schedule Follow-up
                         </button>
                       </div>
-
                     </div>
                   </div>
                 ) : (
@@ -2898,6 +3361,503 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           </div>
         </div>
       )}
+      {/* ── QUICK ACTION DRAWER MODAL ── */}
+      {activeQuickDrawer && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '24px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '720px',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#f8fafc'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                  {activeQuickDrawer === 'history' && '📄 Full Medical History Timeline'}
+                  {activeQuickDrawer === 'reports' && '📂 Patient Medical Reports'}
+                  {activeQuickDrawer === 'prescriptions' && '💊 Previous Prescriptions Log'}
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  Patient: <strong>{activeAppt?.patient_name || 'Rohan Deshmukh'}</strong> ({activePatientDetails?.patient_code || activeAppt?.patient_code || 'PT-10234'})
+                </span>
+              </div>
+              <button 
+                onClick={() => setActiveQuickDrawer(null)}
+                style={{ border: 'none', background: '#f1f5f9', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <X size={18} color="#64748b" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              {activeQuickDrawer === 'history' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {selectedPatientHistory?.consultations?.length === 0 ? (
+                    <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '8px', color: '#64748b' }}>
+                      No prior consultation records registered for this patient.
+                    </div>
+                  ) : (
+                    (selectedPatientHistory?.consultations || [
+                      { id: '1', date: '15 July 2026', diagnosis: 'Tooth Pain - Left Molar', symptoms: 'Sensitivity to cold and hot liquids', notes: 'Advised Root Canal Therapy' },
+                      { id: '2', date: '02 July 2026', diagnosis: 'Routine Oral Scaling', symptoms: 'Tartar buildup', notes: 'Full mouth scaling completed' }
+                    ]).map((c: any, idx: number) => (
+                      <div key={c.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f766e' }}>
+                            📅 {c.consultation_datetime ? new Date(c.consultation_datetime).toLocaleDateString() : c.date || '15 July 2026'}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Consultation Visit</span>
+                        </div>
+                        <h4 style={{ margin: '4px 0', fontSize: '0.92rem', fontWeight: 700, color: '#0f172a' }}>
+                          Diagnosis: {c.diagnosis}
+                        </h4>
+                        <p style={{ margin: '4px 0', fontSize: '0.82rem', color: '#334155' }}>
+                          <strong>Symptoms:</strong> {c.symptoms}
+                        </p>
+                        {c.notes && (
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                            <strong>Doctor Advice:</strong> {c.notes}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeQuickDrawer === 'reports' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#f0fdf4' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <FolderOpen size={20} color="#16a34a" />
+                        <div>
+                          <h5 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#14532d' }}>OPG X-Ray (Dental Scan)</h5>
+                          <span style={{ fontSize: '0.72rem', color: '#166534' }}>Uploaded on 15 July 2026</span>
+                        </div>
+                      </div>
+                      <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bbf7d0', color: '#15803d' }}>
+                        Preview X-Ray PDF
+                      </button>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#eff6ff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <FileText size={20} color="#2563eb" />
+                        <div>
+                          <h5 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e40af' }}>CBC Blood Report</h5>
+                          <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>Uploaded on 12 July 2026</span>
+                        </div>
+                      </div>
+                      <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}>
+                        Preview Report PDF
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeQuickDrawer === 'prescriptions' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {(selectedPatientHistory?.prescriptions || [
+                    {
+                      id: 'rx-1',
+                      created_at: '2026-07-15',
+                      items: [
+                        { medicine_name: 'Amoxicillin 500mg', dosage: '1-1-1', duration: '5 days', instructions: 'Take after meals' },
+                        { medicine_name: 'Ibuprofen 400mg', dosage: '1-0-1', duration: '3 days', instructions: 'Take if pain persists' }
+                      ]
+                    }
+                  ]).map((rx: any, idx: number) => (
+                    <div key={rx.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#8b5cf6' }}>
+                          💊 Rx #{rx.id?.substring(0, 8) || 'RX-1029'}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          {rx.created_at ? new Date(rx.created_at).toLocaleDateString() : '15 July 2026'}
+                        </span>
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.82rem', color: '#334155' }}>
+                        {rx.items?.map((item: any, i: number) => (
+                          <li key={i} style={{ marginBottom: '4px' }}>
+                            <strong>{item.medicine_name}</strong> - {item.dosage} ({item.duration})
+                            {item.instructions && <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{item.instructions}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', textAlign: 'right' }}>
+              <button onClick={() => setActiveQuickDrawer(null)} className="doc-btn-primary" style={{ padding: '8px 20px', fontSize: '0.85rem' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ENTERPRISE CLINICAL PROFILE & MEDICAL ALERTS MODAL ── */}
+      {showClinicalProfileModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '24px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '840px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header Bar */}
+            <div style={{
+              padding: '20px 28px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#0f766e',
+              color: '#ffffff'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ffffff',
+                  color: '#0f766e',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  fontSize: '1.1rem'
+                }}>
+                  {activeAppt?.patient_name ? activeAppt.patient_name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'PT'}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
+                    {activeAppt?.patient_name || 'Rohan Deshmukh'}
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: '#ccfbf1' }}>
+                    Patient ID: <strong>{activePatientDetails?.patient_code || activeAppt?.patient_code || 'PT-10007'}</strong> · {calculateAge(activePatientDetails?.date_of_birth)} · {activePatientDetails?.gender || 'Female'}
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowClinicalProfileModal(false)}
+                style={{ border: 'none', background: 'rgba(255, 255, 255, 0.2)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ffffff' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Tabs Header */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '0 24px' }}>
+              <button
+                onClick={() => setProfileModalTab('alerts')}
+                style={{
+                  padding: '14px 20px',
+                  border: 'none',
+                  background: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: profileModalTab === 'alerts' ? '#dc2626' : '#64748b',
+                  borderBottom: profileModalTab === 'alerts' ? '3px solid #dc2626' : '3px solid transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                ⚠️ Medical Alerts
+              </button>
+              <button
+                onClick={() => setProfileModalTab('vitals')}
+                style={{
+                  padding: '14px 20px',
+                  border: 'none',
+                  background: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: profileModalTab === 'vitals' ? '#0f766e' : '#64748b',
+                  borderBottom: profileModalTab === 'vitals' ? '3px solid #0f766e' : '3px solid transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                📊 Vitals & BMI
+              </button>
+              <button
+                onClick={() => setProfileModalTab('treatment')}
+                style={{
+                  padding: '14px 20px',
+                  border: 'none',
+                  background: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: profileModalTab === 'treatment' ? '#16a34a' : '#64748b',
+                  borderBottom: profileModalTab === 'treatment' ? '3px solid #16a34a' : '3px solid transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                🟢 Current Treatment
+              </button>
+              <button
+                onClick={() => setProfileModalTab('demographics')}
+                style={{
+                  padding: '14px 20px',
+                  border: 'none',
+                  background: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: profileModalTab === 'demographics' ? '#2563eb' : '#64748b',
+                  borderBottom: profileModalTab === 'demographics' ? '3px solid #2563eb' : '3px solid transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                👤 Demographics & Contacts
+              </button>
+            </div>
+
+            {/* Modal Tab Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, backgroundColor: '#ffffff' }}>
+              {/* TAB 1: MEDICAL ALERTS */}
+              {profileModalTab === 'alerts' && (() => {
+                const alerts = parseMedicalAlerts(activePatientDetails);
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ backgroundColor: '#fff5f5', border: '1px solid #fee2e2', borderRadius: '12px', padding: '20px' }}>
+                      <h4 style={{ margin: '0 0 14px 0', fontSize: '0.95rem', fontWeight: 800, color: '#991b1b' }}>
+                        🚨 Critical Clinical Flags & Warnings
+                      </h4>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '0.88rem' }}>
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #fee2e2', padding: '12px 16px', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', display: 'block' }}>Allergies</span>
+                          <span style={{ fontSize: '1rem', fontWeight: 800, color: alerts.allergies !== 'None' ? '#dc2626' : '#64748b' }}>
+                            {alerts.allergies}
+                          </span>
+                        </div>
+
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #fef3c7', padding: '12px 16px', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#b45309', textTransform: 'uppercase', display: 'block' }}>Chronic Diseases</span>
+                          <span style={{ fontSize: '1rem', fontWeight: 800, color: alerts.chronicDiseases !== 'None' ? '#d97706' : '#64748b' }}>
+                            {alerts.chronicDiseases}
+                          </span>
+                        </div>
+
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #fee2e2', padding: '12px 16px', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', display: 'block' }}>High Risk Flags</span>
+                          <span style={{ fontSize: '1rem', fontWeight: 800, color: alerts.highRiskFlags !== 'None' ? '#dc2626' : '#64748b' }}>
+                            {alerts.highRiskFlags}
+                          </span>
+                        </div>
+
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', display: 'block' }}>Special Condition</span>
+                          <span style={{ fontSize: '1rem', fontWeight: 700, color: '#334155' }}>
+                            {alerts.specialCondition}
+                          </span>
+                        </div>
+
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px', gridColumn: 'span 2' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', display: 'block' }}>Disability</span>
+                          <span style={{ fontSize: '1rem', fontWeight: 700, color: '#334155' }}>
+                            {alerts.disability}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* TAB 2: VITALS & BMI */}
+              {profileModalTab === 'vitals' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', textAlign: 'center', backgroundColor: '#f8fafc' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Blood Pressure</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{vitalsBp}</div>
+                      <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>Normal</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', textAlign: 'center', backgroundColor: '#f8fafc' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Pulse Rate</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{vitalsPulse} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>bpm</span></div>
+                      <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>Resting Heart Rate</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', textAlign: 'center', backgroundColor: '#f8fafc' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Body Temp</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{vitalsTemp} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>°F</span></div>
+                      <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>Afebrite</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', textAlign: 'center', backgroundColor: '#f8fafc' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Height</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{vitalsHeight} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>cm</span></div>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', textAlign: 'center', backgroundColor: '#f8fafc' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Weight</span>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{vitalsWeight} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>kg</span></div>
+                    </div>
+
+                    {(() => {
+                      const bmiInfo = calculateBMI(vitalsHeight, vitalsWeight);
+                      return (
+                        <div style={{ border: `1px solid ${bmiInfo.color}`, borderRadius: '10px', padding: '16px', textAlign: 'center', backgroundColor: '#ffffff' }}>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Body Mass Index (BMI)</span>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{bmiInfo.bmi}</div>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: bmiInfo.color }}>{bmiInfo.label}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: CURRENT TREATMENT */}
+              {profileModalTab === 'treatment' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ border: '1px solid #dcfce7', backgroundColor: '#f0fdf4', borderRadius: '12px', padding: '20px' }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800, color: '#166534' }}>
+                      🟢 Active Treatment Plan & Patient Complaints
+                    </h4>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.88rem' }}>
+                      <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Primary Problem</span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                          {activePatientDetails?.current_treatment_details || 'Tooth pain (Left Molar)'}
+                        </span>
+                      </div>
+
+                      <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Current Medicines Being Taken</span>
+                        <span style={{ fontSize: '0.95rem', color: '#334155' }}>
+                          Amoxicillin 500mg, Ibuprofen 400mg
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Treatment Since</span>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>12 July 2026</span>
+                        </div>
+                        <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Latest Prescription Date</span>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>15 July 2026</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: DEMOGRAPHICS */}
+              {profileModalTab === 'demographics' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '0.88rem' }}>
+                    <div style={{ border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Full Name</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{activeAppt?.patient_name}</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Patient Code</span>
+                      <span style={{ fontWeight: 700, color: '#0f766e', fontFamily: 'monospace' }}>{activePatientDetails?.patient_code || 'PT-10007'}</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Phone Number</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{activePatientDetails?.user?.phone || '7896325634'}</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Email Address</span>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>{activePatientDetails?.user?.email || 'patient@example.com'}</span>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px', gridColumn: 'span 2' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Residential Address</span>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>{activePatientDetails?.address || 'Satellite, Ahmedabad, Gujarat'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', textAlign: 'right' }}>
+              <button 
+                onClick={() => setShowClinicalProfileModal(false)} 
+                className="doc-btn-primary" 
+                style={{ padding: '8px 24px', fontSize: '0.85rem', fontWeight: 700 }}
+              >
+                Close Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div style={{
           position: 'fixed',

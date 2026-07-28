@@ -607,6 +607,23 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       <span>🕐 All times are shown in Asia/Kolkata (IST)</span>
                     </div>
 
+                    {/* Explanatory Notification Banner for Teleconsultation vs In-Person Slots */}
+                    {consultationType === 'teleconsultation' ? (
+                      <div className="slot-notice-banner tele">
+                        <span className="notice-icon">💻</span>
+                        <div className="notice-text">
+                          <strong>Teleconsultation Video Hours:</strong> Only 3:00 PM – 5:00 PM slots are available for online video consultation calls.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="slot-notice-banner in-person">
+                        <span className="notice-icon">ℹ️</span>
+                        <div className="notice-text">
+                          <strong>In-Clinic Schedule Note:</strong> 3:00 PM – 5:00 PM slots are reserved for online Teleconsultations and are not available for in-clinic visits.
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                       {morningSlots.length > 0 && (
                         <div className="slot-category-section">
