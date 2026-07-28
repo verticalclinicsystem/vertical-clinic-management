@@ -1,5 +1,5 @@
 import React from 'react';
-import { Video } from 'lucide-react';
+import { Settings, Bell } from 'lucide-react';
 
 interface PreferencesTabProps {
   preferences: any;
@@ -13,43 +13,20 @@ export const PreferencesTab: React.FC<PreferencesTabProps> = ({
   handlePreferencesSubmit,
 }) => {
   return (
-    <div className="card">
+    <div className="card" style={{ maxWidth: '600px', margin: '0 auto' }}>
       <div className="card-title-bar">
-        <h3 className="card-title"><Video size={18} /> Portal Settings &amp; Preferences</h3>
+        <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Settings size={18} /> Portal Settings &amp; Preferences
+        </h3>
       </div>
 
-      <form onSubmit={handlePreferencesSubmit} className="pref-grid">
-        <div>
-          <h4 style={{ marginBottom: '14px', fontSize: '0.95rem' }}>General Settings</h4>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Preferred Portal Language</label>
-            <select
-              value={preferences.language || 'English'}
-              onChange={(e) => setPreferences({ ...preferences, language: e.target.value })}
-              className="form-input"
-            >
-              <option value="English">English</option>
-              <option value="Spanish">Spanish (Español)</option>
-              <option value="Hindi">Hindi (हिंदी)</option>
-              <option value="Gujarati">Gujarati (ગુજરાતી)</option>
-            </select>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Preferred Consultation Format</label>
-            <select
-              value={preferences.consultation_preference || 'in_person'}
-              onChange={(e) => setPreferences({ ...preferences, consultation_preference: e.target.value })}
-              className="form-input"
-            >
-              <option value="in_person">In Person Clinic Visit</option>
-              <option value="teleconsultation">Video Consultation / Telehealth</option>
-            </select>
-          </div>
+      <form onSubmit={handlePreferencesSubmit} style={{ padding: '8px 4px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+          <Bell size={16} className="text-primary" style={{ color: 'var(--primary-teal)' }} />
+          <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Notification Preferences</h4>
         </div>
 
-        <div>
-          <h4 style={{ marginBottom: '14px', fontSize: '0.95rem' }}>Notification Preferences</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <div className="toggle-row">
             <div>
               <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Email Notifications</div>
@@ -101,12 +78,13 @@ export const PreferencesTab: React.FC<PreferencesTabProps> = ({
               style={{ transform: 'scale(1.2)' }}
             />
           </div>
-
-          <button type="submit" className="btn-primary" style={{ marginTop: '20px', width: '100%' }}>
-            Save Preferences
-          </button>
         </div>
+
+        <button type="submit" className="btn-primary" style={{ marginTop: '28px', width: '100%', justifyContent: 'center' }}>
+          Save Preferences
+        </button>
       </form>
     </div>
   );
 };
+

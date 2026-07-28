@@ -53,6 +53,20 @@ class BillingService:
         created = await self.invoice_repo.create(invoice_data)
         await self.db.commit()
         logger.info(f"Invoice created successfully: {created.invoice_number}")
+
+        # Send Invoice notification to patient
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            await noti_service.send_multichannel_notification(
+                user_id=patient.user_id,
+                title="Invoice Generated",
+                message=f"A new invoice ({invoice_number}) of {grand_total} has been generated for your clinic visit.",
+                type="billing"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send invoice notification: {e}")
+
         return await self.get_invoice(created.id)
 
     async def get_invoice(self, invoice_id: uuid.UUID) -> Invoice:

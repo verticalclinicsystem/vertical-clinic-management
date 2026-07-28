@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, 
   Users, 
@@ -27,7 +27,8 @@ import {
   Heart,
   Camera,
   FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle,
+  LogOut
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './DoctorPortal.css';
@@ -88,6 +89,83 @@ const CLINICAL_SCENARIOS: Record<string, { notes: string; aiSummary: string; sug
 
 export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('doctor_portal_tab') || 'dashboard');
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotiDropdownOpen, setIsNotiDropdownOpen] = useState(false);
+  const notiDropdownRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get('/notifications');
+      if (res.data?.success) {
+        setNotifications(res.data.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load notifications", err);
+    }
+  };
+
+  const handleMarkNotificationRead = async (id: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (err) {
+      console.error("Failed to mark notification as read", err);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error("Failed to mark all notifications as read", err);
+    }
+  };
+
+  const formatRelativeTime = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'Yesterday';
+      return date.toLocaleDateString();
+    } catch {
+      return '';
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+      if (notiDropdownRef.current && !notiDropdownRef.current.contains(event.target as Node)) {
+        setIsNotiDropdownOpen(false);
+      }
+      if (globalSearchRef.current && !globalSearchRef.current.contains(event.target as Node)) {
+        setIsGlobalSearchDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('doctor_portal_tab', activeTab);
@@ -97,6 +175,53 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   
+  // Local Queue Search & Global EMR Search
+  const [queueSearch, setQueueSearch] = useState<string>('');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
+  const [isGlobalSearchDropdownOpen, setIsGlobalSearchDropdownOpen] = useState(false);
+  const [emrLookupPatient, setEmrLookupPatient] = useState<any>(null);
+  const [loadingEmrHistory, setLoadingEmrHistory] = useState<boolean>(false);
+  const globalSearchRef = useRef<HTMLDivElement>(null);
+
+  const handleGlobalSearch = async (query: string) => {
+    setGlobalSearchQuery(query);
+    if (!query.trim()) {
+      setGlobalSearchResults([]);
+      setIsGlobalSearchDropdownOpen(false);
+      return;
+    }
+    try {
+      const res = await api.get(`/patients/?search=${query}`);
+      if (res.data && res.data.success) {
+        setGlobalSearchResults(res.data.data.items || []);
+        setIsGlobalSearchDropdownOpen(true);
+      }
+    } catch (err) {
+      console.error('Error in global search:', err);
+    }
+  };
+
+  const handleSelectEmrPatient = async (patient: any) => {
+    setIsGlobalSearchDropdownOpen(false);
+    setGlobalSearchQuery('');
+    setLoadingEmrHistory(true);
+    setEmrLookupPatient({ patient });
+    try {
+      const consRes = await api.get(`/consultations/?patient_id=${patient.id}`);
+      const prescRes = await api.get(`/prescriptions/?patient_id=${patient.id}`);
+      setEmrLookupPatient({
+        patient,
+        consultations: consRes.data?.data?.items || [],
+        prescriptions: prescRes.data?.data?.items || []
+      });
+    } catch (err) {
+      console.error('Error fetching EMR lookup patient history:', err);
+    } finally {
+      setLoadingEmrHistory(false);
+    }
+  };
+
   // Search Patients state
   const [patientSearch, setPatientSearch] = useState<string>('');
   const [patientsList, setPatientsList] = useState<any[]>([]);
@@ -597,7 +722,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       const combinedDatetime = `${followupDate}T${followupTime}:00`;
       const payload = {
         doctor_id: dashboardData?.doctor?.id || activeAppt?.doctor_id,
-        branch_id: dashboardData?.doctor?.branch_id || activeAppt?.branch_id || '526e00f1-fb6f-48d4-a471-6d2e0c300cb1',
+        branch_id: dashboardData?.doctor?.branch_id || activeAppt?.branch_id || '4b60cf78-7a68-4437-8423-a19c6a9b9377',
         appointment_datetime: combinedDatetime,
         treatment_type: 'Consultation',
         consultation_type: 'in_person',
@@ -951,8 +1076,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       const consultPayload = {
         appointment_id: activeAppt.id,
         patient_id: activeAppt.patient_id,
-        doctor_id: dashboardData?.doctor?.id || activeAppt.doctor_id || "2b1aa983-108b-4f4a-a97e-322dd9242270",
-        branch_id: activeAppt.branch_id || "526e00f1-fb6f-48d4-a471-6d2e0c300cb1",
+        doctor_id: dashboardData?.doctor?.id || activeAppt.doctor_id || "3c0cff69-4b92-41fe-b2a5-e8f77f76b394",
+        branch_id: activeAppt.branch_id || dashboardData?.doctor?.branch_id || "4b60cf78-7a68-4437-8423-a19c6a9b9377",
         symptoms,
         diagnosis,
         notes,
@@ -1118,43 +1243,183 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               {activeTab === 'availability' && 'Availability Settings'}
               {activeTab === 'workflow' && 'Full Clinic Workflow'}
             </h1>
-            <p className="doc-page-subtitle">Doctor Portal · Satellite Branch</p>
+            <p className="doc-page-subtitle">Doctor Portal · {dashboardData?.doctor?.branch_name ? `${dashboardData.doctor.branch_name} Branch` : 'Loading Branch...'}</p>
+          </div>
+
+          <div ref={globalSearchRef} style={{ flex: 1, maxWidth: '380px', margin: '0 32px', position: 'relative' }}>
+            <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} size={16} />
+            <input 
+              type="text" 
+              className="doc-input" 
+              style={{ paddingLeft: '38px', height: '38px', width: '100%', borderRadius: '10px', fontSize: '0.85rem', margin: 0 }} 
+              placeholder="Global Patient EMR Search..." 
+              value={globalSearchQuery}
+              onChange={(e) => handleGlobalSearch(e.target.value)}
+            />
+            {isGlobalSearchDropdownOpen && (
+              <div className="global-search-dropdown" style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                right: 0,
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                zIndex: 999,
+                maxHeight: '300px',
+                overflowY: 'auto',
+                padding: '6px 0'
+              }}>
+                {globalSearchResults.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.85rem', color: '#64748b' }}>
+                    No patient records found.
+                  </div>
+                ) : (
+                  globalSearchResults.map((pat: any) => (
+                    <div 
+                      key={pat.id} 
+                      className="global-search-item" 
+                      onClick={() => handleSelectEmrPatient(pat)}
+                      style={{
+                        padding: '10px 16px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        borderBottom: '1px solid #f1f5f9',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{pat.user?.full_name || pat.full_name || pat.patient_name || 'Walk-in Patient'}</span>
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--primary-teal, #0c6e8c)', backgroundColor: 'rgba(12, 110, 140, 0.05)', padding: '2px 6px', borderRadius: '4px' }}>
+                          {pat.patient_code}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: '#64748b' }}>
+                        <span>Phone: {pat.user?.phone || pat.phone_number || 'N/A'}</span>
+                        <span>·</span>
+                        <span>Gender: {pat.gender || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ position: 'relative', width: '280px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} />
-              <input 
-                type="text" 
-                className="doc-input" 
-                style={{ paddingLeft: '36px', height: '36px', fontSize: '0.85rem' }} 
-                placeholder="Search patients, appointments, invoices..." 
-              />
+            <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
+              <button 
+                onClick={() => setIsNotiDropdownOpen(!isNotiDropdownOpen)}
+                style={{ border: 'none', background: 'none', position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
+              >
+                <Bell size={20} color="var(--doc-text-muted)" />
+                {notifications.filter(n => !n.is_read).length > 0 && (
+                  <span style={{ position: 'absolute', top: '2px', right: '2px', width: '8px', height: '8px', backgroundColor: '#ef4444', borderRadius: '50%' }} />
+                )}
+              </button>
+
+              {isNotiDropdownOpen && (
+                <div className="notifications-dropdown" style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 10px)',
+                  right: 0,
+                  width: '320px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  zIndex: 200,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div className="notifications-header" style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #f1f5f9'
+                  }}>
+                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Notifications</h4>
+                    {notifications.filter(n => !n.is_read).length > 0 && (
+                      <button 
+                        className="notifications-clear-btn" 
+                        onClick={() => { handleMarkAllNotificationsRead(); setIsNotiDropdownOpen(false); }}
+                        style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+                  <div className="notifications-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div className="notifications-empty" style={{ padding: '24px', textAlign: 'center', fontSize: '0.85rem', color: '#64748b' }}>
+                        No notifications yet.
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div
+                          key={n.id}
+                          className={`notification-item ${!n.is_read ? 'unread' : ''}`}
+                          onClick={() => {
+                            if (!n.is_read) {
+                              handleMarkNotificationRead(n.id);
+                            }
+                          }}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                            backgroundColor: n.is_read ? 'transparent' : 'rgba(12, 110, 140, 0.03)',
+                            transition: 'background-color 0.2s',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px'
+                          }}
+                        >
+                          <div className="notification-item-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: n.is_read ? 500 : 600, color: '#1e293b' }}>{n.title}</span>
+                            {!n.is_read && <span className="notification-unread-dot" style={{ width: '6px', height: '6px', backgroundColor: '#3b82f6', borderRadius: '50%' }} />}
+                          </div>
+                          <div className="notification-item-msg" style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.4 }}>{n.message}</div>
+                          <div className="notification-item-time" style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '4px' }}>{formatRelativeTime(n.created_at)}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            <select className="doc-input" style={{ width: '110px', height: '36px', fontSize: '0.85rem', padding: '0 8px' }}>
-              <option>Satellite</option>
-              <option>Bopal</option>
-              <option>Navrangpura</option>
-            </select>
 
-            <button style={{ border: 'none', background: 'none', position: 'relative', cursor: 'pointer' }}>
-              <Bell size={20} color="var(--doc-text-muted)" />
-              <span style={{ position: 'absolute', top: '-2px', right: '-2px', width: '6px', height: '6px', backgroundColor: '#ef4444', borderRadius: '50%' }} />
-            </button>
-
-            <button style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
-              <Settings size={20} color="var(--doc-text-muted)" />
-            </button>
-
-            <div className="doc-profile-badge">
-              <div className="doc-profile-avatar" style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>
-                {doctorName.split(' ').map((n: string) => n[0]).join('')}
+            <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+              <div 
+                className="doc-profile-badge" 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="doc-profile-avatar" style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                  {doctorName.split(' ').map((n: string) => n[0]).join('')}
+                </div>
+                <div className="doc-profile-info">
+                  <span className="doc-profile-name">{doctorName}</span>
+                  <span className="doc-profile-role">{doctorSpecialty}</span>
+                </div>
               </div>
-              <div className="doc-profile-info">
-                <span className="doc-profile-name">{doctorName}</span>
-                <span className="doc-profile-role">{doctorSpecialty}</span>
-              </div>
+
+              {isProfileDropdownOpen && (
+                <div className="profile-dropdown-menu">
+                  <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
+                    <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
+                  </button>
+                  <div className="profile-dropdown-divider"></div>
+                  <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Switch Role
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -1359,193 +1624,218 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               {/* TAB: QUEUE (FULL QUEUE) */}
               {activeTab === 'queue' && (
                 <div>
-                  {dashboardData?.today_appointments?.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid var(--doc-border)' }}>
-                      <p style={{ color: 'var(--doc-text-muted)', fontSize: '0.9rem', margin: 0 }}>No patients scheduled in the queue for today.</p>
+                  <div className="doc-card" style={{ marginBottom: '20px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Active Waiting Queue</h3>
+                    <div style={{ position: 'relative', width: '280px' }}>
+                      <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} size={16} />
+                      <input 
+                        type="text" 
+                        className="doc-input" 
+                        style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem', margin: 0 }}
+                        placeholder="Search patient name..."
+                        value={queueSearch}
+                        onChange={(e) => setQueueSearch(e.target.value)}
+                      />
                     </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '24px' }}>
-                      {[...(dashboardData?.today_appointments || [])]
-                        .sort((a: any, b: any) => new Date(b.appointment_datetime).getTime() - new Date(a.appointment_datetime).getTime())
-                        .map((appt: any, idx: number) => {
-                        const initials = appt.patient_name
-                          ? appt.patient_name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                          : 'PT';
-                        const timeStr = appt.appointment_datetime
-                          ? formatTime(appt.appointment_datetime)
-                          : '10:00 AM';
-                        const apptNum = `APT-2847${idx + 1}`;
-                        const statusLower = appt.status.toLowerCase();
-                        const isCompleted = statusLower === 'completed';
-                        const isInConsultation = statusLower === 'in_consultation' || statusLower === 'in consultation';
-                        
-                        // Status badge colors
-                        let badgeBg = '#eff6ff';
-                        let badgeText = '#1d4ed8';
-                        let badgeLabel = 'Confirmed';
-                        
-                        if (statusLower === 'waiting' || statusLower === 'pending' || statusLower === 'checked_in') {
-                          badgeBg = '#fff7ed';
-                          badgeText = '#ea580c';
-                          badgeLabel = statusLower === 'checked_in' ? 'Checked In' : 'Waiting';
-                        } else if (isInConsultation) {
-                          badgeBg = '#eff6ff';
-                          badgeText = '#2563eb';
-                          badgeLabel = 'In Consultation';
-                        } else if (isCompleted) {
-                          badgeBg = '#f0fdf4';
-                          badgeText = '#16a34a';
-                          badgeLabel = 'Completed';
-                        }
-                        
-                        const colors = [
-                          { bg: '#e0f2fe', text: '#0369a1' },
-                          { bg: '#fef3c7', text: '#d97706' },
-                          { bg: '#f0fdf4', text: '#15803d' },
-                          { bg: '#fdf2f8', text: '#be185d' },
-                          { bg: '#faf5ff', text: '#7e22ce' }
-                        ];
-                        const color = colors[idx % colors.length];
+                  </div>
 
-                        return (
-                          <div key={appt.id || idx} className="doc-card" style={{ 
-                            margin: 0, 
-                            padding: '24px', 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: '16px', 
-                            justifyContent: 'space-between',
-                            opacity: isCompleted ? 0.8 : 1,
-                            borderLeft: isCompleted ? '4px solid #22c55e' : isInConsultation ? '4px solid #3b82f6' : '4px solid transparent'
-                          }}>
-                            {/* Card Header */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ 
-                                  width: '44px', 
-                                  height: '44px', 
-                                  borderRadius: '50%', 
-                                  backgroundColor: color.bg, 
-                                  color: color.text, 
-                                  display: 'flex', 
+                  {(() => {
+                    const filteredAppts = [...(dashboardData?.today_appointments || [])]
+                      .filter((appt: any) => !queueSearch || appt.patient_name?.toLowerCase().includes(queueSearch.toLowerCase()))
+                      .sort((a: any, b: any) => new Date(b.appointment_datetime).getTime() - new Date(a.appointment_datetime).getTime());
+
+                    if (filteredAppts.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid var(--doc-border)' }}>
+                          <p style={{ color: 'var(--doc-text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                            {queueSearch ? 'No matching patients found in queue.' : 'No patients scheduled in the queue for today.'}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '24px' }}>
+                        {filteredAppts.map((appt: any, idx: number) => {
+                          const initials = appt.patient_name
+                            ? appt.patient_name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                            : 'PT';
+                          const timeStr = appt.appointment_datetime
+                            ? formatTime(appt.appointment_datetime)
+                            : '10:00 AM';
+                          const apptNum = `APT-2847${idx + 1}`;
+                          const statusLower = appt.status.toLowerCase();
+                          const isCompleted = statusLower === 'completed';
+                          const isInConsultation = statusLower === 'in_consultation' || statusLower === 'in consultation';
+                          
+                          // Status badge colors
+                          let badgeBg = '#eff6ff';
+                          let badgeText = '#1d4ed8';
+                          let badgeLabel = 'Confirmed';
+                          
+                          if (statusLower === 'waiting' || statusLower === 'pending' || statusLower === 'checked_in') {
+                            badgeBg = '#fff7ed';
+                            badgeText = '#ea580c';
+                            badgeLabel = statusLower === 'checked_in' ? 'Checked In' : 'Waiting';
+                          } else if (isInConsultation) {
+                            badgeBg = '#eff6ff';
+                            badgeText = '#2563eb';
+                            badgeLabel = 'In Consultation';
+                          } else if (isCompleted) {
+                            badgeBg = '#f0fdf4';
+                            badgeText = '#16a34a';
+                            badgeLabel = 'Completed';
+                          }
+                          
+                          const colors = [
+                            { bg: '#e0f2fe', text: '#0369a1' },
+                            { bg: '#fef3c7', text: '#d97706' },
+                            { bg: '#f0fdf4', text: '#15803d' },
+                            { bg: '#fdf2f8', text: '#be185d' },
+                            { bg: '#faf5ff', text: '#7e22ce' }
+                          ];
+                          const color = colors[idx % colors.length];
+
+                          return (
+                            <div key={appt.id || idx} className="doc-card" style={{ 
+                              margin: 0, 
+                              padding: '24px', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '16px', 
+                              justifyContent: 'space-between',
+                              opacity: isCompleted ? 0.8 : 1,
+                              borderLeft: isCompleted ? '4px solid #22c55e' : isInConsultation ? '4px solid #3b82f6' : '4px solid transparent'
+                            }}>
+                              {/* Card Header */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div style={{ 
+                                    width: '44px', 
+                                    height: '44px', 
+                                    borderRadius: '50%', 
+                                    backgroundColor: color.bg, 
+                                    color: color.text, 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center', 
+                                    fontWeight: '700',
+                                    fontSize: '0.95rem'
+                                  }}>
+                                    {initials}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--doc-text-dark)' }}>{appt.patient_name}</span>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)' }}>
+                                      {appt.patient_code || 'PT-10234'} · {appt.treatment_type}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span style={{ 
+                                  backgroundColor: badgeBg, 
+                                  color: badgeText, 
+                                  padding: '4px 10px', 
+                                  borderRadius: '20px', 
+                                  fontSize: '0.72rem', 
+                                  fontWeight: '700', 
+                                  display: 'inline-flex', 
                                   alignItems: 'center', 
-                                  justifyContent: 'center', 
-                                  fontWeight: '700',
-                                  fontSize: '0.95rem'
+                                  gap: '4px' 
                                 }}>
-                                  {initials}
+                                  <span style={{ width: '5px', height: '5px', backgroundColor: badgeText, borderRadius: '50%' }} />
+                                  {badgeLabel}
+                                </span>
+                              </div>
+
+                              {/* Card Divider */}
+                              <div style={{ borderBottom: '1px solid var(--doc-border)' }} />
+
+                              {/* Card Body */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--doc-text-muted)' }}>Time</span>
+                                  <span style={{ fontWeight: '700', color: 'var(--doc-text-dark)' }}>{timeStr}</span>
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--doc-text-dark)' }}>{appt.patient_name}</span>
-                                  <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)' }}>
-                                    {appt.patient_code || 'PT-10234'} · {appt.treatment_type}
-                                  </span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--doc-text-muted)' }}>Appointment</span>
+                                  <span style={{ fontWeight: '700', color: 'var(--doc-primary)', fontFamily: 'monospace' }}>{apptNum}</span>
                                 </div>
                               </div>
-                              <span style={{ 
-                                backgroundColor: badgeBg, 
-                                color: badgeText, 
-                                padding: '4px 10px', 
-                                borderRadius: '20px', 
-                                fontSize: '0.72rem', 
-                                fontWeight: '700', 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '4px' 
-                              }}>
-                                <span style={{ width: '5px', height: '5px', backgroundColor: badgeText, borderRadius: '50%' }} />
-                                {badgeLabel}
-                              </span>
-                            </div>
 
-                            {/* Card Divider */}
-                            <div style={{ borderBottom: '1px solid var(--doc-border)' }} />
-
-                            {/* Card Body */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: 'var(--doc-text-muted)' }}>Time</span>
-                                <span style={{ fontWeight: '700', color: 'var(--doc-text-dark)' }}>{timeStr}</span>
+                              {/* Card Footer Button */}
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                {isCompleted ? (
+                                  <button
+                                    type="button"
+                                    className="doc-btn-secondary"
+                                    style={{
+                                      flex: 1,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '8px',
+                                      height: '40px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '600',
+                                      backgroundColor: '#f0fdf4',
+                                      color: '#16a34a',
+                                      borderColor: '#bbf7d0',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => handleViewHistory({ id: appt.patient_id, user: { full_name: appt.patient_name }, patient_code: appt.patient_code })}
+                                  >
+                                    <CheckCircle size={16} /> Consultation Completed
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleStartConsultation(appt)} 
+                                    className="doc-btn-primary" 
+                                    style={{ 
+                                      flex: 1, 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      justifyContent: 'center', 
+                                      gap: '8px', 
+                                      height: '40px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '600',
+                                      backgroundColor: 'var(--doc-primary)',
+                                      color: '#ffffff',
+                                      borderColor: 'var(--doc-primary)',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <Stethoscope size={16} /> {isInConsultation ? 'Resume Consultation' : 'Start Consultation'}
+                                  </button>
+                                )}
+                                
+                                {appt.consultation_type === 'teleconsultation' && !isCompleted && (
+                                  <button 
+                                    onClick={() => handleJoinVideo(appt)} 
+                                    className="doc-btn-secondary" 
+                                    style={{ 
+                                      width: '40px',
+                                      height: '40px',
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      justifyContent: 'center', 
+                                      padding: 0,
+                                      backgroundColor: appt.tele_link ? '#e0f2fe' : '#faf5ff',
+                                      color: appt.tele_link ? '#0369a1' : '#7e22ce',
+                                      borderColor: appt.tele_link ? '#bae6fd' : '#e9d5ff'
+                                    }}
+                                    title={appt.tele_link ? "Join Teleconsultation Call" : "Initialize Call"}
+                                  >
+                                    <Video size={16} />
+                                  </button>
+                                )}
                               </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: 'var(--doc-text-muted)' }}>Appointment</span>
-                                <span style={{ fontWeight: '700', color: 'var(--doc-primary)', fontFamily: 'monospace' }}>{apptNum}</span>
-                              </div>
                             </div>
-
-                            {/* Card Footer Button */}
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              {isCompleted ? (
-                                <button
-                                  type="button"
-                                  className="doc-btn-secondary"
-                                  style={{
-                                    flex: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '8px',
-                                    height: '40px',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '600',
-                                    backgroundColor: '#f0fdf4',
-                                    color: '#16a34a',
-                                    borderColor: '#bbf7d0',
-                                    cursor: 'pointer'
-                                  }}
-                                  onClick={() => handleViewHistory({ id: appt.patient_id, user: { full_name: appt.patient_name }, patient_code: appt.patient_code })}
-                                >
-                                  <CheckCircle size={16} /> Consultation Completed
-                                </button>
-                              ) : (
-                                <button 
-                                  onClick={() => handleStartConsultation(appt)} 
-                                  className="doc-btn-primary" 
-                                  style={{ 
-                                    flex: 1, 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center', 
-                                    gap: '8px', 
-                                    height: '40px',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '600',
-                                    backgroundColor: 'var(--doc-primary)',
-                                    color: '#ffffff',
-                                    borderColor: 'var(--doc-primary)',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  <Stethoscope size={16} /> {isInConsultation ? 'Resume Consultation' : 'Start Consultation'}
-                                </button>
-                              )}
-                              
-                              {appt.consultation_type === 'teleconsultation' && !isCompleted && (
-                                <button 
-                                  onClick={() => handleJoinVideo(appt)} 
-                                  className="doc-btn-secondary" 
-                                  style={{ 
-                                    width: '40px',
-                                    height: '40px',
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center', 
-                                    padding: 0,
-                                    backgroundColor: appt.tele_link ? '#e0f2fe' : '#faf5ff',
-                                    color: appt.tele_link ? '#0369a1' : '#7e22ce',
-                                    borderColor: appt.tele_link ? '#bae6fd' : '#e9d5ff'
-                                  }}
-                                  title={appt.tele_link ? "Join Teleconsultation Call" : "Initialize Call"}
-                                >
-                                  <Video size={16} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2949,7 +3239,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.8rem' }}>
                             <div style={{ borderLeft: '3px solid #0f766e', paddingLeft: '10px' }}>
                               <div style={{ fontWeight: 700, color: '#0f172a' }}>Today - Consultation Started</div>
-                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>18:15 PM · Satellite Branch</div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>18:15 PM · {dashboardData?.doctor?.branch_name ? `${dashboardData.doctor.branch_name} Branch` : 'Satellite Branch'}</div>
                             </div>
                             <div style={{ borderLeft: '3px solid #2563eb', paddingLeft: '10px' }}>
                               <div style={{ fontWeight: 700, color: '#0f172a' }}>15 July 2026 - OPG Scan Uploaded</div>
@@ -3852,6 +4142,149 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 style={{ padding: '8px 24px', fontSize: '0.85rem', fontWeight: 700 }}
               >
                 Close Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── GLOBAL EMR LOOKUP MODAL (OPTION B) ── */}
+      {emrLookupPatient && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '24px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '900px',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 28px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#0c6e8c',
+              color: '#ffffff'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                  EMR Case File: {emrLookupPatient.patient?.user?.full_name || emrLookupPatient.patient?.full_name || 'Patient'}
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#e0f2fe' }}>
+                  Patient Code: <strong>{emrLookupPatient.patient?.patient_code}</strong> · Gender: {emrLookupPatient.patient?.gender || 'N/A'} · Phone: {emrLookupPatient.patient?.user?.phone || emrLookupPatient.patient?.phone_number || 'N/A'}
+                </span>
+              </div>
+              <button 
+                onClick={() => setEmrLookupPatient(null)}
+                style={{ border: 'none', background: 'rgba(255, 255, 255, 0.2)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ffffff' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, backgroundColor: '#f8fafc' }}>
+              {loadingEmrHistory ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                  Loading patient medical logs...
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                  {/* Left Column: Consultations */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                      📋 Consultation History
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {!emrLookupPatient.consultations || emrLookupPatient.consultations.length === 0 ? (
+                        <div style={{ padding: '20px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px dashed #cbd5e1', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                          No consultation records found.
+                        </div>
+                      ) : (
+                        emrLookupPatient.consultations.map((c: any) => (
+                          <div key={c.id} style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginBottom: '6px' }}>
+                              <span>Date: {new Date(c.created_at || c.consultation_date).toLocaleDateString()}</span>
+                              <span style={{ color: '#0c6e8c' }}>Dr. {c.doctor_name || 'Clinic Specialist'}</span>
+                            </div>
+                            <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>
+                              <strong>Symptoms:</strong> {c.symptoms || 'None recorded'}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>
+                              <strong>Diagnosis:</strong> {c.diagnosis || 'None recorded'}
+                            </div>
+                            {c.notes && (
+                              <div style={{ fontSize: '0.8rem', color: '#475569', backgroundColor: '#f1f5f9', padding: '6px 10px', borderRadius: '6px', marginTop: '6px' }}>
+                                <strong>Notes:</strong> {c.notes}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Prescriptions */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                      💊 Prescription Log
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {!emrLookupPatient.prescriptions || emrLookupPatient.prescriptions.length === 0 ? (
+                        <div style={{ padding: '20px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px dashed #cbd5e1', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                          No prescriptions found.
+                        </div>
+                      ) : (
+                        emrLookupPatient.prescriptions.map((p: any) => (
+                          <div key={p.id} style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginBottom: '6px' }}>
+                              Date: {new Date(p.created_at).toLocaleDateString()}
+                            </div>
+                            <div style={{ fontSize: '0.85rem' }}>
+                              <strong>Medications:</strong>
+                              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                                {p.items?.map((item: any, idx: number) => (
+                                  <li key={idx} style={{ marginBottom: '2px' }}>
+                                    {item.medicine_name} - {item.dosage} ({item.frequency || 'As directed'})
+                                  </li>
+                                )) || <li>{p.instructions || 'Custom instructions'}</li>}
+                              </ul>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', textAlign: 'right' }}>
+              <button 
+                onClick={() => setEmrLookupPatient(null)} 
+                className="doc-btn-primary" 
+                style={{ padding: '8px 24px', fontSize: '0.85rem', fontWeight: 700 }}
+              >
+                Close EMR File
               </button>
             </div>
           </div>

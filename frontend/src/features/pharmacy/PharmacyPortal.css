@@ -682,3 +682,109 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ── Profile Dropdown ── */
+.profile-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.profile-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 180px;
+  background-color: var(--bg-white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  padding: 6px 0;
+  animation: scaleIn 0.15s ease-out;
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.profile-dropdown-menu button {
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.profile-dropdown-menu button:hover {
+  background-color: #f8fafc;
+  color: var(--primary-teal, #0c6e8c);
+}
+
+.profile-dropdown-menu .profile-dropdown-divider {
+  height: 1px;
+  background-color: #f1f5f9;
+  margin: 6px 0;
+}
+
+.profile-dropdown-menu button.logout-item {
+  color: #dc2626;
+}
+
+.profile-dropdown-menu button.logout-item:hover {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+.pharmacy-profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(12, 110, 140, 0.05);
+  border: 1px solid rgba(12, 110, 140, 0.1);
+  transition: all 0.2s;
+}
+
+.pharmacy-profile-badge:hover {
+  background: rgba(12, 110, 140, 0.1);
+}
+
+.pharmacy-profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.pharmacy-profile-info {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.pharmacy-profile-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink, #1e293b);
+}
+
+.pharmacy-profile-role {
+  font-size: 0.7rem;
+  color: var(--muted, #64748b);
+  font-weight: 500;
+}

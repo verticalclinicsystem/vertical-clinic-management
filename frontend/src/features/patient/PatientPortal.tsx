@@ -59,6 +59,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   }, [screen]);
 
   const [patientProfile, setPatientProfile] = useState<any>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
@@ -155,8 +156,30 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const [conflictAppt, setConflictAppt] = useState<any>(null);
 
   const triggerToast = (type: 'success' | 'error' | 'info', message: string) => {
-    setToast({ type, message });
+    // Map 'info' type to 'success' so we only use green for success and red for unsuccessful
+    const mappedType = type === 'info' ? 'success' : type;
+    setToast({ type: mappedType, message });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleMarkNotificationRead = async (id: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+      );
+    } catch (err) {
+      console.error("Failed to mark notification as read", err);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error("Failed to mark all notifications as read", err);
+    }
   };
 
   const clearBookingWizardState = () => {
@@ -222,6 +245,13 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
       }
       setBranches(extractArrayData(branchRes.data));
       setDoctors(extractArrayData(docRes.data));
+
+      try {
+        const notiRes = await api.get('/notifications');
+        setNotifications(extractArrayData(notiRes.data));
+      } catch (notiErr) {
+        console.error("Failed to load notifications", notiErr);
+      }
     } catch (err: any) {
       triggerToast('error', getErrorMessage(err, 'Failed to load patient portal records.'));
     } finally {
@@ -543,7 +573,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await api.put('/patients/me/preferences', preferences);
+      await api.patch('/patients/me/preferences', preferences);
       triggerToast('success', 'Preferences updated successfully.');
     } catch (err: any) {
       triggerToast('error', getErrorMessage(err, 'Failed to update preferences.'));
@@ -798,6 +828,10 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
               getInitials={getInitials}
               setIsMobileSidebarOpen={setIsMobileSidebarOpen}
               setScreen={setScreen}
+              notifications={notifications}
+              onMarkRead={handleMarkNotificationRead}
+              onMarkAllRead={handleMarkAllNotificationsRead}
+              onLogout={onLogout}
             />
 
             <div className="portal-content">

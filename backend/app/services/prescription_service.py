@@ -65,6 +65,20 @@ class PrescriptionService:
         await self.db.commit()
         presc_id = created.id
         logger.info(f"Prescription created successfully: {presc_id}")
+
+        # Send Prescription Created notification to patient
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            await noti_service.send_multichannel_notification(
+                user_id=patient.user_id,
+                title="New Prescription Added",
+                message=f"Dr. {doctor.user.full_name} has prescribed new medications for you. Please check your portal.",
+                type="prescription"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send prescription notification: {e}")
+
         return await self.get_prescription(presc_id)
 
     async def dispense_prescription(self, prescription_id: uuid.UUID, performed_by_id: uuid.UUID | None = None) -> Prescription:
