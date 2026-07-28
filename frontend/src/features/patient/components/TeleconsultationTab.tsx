@@ -1,5 +1,6 @@
-import React from 'react';
-import { Video, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Video, Clock, CheckSquare, Square, AlertCircle, MessageSquare } from 'lucide-react';
+import { ChatDrawerModal } from './ChatDrawerModal';
 
 interface TeleconsultationTabProps {
   activeTele: any;
@@ -12,16 +13,26 @@ interface TeleconsultationTabProps {
   setScreen: (screen: any) => void;
 }
 
+interface ChecklistState {
+  net: boolean;
+  light: boolean;
+  media: boolean;
+  symptoms: boolean;
+  report: boolean;
+}
+
 export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
   activeTele,
   pastTeles,
   selectedTeleId,
   setSelectedTeleId,
-  checklist,
+  checklist: _checklist,
   handleJoinMeeting,
   triggerToast,
   setScreen,
 }) => {
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+
   const allConsultations: any[] = [];
   if (activeTele) {
     allConsultations.push({ ...activeTele, status: 'scheduled' });
@@ -29,6 +40,71 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
   if (pastTeles && pastTeles.length > 0) {
     allConsultations.push(...pastTeles);
   }
+
+  const currentSelectedId = selectedTeleId || allConsultations[0]?.id;
+  const selectedItem = allConsultations.find(c => c.id === currentSelectedId) || allConsultations[0];
+
+  // ── Pre-consultation Checklist State (persisted in localStorage) ────────────
+  const [checklistState, setChecklistState] = useState<ChecklistState>(() => {
+    const key = `tele_checklist_${selectedItem?.id || 'default'}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Error parsing checklist state:', e);
+      }
+    }
+    return {
+      net: true,
+      light: true,
+      media: true,
+      symptoms: true,
+      report: false,
+    };
+  });
+
+  useEffect(() => {
+    if (selectedItem?.id) {
+      const key = `tele_checklist_${selectedItem.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          setChecklistState(JSON.parse(saved));
+          return;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setChecklistState({
+        net: true,
+        light: true,
+        media: true,
+        symptoms: true,
+        report: false,
+      });
+    }
+  }, [selectedItem?.id]);
+
+  const toggleChecklistItem = (key: keyof ChecklistState) => {
+    setChecklistState((prev) => {
+      const updated = { ...prev, [key]: !prev[key] };
+      if (selectedItem?.id) {
+        localStorage.setItem(`tele_checklist_${selectedItem.id}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  const isMandatoryComplete =
+    checklistState.net &&
+    checklistState.light &&
+    checklistState.media &&
+    checklistState.symptoms;
+
+  const totalItems = 5;
+  const completedCount = Object.values(checklistState).filter(Boolean).length;
+  const progressPercent = Math.round((completedCount / totalItems) * 100);
 
   if (allConsultations.length === 0) {
     return (
@@ -49,9 +125,6 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
     );
   }
 
-  const currentSelectedId = selectedTeleId || allConsultations[0]?.id;
-  const selectedItem = allConsultations.find(c => c.id === currentSelectedId) || allConsultations[0];
-
   return (
     <div className="tele-page">
       <div className="tele-grid">
@@ -64,6 +137,7 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
               </div>
               <h2 className="tele-title">Video Consultation with {selectedItem.doctor_name}</h2>
               <p className="tele-subtitle">Scheduled for {selectedItem.scheduled_time || `${selectedItem.date} at ${selectedItem.time}`}</p>
+              
               {selectedItem.is_expired ? (
                 <div className="tele-timer-badge" style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fee2e2' }}>
                   <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444', marginRight: '6px' }}></span>
@@ -79,6 +153,8 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                   <Clock size={14} /> Starts in {selectedItem.time_left_minutes} minutes
                 </div>
               )}
+
+              {/* Status Banner */}
               {(() => {
                 const minutesLeft = selectedItem.time_left_minutes || 0;
                 const hasLink = !!selectedItem.meeting_link;
@@ -88,94 +164,96 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                 if (isExpired) {
                   return (
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: '#fef2f2',
-                      border: '1px solid #fee2e2',
-                      color: '#ef4444',
-                      padding: '10px 14px',
-                      borderRadius: '6px',
-                      fontSize: '0.82rem',
-                      margin: '14px 0',
-                      fontWeight: 500,
-                      textAlign: 'left'
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      background: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '0.82rem', margin: '14px 0',
+                      fontWeight: 500, textAlign: 'left'
                     }}>
                       <span>⚠️ This consultation session has expired or the scheduled time slot has passed. Please contact the clinic if you need to reschedule.</span>
                     </div>
                   );
-                } else if (canJoin) {
+                } else if (canJoin && isMandatoryComplete) {
                   return (
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: '#f0fdf4',
-                      border: '1px solid #bbf7d0',
-                      color: '#16a34a',
-                      padding: '10px 14px',
-                      borderRadius: '6px',
-                      fontSize: '0.82rem',
-                      margin: '14px 0',
-                      fontWeight: 500,
-                      textAlign: 'left'
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '0.82rem', margin: '14px 0',
+                      fontWeight: 500, textAlign: 'left'
                     }}>
-                      <span>✅ {selectedItem.doctor_name?.startsWith('Dr.') ? selectedItem.doctor_name : `Dr. ${selectedItem.doctor_name || 'Clinician'}`} is ready. Click below to enter the secure room.</span>
+                      <span>✅ {selectedItem.doctor_name?.startsWith('Dr.') ? selectedItem.doctor_name : `Dr. ${selectedItem.doctor_name || 'Clinician'}`} is ready and pre-checks are complete. Click below to join room.</span>
+                    </div>
+                  );
+                } else if (canJoin && !isMandatoryComplete) {
+                  return (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      background: '#fff7ed', border: '1px solid #ffedd5', color: '#c2410c',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '0.82rem', margin: '14px 0',
+                      fontWeight: 500, textAlign: 'left'
+                    }}>
+                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                      <span>🔒 Room is open, but please complete all mandatory Pre-Consultation Checklist items on the right to unlock "Join Meeting".</span>
                     </div>
                   );
                 } else if (hasLink || (minutesLeft > 0 && minutesLeft <= 30)) {
                   return (
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      color: '#2563eb',
-                      padding: '10px 14px',
-                      borderRadius: '6px',
-                      fontSize: '0.82rem',
-                      margin: '14px 0',
-                      fontWeight: 500,
-                      textAlign: 'left'
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '0.82rem', margin: '14px 0',
+                      fontWeight: 500, textAlign: 'left'
                     }}>
-                      <span>💻 Your consultation room is ready! The "Join Meeting" button will activate exactly 10 minutes before your start time.</span>
+                      <span>💻 Your consultation room is ready! The "Join Meeting" button will activate 10 minutes before your start time once checklist is ready.</span>
                     </div>
                   );
                 } else {
                   return (
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: '#fef3c7',
-                      border: '1px solid #fde68a',
-                      color: '#d97706',
-                      padding: '10px 14px',
-                      borderRadius: '6px',
-                      fontSize: '0.82rem',
-                      margin: '14px 0',
-                      fontWeight: 500,
-                      textAlign: 'left'
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      background: '#fef3c7', border: '1px solid #fde68a', color: '#d97706',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '0.82rem', margin: '14px 0',
+                      fontWeight: 500, textAlign: 'left'
                     }}>
-                      <span>🕒 A secure consultation room will be prepared 30 minutes before your appointment. The "Join Meeting" button will activate 10 minutes prior to the start.</span>
+                      <span>🕒 A secure consultation room will be prepared 30 minutes before your appointment.</span>
                     </div>
                   );
                 }
               })()}
+
+              {/* Join Meeting Action Button */}
               <button
                 onClick={() => handleJoinMeeting(selectedItem.id)}
                 className="tele-btn-join"
-                disabled={!selectedItem.can_join}
+                disabled={!selectedItem.can_join || !isMandatoryComplete}
                 style={{
-                  cursor: selectedItem.can_join ? 'pointer' : 'not-allowed',
-                  opacity: selectedItem.can_join ? 1 : 0.6
+                  cursor: (selectedItem.can_join && isMandatoryComplete) ? 'pointer' : 'not-allowed',
+                  opacity: (selectedItem.can_join && isMandatoryComplete) ? 1 : 0.55,
+                  backgroundColor: (selectedItem.can_join && isMandatoryComplete) ? 'var(--primary, #0ea5e9)' : '#94a3b8',
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+                title={!isMandatoryComplete ? 'Please complete all required pre-consultation checklist items to enable' : ''}
+              >
+                <Video size={16} /> 
+                {(!isMandatoryComplete && selectedItem.can_join) ? '🔒 Complete Checklist to Join' : 'Join Meeting'}
+              </button>
+
+              {/* Direct Messaging Drawer Button */}
+              <button
+                className="tele-btn-message"
+                onClick={() => setIsChatOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
                 }}
               >
-                <Video size={16} /> Join Meeting
-              </button>
-              <button className="tele-btn-message" onClick={() => triggerToast('success', 'Message sent to the clinic support team!')}>
-                Send Message to Clinic
+                <MessageSquare size={16} /> Send Direct Message to Clinic
               </button>
             </>
           ) : (
@@ -229,39 +307,99 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                 <p className="tele-summary-text" style={{ fontStyle: 'italic' }}>{selectedItem.recommendations}</p>
               </div>
 
-              <button
-                className="btn-secondary"
-                style={{ marginTop: '24px', width: '100%', justifyContent: 'center' }}
-                onClick={() => triggerToast('success', 'Summary receipt sent to registered email address.')}
-              >
-                ✉ Email Summary PDF
-              </button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+                <button
+                  className="btn-secondary"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => setIsChatOpen(true)}
+                >
+                  <MessageSquare size={14} /> Message Clinic
+                </button>
+
+                <button
+                  className="btn-secondary"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => triggerToast('success', 'Summary receipt sent to registered email address.')}
+                >
+                  ✉ Email Summary PDF
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Right Column: List & Checklist */}
+        {/* Right Column: List & Interactive Checklist */}
         <div className="tele-sidebar-cards">
-          {/* Pre-Consultation Checklist */}
+          {/* Pre-Consultation Interactive Checklist */}
           <div className="tele-checklist-card">
-            <h3 className="tele-card-title">Pre-Consultation Checklist</h3>
-            <ul className="tele-checklist">
-              {checklist.length > 0 ? (
-                checklist.map((item) => (
-                  <li key={item.id}>
-                    <span className="tele-check-icon">✓</span>
-                    {item.text}
-                  </li>
-                ))
-              ) : (
-                <>
-                  <li><span className="tele-check-icon">✓</span> Stable Internet connection tested</li>
-                  <li><span className="tele-check-icon">✓</span> Good lighting on your face</li>
-                  <li><span className="tele-check-icon">✓</span> Recent X-ray uploaded (optional)</li>
-                  <li><span className="tele-check-icon">✓</span> List of current symptoms ready</li>
-                </>
-              )}
-            </ul>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h3 className="tele-card-title" style={{ margin: 0 }}>Pre-Consultation Checklist</h3>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: isMandatoryComplete ? '#16a34a' : '#ea580c',
+                  backgroundColor: isMandatoryComplete ? '#f0fdf4' : '#fff7ed',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: isMandatoryComplete ? '1px solid #bbf7d0' : '1px solid #ffedd5',
+                }}
+              >
+                {progressPercent}% Done
+              </span>
+            </div>
+
+            <p style={{ fontSize: '0.78rem', color: 'var(--muted, #64748b)', margin: '0 0 12px 0', lineHeight: 1.4 }}>
+              Complete the 4 required steps below to unlock your video consultation:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[
+                { key: 'net', label: 'Stable Internet connection tested', req: true },
+                { key: 'light', label: 'Good lighting on your face', req: true },
+                { key: 'media', label: 'Camera & Microphone working', req: true },
+                { key: 'symptoms', label: 'List of current symptoms ready', req: true },
+                { key: 'report', label: 'Recent diagnostic report uploaded', req: false },
+              ].map(({ key, label, req }) => {
+                const isChecked = checklistState[key as keyof ChecklistState];
+                return (
+                  <div
+                    key={key}
+                    onClick={() => toggleChecklistItem(key as keyof ChecklistState)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: isChecked ? '#f0fdf4' : '#ffffff',
+                      border: isChecked ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none',
+                    }}
+                  >
+                    {isChecked ? (
+                      <CheckSquare size={18} color="#16a34a" style={{ flexShrink: 0 }} />
+                    ) : (
+                      <Square size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    )}
+
+                    <span
+                      style={{
+                        fontSize: '0.83rem',
+                        fontWeight: isChecked ? 600 : 400,
+                        color: isChecked ? '#15803d' : '#334155',
+                        textDecoration: isChecked ? 'none' : 'none',
+                        flex: 1,
+                      }}
+                    >
+                      {label} {req && <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>*</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* All Consultations List */}
@@ -298,6 +436,14 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Slide-over Chat Drawer Modal */}
+      <ChatDrawerModal
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        appointment={selectedItem}
+        triggerToast={triggerToast}
+      />
     </div>
   );
 };

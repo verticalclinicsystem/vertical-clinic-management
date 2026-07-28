@@ -270,6 +270,18 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     setBookingStep(2);
   };
 
+  // Auto re-fetch slots when consultationType changes for selected doctor & date
+  useEffect(() => {
+    if (selectedDoctorId && bookingDate) {
+      api
+        .get(
+          `/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${bookingDate}&consultation_type=${consultationType}`
+        )
+        .then((res) => setAvailableSlots(extractArrayData(res.data)))
+        .catch(() => {});
+    }
+  }, [consultationType, selectedDoctorId, bookingDate]);
+
   const handleDoctorSelect = async (doctorId: string) => {
     setSelectedDoctorId(doctorId);
     
@@ -286,7 +298,9 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
 
     if (doctorId && todayStr) {
       try {
-        const res = await api.get(`/appointments/available-slots?doctor_id=${doctorId}&date=${todayStr}`);
+        const res = await api.get(
+          `/appointments/available-slots?doctor_id=${doctorId}&date=${todayStr}&consultation_type=${consultationType}`
+        );
         setAvailableSlots(extractArrayData(res.data));
       } catch (err: any) {
         triggerToast('error', 'Failed to fetch doctor availability slots.');
@@ -299,7 +313,9 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     setBookingSlot('');
     if (selectedDoctorId && date) {
       try {
-        const res = await api.get(`/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${date}`);
+        const res = await api.get(
+          `/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${date}&consultation_type=${consultationType}`
+        );
         setAvailableSlots(extractArrayData(res.data));
       } catch (err: any) {
         triggerToast('error', 'Failed to fetch doctor availability slots.');

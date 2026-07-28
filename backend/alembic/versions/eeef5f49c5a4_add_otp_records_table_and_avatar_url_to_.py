@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # ── Add avatar_url column to users table ──────────────────────────────────
-    op.add_column('users', sa.Column('avatar_url', sa.Text(), nullable=True))
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;")
 
     # ── Create otp_records table (raw SQL to avoid enum re-creation) ──────────
     op.execute("""
