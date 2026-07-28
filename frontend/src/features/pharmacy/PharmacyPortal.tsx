@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, 
   Package, 
@@ -18,7 +18,8 @@ import {
   FileText,
   ShoppingCart,
   Calendar,
-  Clock
+  Clock,
+  Settings
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './PharmacyPortal.css';
@@ -33,8 +34,23 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
   useEffect(() => {
     localStorage.setItem('pharmacy_portal_tab', activeTab);
   }, [activeTab]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('Satellite');
+  const [selectedBranch] = useState<string>('Satellite');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   
   // Data State
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
@@ -402,41 +418,44 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             <p className="pharmacy-page-subtitle">Pharmacist Portal · {selectedBranch} Branch</p>
           </div>
 
-          {activeTab !== 'dispense' && (
-            <div className="pharmacy-search-wrapper">
-              <Search className="pharmacy-search-icon" size={16} />
-              <input 
-                type="text" 
-                className="pharmacy-search-input" 
-                placeholder={
-                  activeTab === 'inventory' 
-                    ? "Search medicines, categories, suppliers..." 
-                    : "Search prescriptions, patients, doctors..."
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="pharmacy-topbar-right">
+          <div className="pharmacy-topbar-right" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <button 
               className="pharmacy-btn pharmacy-btn-outline" 
               onClick={fetchData} 
               title="Refresh Data"
               disabled={loading}
+              style={{ height: '40px', width: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }}
             >
               <RefreshCw size={16} className={loading ? 'pharmacy-spinner' : ''} />
             </button>
-            <select 
-              className="pharmacy-branch-select"
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-            >
-              <option value="Satellite">Satellite Branch</option>
-              <option value="Bopal">Bopal Branch</option>
-              <option value="Navrangpura">Navrangpura Branch</option>
-            </select>
+
+            <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+              <div 
+                className="pharmacy-profile-badge" 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="pharmacy-profile-avatar" style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                  PH
+                </div>
+                <div className="pharmacy-profile-info">
+                  <span className="pharmacy-profile-name">Pharmacist Team</span>
+                  <span className="pharmacy-profile-role">Pharmacy</span>
+                </div>
+              </div>
+
+              {isProfileDropdownOpen && (
+                <div className="profile-dropdown-menu">
+                  <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
+                    <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
+                  </button>
+                  <div className="profile-dropdown-divider"></div>
+                  <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Switch Role
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -571,6 +590,20 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             {/* Rx Queue View */}
             {activeTab === 'rxqueue' && (
               <div className="pharmacy-card">
+                <div className="pharmacy-card-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+                  <h3 className="pharmacy-card-title" style={{ margin: 0 }}>Prescription Queue</h3>
+                  <div className="pharmacy-search-wrapper" style={{ margin: 0, width: '280px', position: 'relative' }}>
+                    <Search className="pharmacy-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                    <input 
+                      type="text" 
+                      className="pharmacy-search-input" 
+                      style={{ paddingLeft: '36px', height: '38px', width: '100%', fontSize: '0.85rem' }} 
+                      placeholder="Search prescriptions, patients..." 
+                      value={searchQuery} 
+                      onChange={e => setSearchQuery(e.target.value)} 
+                    />
+                  </div>
+                </div>
                 <div className="pharmacy-table-wrap">
                   <table className="pharmacy-table">
                     <thead>
@@ -866,14 +899,27 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             {/* Inventory View */}
             {activeTab === 'inventory' && (
               <div className="pharmacy-card">
-                <div className="pharmacy-card-header">
-                  <h3 className="pharmacy-card-title">Medicine Catalogue</h3>
-                  <button 
-                    className="pharmacy-btn pharmacy-btn-primary"
-                    onClick={() => setShowAddModal(true)}
-                  >
-                    <Plus size={16} /> Add Medicine
-                  </button>
+                <div className="pharmacy-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 className="pharmacy-card-title" style={{ margin: 0 }}>Medicine Catalogue</h3>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div className="pharmacy-search-wrapper" style={{ margin: 0, width: '280px', position: 'relative' }}>
+                      <Search className="pharmacy-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                      <input 
+                        type="text" 
+                        className="pharmacy-search-input" 
+                        style={{ paddingLeft: '36px', height: '38px', width: '100%', fontSize: '0.85rem' }} 
+                        placeholder="Search medicines, categories..." 
+                        value={searchQuery} 
+                        onChange={e => setSearchQuery(e.target.value)} 
+                      />
+                    </div>
+                    <button 
+                      className="pharmacy-btn pharmacy-btn-primary"
+                      onClick={() => setShowAddModal(true)}
+                    >
+                      <Plus size={16} /> Add Medicine
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pharmacy-table-wrap">

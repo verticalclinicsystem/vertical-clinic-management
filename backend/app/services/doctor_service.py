@@ -188,6 +188,7 @@ class DoctorService:
             "doctor": {
                 "id": str(doctor.id),
                 "branch_id": str(doctor.branch_id) if doctor.branch_id else None,
+                "branch_name": doctor.branch.name if doctor.branch else None,
                 "availability_metadata": doctor.availability_metadata,
             },
             "today_appointments": today_appointments,

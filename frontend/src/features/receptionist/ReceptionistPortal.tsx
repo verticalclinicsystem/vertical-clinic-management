@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, 
   Calendar, 
@@ -21,7 +21,9 @@ import {
   User,
   ArrowRight,
   Stethoscope,
-  Trash2
+  Trash2,
+  Settings,
+  Bell
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './ReceptionistPortal.css';
@@ -68,6 +70,80 @@ const formatTimeToAMPM = (timeStr: string): string => {
 
 export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('receptionist_portal_tab') || 'dashboard');
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotiDropdownOpen, setIsNotiDropdownOpen] = useState(false);
+  const notiDropdownRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get('/notifications');
+      if (res.data?.success) {
+        setNotifications(res.data.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load notifications", err);
+    }
+  };
+
+  const handleMarkNotificationRead = async (id: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (err) {
+      console.error("Failed to mark notification as read", err);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error("Failed to mark all notifications as read", err);
+    }
+  };
+
+  const formatRelativeTime = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'Yesterday';
+      return date.toLocaleDateString();
+    } catch {
+      return '';
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+      if (notiDropdownRef.current && !notiDropdownRef.current.contains(event.target as Node)) {
+        setIsNotiDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('receptionist_portal_tab', activeTab);
@@ -890,29 +966,117 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             </span>
           </div>
 
-          <div className="recep-topbar-right">
-            {/* Branch Selector */}
-            <select
-              className="recep-branch-select"
-              value={selectedBranchId}
-              onChange={(e) => setSelectedBranchId(e.target.value)}
-            >
-              {branches.map((br) => (
-                <option key={br.id} value={br.id}>
-                  {br.name} ({br.code})
-                </option>
-              ))}
-            </select>
+          <div className="recep-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
+              <button 
+                onClick={() => setIsNotiDropdownOpen(!isNotiDropdownOpen)}
+                style={{ border: 'none', background: 'none', position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
+              >
+                <Bell size={20} color="#64748b" />
+                {notifications.filter(n => !n.is_read).length > 0 && (
+                  <span style={{ position: 'absolute', top: '2px', right: '2px', width: '8px', height: '8px', backgroundColor: '#ef4444', borderRadius: '50%' }} />
+                )}
+              </button>
 
-            {/* Profile Avatar */}
-            <div className="recep-profile-badge">
-              <div className="recep-profile-avatar">
-                {currentUser?.full_name?.slice(0, 2).toUpperCase() || 'RE'}
+              {isNotiDropdownOpen && (
+                <div className="notifications-dropdown" style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 10px)',
+                  right: 0,
+                  width: '320px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  zIndex: 200,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div className="notifications-header" style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #f1f5f9'
+                  }}>
+                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Notifications</h4>
+                    {notifications.filter(n => !n.is_read).length > 0 && (
+                      <button 
+                        className="notifications-clear-btn" 
+                        onClick={() => { handleMarkAllNotificationsRead(); setIsNotiDropdownOpen(false); }}
+                        style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+                  <div className="notifications-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div className="notifications-empty" style={{ padding: '24px', textAlign: 'center', fontSize: '0.85rem', color: '#64748b' }}>
+                        No notifications yet.
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div
+                          key={n.id}
+                          className={`notification-item ${!n.is_read ? 'unread' : ''}`}
+                          onClick={() => {
+                            if (!n.is_read) {
+                              handleMarkNotificationRead(n.id);
+                            }
+                          }}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                            backgroundColor: n.is_read ? 'transparent' : 'rgba(12, 110, 140, 0.03)',
+                            transition: 'background-color 0.2s',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px'
+                          }}
+                        >
+                          <div className="notification-item-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: n.is_read ? 500 : 600, color: '#1e293b' }}>{n.title}</span>
+                            {!n.is_read && <span className="notification-unread-dot" style={{ width: '6px', height: '6px', backgroundColor: '#3b82f6', borderRadius: '50%' }} />}
+                          </div>
+                          <div className="notification-item-msg" style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.4 }}>{n.message}</div>
+                          <div className="notification-item-time" style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '4px' }}>{formatRelativeTime(n.created_at)}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+              <div 
+                className="recep-profile-badge" 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="recep-profile-avatar">
+                  {currentUser?.full_name?.slice(0, 2).toUpperCase() || 'RE'}
+                </div>
+                <div className="recep-profile-info">
+                  <span className="recep-profile-name">{currentUser?.full_name || 'Front Desk Staff'}</span>
+                  <span className="recep-profile-role">Receptionist</span>
+                </div>
               </div>
-              <div className="recep-profile-info">
-                <span className="recep-profile-name">{currentUser?.full_name || 'Front Desk Staff'}</span>
-                <span className="recep-profile-role">Receptionist</span>
-              </div>
+
+              {isProfileDropdownOpen && (
+                <div className="profile-dropdown-menu">
+                  <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
+                    <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
+                  </button>
+                  <div className="profile-dropdown-divider"></div>
+                  <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Switch Role
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Menu, Search, Bell, Settings } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Menu, Bell, Settings, User, LogOut } from 'lucide-react';
 
 interface PatientHeaderProps {
   screen: string;
@@ -7,6 +7,10 @@ interface PatientHeaderProps {
   setIsMobileSidebarOpen: (open: boolean) => void;
   setScreen: (screen: any) => void;
   getInitials: (name?: string) => string;
+  notifications: any[];
+  onMarkRead: (id: string) => void;
+  onMarkAllRead: () => void;
+  onLogout: () => void;
 }
 
 export const PatientHeader: React.FC<PatientHeaderProps> = ({
@@ -15,7 +19,52 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
   setIsMobileSidebarOpen,
   setScreen,
   getInitials,
+  notifications = [],
+  onMarkRead,
+  onMarkAllRead,
+  onLogout,
 }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const formatRelativeTime = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'Yesterday';
+      return date.toLocaleDateString();
+    } catch {
+      return '';
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
   return (
     <header className="portal-topbar">
       <button onClick={() => setIsMobileSidebarOpen(true)} className="topbar-menu-btn">
@@ -29,31 +78,82 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
       </div>
 
       <div className="topbar-actions">
-        <div className="topbar-search-wrapper">
-          <Search className="topbar-search-icon" size={16} />
-          <input
-            type="text"
-            placeholder="Search patients, appointments, invoices..."
-            className="topbar-search-input"
-          />
+        <div className="notifications-wrapper" ref={dropdownRef}>
+          <button className="topbar-icon-btn" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+            <Bell size={18} />
+            {unreadCount > 0 && (
+              <span className="notification-badge">{unreadCount}</span>
+            )}
+          </button>
+
+          {isDropdownOpen && (
+            <div className="notifications-dropdown">
+              <div className="notifications-header">
+                <h4>Notifications</h4>
+                {unreadCount > 0 && (
+                  <button className="notifications-clear-btn" onClick={() => { onMarkAllRead(); setIsDropdownOpen(false); }}>
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+              <div className="notifications-list">
+                {notifications.length === 0 ? (
+                  <div className="notifications-empty">No notifications yet.</div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`notification-item ${!n.is_read ? 'unread' : ''}`}
+                      onClick={() => {
+                        if (!n.is_read) {
+                          onMarkRead(n.id);
+                        }
+                      }}
+                    >
+                      <div className="notification-item-title">
+                        <span>{n.title}</span>
+                        {!n.is_read && <span className="notification-unread-dot" />}
+                      </div>
+                      <div className="notification-item-msg">{n.message}</div>
+                      <div className="notification-item-time">{formatRelativeTime(n.created_at)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        <button className="topbar-icon-btn">
-          <Bell size={18} />
-        </button>
-        <button className="topbar-icon-btn" onClick={() => setScreen('preferences')}>
-          <Settings size={18} />
-        </button>
-
         {patientProfile && (
-          <div className="topbar-profile">
-            <div className="topbar-avatar">
-              {getInitials(patientProfile.user?.full_name)}
+          <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+            <div 
+              className="topbar-profile" 
+              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="topbar-avatar">
+                {getInitials(patientProfile.user?.full_name)}
+              </div>
+              <div className="topbar-user-info">
+                <span className="topbar-user-name">{patientProfile.user?.full_name}</span>
+                <span className="topbar-user-role">Patient</span>
+              </div>
             </div>
-            <div className="topbar-user-info">
-              <span className="topbar-user-name">{patientProfile.user?.full_name}</span>
-              <span className="topbar-user-role">Patient</span>
-            </div>
+
+            {isProfileDropdownOpen && (
+              <div className="profile-dropdown-menu">
+                <button onClick={() => { setScreen('profile'); setIsProfileDropdownOpen(false); }}>
+                  <User size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> View Profile
+                </button>
+                <button onClick={() => { setScreen('preferences'); setIsProfileDropdownOpen(false); }}>
+                  <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Settings
+                </button>
+                <div className="profile-dropdown-divider"></div>
+                <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                  <LogOut size={14} style={{ color: '#dc2626' }} /> Sign Out
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

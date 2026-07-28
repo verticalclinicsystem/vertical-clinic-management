@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Home, BarChart2, Package, Users, Layers,
   Settings, LogOut, Search, Bell, Plus,
@@ -51,6 +51,20 @@ function DonutChart({ segments, total, label }: { segments: { value: number; col
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('admin_portal_tab') || 'dashboard');
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('admin_portal_tab', activeTab);
@@ -412,21 +426,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </h1>
             <p className="admin-page-subtitle">Admin Portal · Vertical Clinic</p>
           </div>
-          <div className="admin-search-wrapper">
-            <Search className="admin-search-icon" size={16} />
-            <input type="text" className="admin-search-input" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-          </div>
           <div className="admin-topbar-right">
             <button className="admin-icon-btn" title="Refresh" onClick={fetchDashboard}>
               <RefreshCw size={16} className={loading ? 'spin' : ''} />
             </button>
             <button className="admin-icon-btn"><Bell size={18} /></button>
-            <div className="admin-profile-badge">
-              <div className="admin-profile-avatar">{initials}</div>
-              <div className="admin-profile-info">
-                <span className="admin-profile-name">{currentUser?.full_name || 'Admin'}</span>
-                <span className="admin-profile-role">Admin</span>
+
+            <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+              <div 
+                className="admin-profile-badge" 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-profile-avatar">{initials}</div>
+                <div className="admin-profile-info">
+                  <span className="admin-profile-name">{currentUser?.full_name || 'Admin'}</span>
+                  <span className="admin-profile-role">Admin</span>
+                </div>
               </div>
+
+              {isProfileDropdownOpen && (
+                <div className="profile-dropdown-menu">
+                  <button onClick={() => { setActiveTab('settings'); setIsProfileDropdownOpen(false); }}>
+                    <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Settings
+                  </button>
+                  <div className="profile-dropdown-divider"></div>
+                  <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Switch Role
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -520,8 +549,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           {/* ── INVENTORY ── */}
           {activeTab === 'inventory' && (
             <div className="admin-card">
-              <div className="admin-card-actions">
+              <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="admin-card-title">Pharmacy Medicine Stock</h2>
+                <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
+                  <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
+                  <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search medicines..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
                 <div className="admin-table-container">
@@ -545,14 +578,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </div>
           )}
 
-          {/* ── STAFF ── */}
           {activeTab === 'staff' && (
             <div className="admin-card">
-              <div className="admin-card-actions">
+              <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="admin-card-title">Clinic Staff Directory</h2>
-                <button className="admin-btn-primary" onClick={() => { setIsAddingStaff(true); setShowPassword(false); }}>
-                  <Plus size={16} /> Add Staff Member
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
+                    <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
+                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search staff..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  </div>
+                  <button className="admin-btn-primary" onClick={() => { setIsAddingStaff(true); setShowPassword(false); }}>
+                    <Plus size={16} /> Add Staff Member
+                  </button>
+                </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
                 <div className="admin-table-container">
@@ -598,9 +636,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="admin-card-title" style={{ margin: 0 }}>Active Branches</h2>
-                <button className="admin-btn-primary" onClick={() => setIsAddingBranch(true)}>
-                  <Plus size={16} /> Add Branch
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
+                    <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
+                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search branches..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  </div>
+                  <button className="admin-btn-primary" onClick={() => setIsAddingBranch(true)}>
+                    <Plus size={16} /> Add Branch
+                  </button>
+                </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>

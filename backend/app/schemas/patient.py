@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Any
+from pydantic import BaseModel, field_validator
 from app.schemas.auth import UserOut
 
 
@@ -122,5 +123,29 @@ class PatientPreferencesUpdate(BaseModel):
     preferred_doctor_id: uuid.UUID | None = None
     preferred_branch_id: uuid.UUID | None = None
     consultation_preference: str | None = None
+
+    @field_validator(
+        "notification_email",
+        "notification_sms",
+        "notification_whatsapp",
+        "notification_push",
+        mode="before"
+    )
+    @classmethod
+    def validate_notification_boolean(cls, v: Any) -> bool | None:
+        if v is None:
+            raise ValueError("Notification preferences cannot be null/None. Must be a boolean value.")
+        if isinstance(v, str):
+            if v.lower() in ("true", "1", "yes", "on"):
+                return True
+            if v.lower() in ("false", "0", "no", "off"):
+                return False
+            raise ValueError(f"Invalid boolean value: {v}")
+        if isinstance(v, bool):
+            return v
+        try:
+            return bool(v)
+        except Exception:
+            raise ValueError(f"Could not convert to boolean: {v}")
 
 

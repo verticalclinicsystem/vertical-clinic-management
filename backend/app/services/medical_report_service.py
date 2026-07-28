@@ -35,6 +35,20 @@ class MedicalReportService:
         })
         await self.db.commit()
         logger.info(f"Medical report created for patient {patient.patient_code}: {report.id}")
+
+        # Send Medical Report notification
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            await noti_service.send_multichannel_notification(
+                user_id=user_id,
+                title="Medical Report Uploaded",
+                message=f"Your new medical report ({report_name}) has been uploaded and is ready to view.",
+                type="report"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send medical report notification: {e}")
+
         return report
 
     async def get_reports_by_user_id(self, user_id: uuid.UUID) -> list[MedicalReport]:

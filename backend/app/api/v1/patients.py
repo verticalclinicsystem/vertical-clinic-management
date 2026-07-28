@@ -237,6 +237,7 @@ async def get_patient_dashboard(
             "visits_this_year": visits_this_year,
             "upcoming_appointments": [to_patient_appt_out(a) for a in upcoming_appointments],
             "appointment_history": [to_patient_appt_out(a) for a in appointment_history],
+            "past_appointments": [to_patient_appt_out(a) for a in appointment_history],
             "prescriptions": [PrescriptionOut.model_validate(p) for p in prescriptions],
             "recent_prescriptions": [PrescriptionOut.model_validate(p) for p in prescriptions],
             "medical_history": [ConsultationOut.model_validate(c) for c in consultations],
@@ -773,10 +774,14 @@ async def get_patient_preferences(
     )
 
 
-# ── 9. PATCH /patients/me/preferences ────────────────────────────────────────
+# ── 9. PATCH / PUT /patients/me/preferences ──────────────────────────────────
 @router.patch(
     "/me/preferences",
     summary="Update logged-in patient's preferences",
+)
+@router.put(
+    "/me/preferences",
+    summary="Update logged-in patient's preferences (PUT fallback)",
 )
 async def update_patient_preferences(
     request: PatientPreferencesUpdate,

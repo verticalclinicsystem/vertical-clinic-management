@@ -762,6 +762,41 @@ async def test_receptionist_can_create_walkin_patient(client: AsyncClient):
     assert "patient_code" in res_json["data"]
 
 
+@pytest.mark.asyncio
+async def test_patient_preferences_boolean_validation(client: AsyncClient):
+    """Verify that preference updates validate boolean values and reject invalid types/nulls."""
+    # 1. Login as patient
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token = login_res.json()["data"]["access_token"]
+
+    # 2. Update preferences with valid boolean strings -> Success (coerced)
+    patch_res = await client.patch(
+        "/api/v1/patients/me/preferences",
+        json={
+            "notification_email": "false",
+            "notification_push": "true",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["data"]["notification_email"] is False
+    assert patch_res.json()["data"]["notification_push"] is True
+
+    # 3. Update preferences with invalid null/None value -> Validation Error (422)
+    patch_invalid_res = await client.patch(
+        "/api/v1/patients/me/preferences",
+        json={
+            "notification_email": None,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_invalid_res.status_code == 422
+
+
+
 
 
 

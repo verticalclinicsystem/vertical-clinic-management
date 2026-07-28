@@ -114,59 +114,6 @@ async def list_invoices(
     )
 
 
-# ── 3. GET /billing/{invoice_id} ────────────────────────────────────────────────
-@router.get(
-    "/{invoice_id}",
-    summary="Get invoice details",
-)
-async def get_invoice(
-    invoice_id: UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> JSONResponse:
-    """Fetch details of a single invoice (accessible by involved patient or staff)."""
-    service = BillingService(db)
-    invoice = await service.get_invoice(invoice_id)
-
-    # Permission check
-    if current_user.role == UserRole.PATIENT:
-        patient_service = PatientService(db)
-        patient = await patient_service.get_patient_by_user_id(current_user.id)
-        if invoice.patient_id != patient.id:
-            raise PermissionDeniedError("Access to this invoice is denied.")
-
-    return ApiResponse.success(
-        data=invoice_to_out(invoice),
-        message="Invoice details retrieved successfully.",
-    )
-
-
-# ── 4. PUT /billing/{invoice_id} ────────────────────────────────────────────────
-@router.put(
-    "/{invoice_id}",
-    summary="Update invoice",
-)
-async def update_invoice(
-    invoice_id: UUID,
-    request: InvoiceUpdate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> JSONResponse:
-    """
-    Update invoice details.
-    - Restricted to Receptionists or Admins.
-    """
-    if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
-        raise PermissionDeniedError("Only receptionists or admins can modify invoices.")
-
-    service = BillingService(db)
-    updated = await service.update_invoice(invoice_id, request)
-    return ApiResponse.success(
-        data=invoice_to_out(updated),
-        message="Invoice updated successfully.",
-    )
-
-
 def calculate_medicine_qty(dosage: str, duration: str) -> int:
     import re
     # Default to 10 if we can't parse
@@ -330,6 +277,62 @@ async def calculate_pending_charges(
         },
         message="Pending charges calculated successfully."
     )
+
+
+# ── 3. GET /billing/{invoice_id} ────────────────────────────────────────────────
+@router.get(
+    "/{invoice_id}",
+    summary="Get invoice details",
+)
+async def get_invoice(
+    invoice_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Fetch details of a single invoice (accessible by involved patient or staff)."""
+    service = BillingService(db)
+    invoice = await service.get_invoice(invoice_id)
+
+    # Permission check
+    if current_user.role == UserRole.PATIENT:
+        patient_service = PatientService(db)
+        patient = await patient_service.get_patient_by_user_id(current_user.id)
+        if invoice.patient_id != patient.id:
+            raise PermissionDeniedError("Access to this invoice is denied.")
+
+    return ApiResponse.success(
+        data=invoice_to_out(invoice),
+        message="Invoice details retrieved successfully.",
+    )
+
+
+# ── 4. PUT /billing/{invoice_id} ────────────────────────────────────────────────
+@router.put(
+    "/{invoice_id}",
+    summary="Update invoice",
+)
+async def update_invoice(
+    invoice_id: UUID,
+    request: InvoiceUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """
+    Update invoice details.
+    - Restricted to Receptionists or Admins.
+    """
+    if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
+        raise PermissionDeniedError("Only receptionists or admins can modify invoices.")
+
+    service = BillingService(db)
+    updated = await service.update_invoice(invoice_id, request)
+    return ApiResponse.success(
+        data=invoice_to_out(updated),
+        message="Invoice updated successfully.",
+    )
+
+
+
 
 
 @router.get("/{invoice_id}/pdf", response_class=Response)

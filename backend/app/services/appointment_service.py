@@ -354,7 +354,26 @@ class AppointmentService:
             request.appointment_datetime,
             request.consultation_type
         )
-        return await self.get_appointment(created.id)
+        full_appt = await self.get_appointment(created.id)
+        
+        # Send notification
+        from app.services.notification_service import NotificationService
+        try:
+            noti_service = NotificationService(self.db)
+            if full_appt.patient:
+                doc_name = full_appt.doctor.user.full_name if full_appt.doctor and full_appt.doctor.user else 'Doctor'
+                time_str = full_appt.appointment_datetime.strftime('%Y-%m-%d %H:%M')
+                msg = f"Your appointment for {full_appt.treatment_type} with Dr. {doc_name} has been booked for {time_str}."
+                await noti_service.send_multichannel_notification(
+                    user_id=full_appt.patient.user_id,
+                    title="Appointment Booked",
+                    message=msg,
+                    type="general"
+                )
+        except Exception as e:
+            logger.error(f"Error creating booking notification: {e}")
+
+        return full_appt
 
     async def get_appointment(self, appointment_id: uuid.UUID) -> Appointment:
         """Fetch single appointment with preloaded details."""
@@ -516,7 +535,38 @@ class AppointmentService:
                 else:
                     update_data["cancelled_by"] = "System"
 
+        # Check if rescheduled or cancelled to send notification
+        rescheduled = request.appointment_datetime and request.appointment_datetime != appointment.appointment_datetime
+        cancelled = request.status == "cancelled" and appointment.status != "cancelled"
+
         updated = await self.appointment_repo.update(appointment, update_data)
         await self.db.commit()
         logger.info(f"Appointment updated: {updated.id}")
-        return await self.get_appointment(updated.id)
+
+        full_appt = await self.get_appointment(updated.id)
+
+        from app.services.notification_service import NotificationService
+        try:
+            noti_service = NotificationService(self.db)
+            doc_name = full_appt.doctor.user.full_name if full_appt.doctor and full_appt.doctor.user else 'Doctor'
+            time_str = full_appt.appointment_datetime.strftime('%Y-%m-%d %H:%M')
+            if cancelled:
+                msg = f"Your appointment for {full_appt.treatment_type} with Dr. {doc_name} has been cancelled."
+                await noti_service.send_multichannel_notification(
+                    user_id=full_appt.patient.user_id,
+                    title="Appointment Cancelled",
+                    message=msg,
+                    type="general"
+                )
+            elif rescheduled:
+                msg = f"Your appointment for {full_appt.treatment_type} with Dr. {doc_name} has been rescheduled to {time_str}."
+                await noti_service.send_multichannel_notification(
+                    user_id=full_appt.patient.user_id,
+                    title="Appointment Rescheduled",
+                    message=msg,
+                    type="general"
+                )
+        except Exception as e:
+            logger.error(f"Error sending update notification: {e}")
+
+        return full_appt
