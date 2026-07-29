@@ -476,3 +476,26 @@ async def reschedule_appointment_api(
     )
     return ApiResponse.success(data=to_appointment_out(updated, current_user.role), message="Appointment rescheduled.")
 
+
+@router.get("/{appointment_id}/meeting-link", summary="Get meeting link for teleconsultation")
+async def get_appointment_meeting_link(
+    appointment_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Get meeting link for a teleconsultation appointment."""
+    from app.services.teleconsult_service import TeleConsultService
+    tele_service = TeleConsultService(db)
+    join_info = await tele_service.validate_and_join_meeting(appointment_id, current_user.id)
+    room_name = join_info["meeting_url"]
+    return ApiResponse.success(
+        data={
+            "meeting_link": f"https://meet.element.io/{room_name}",
+            "room_name": room_name,
+            "doctor_name": join_info.get("doctor_name"),
+            "patient_name": join_info.get("patient_name"),
+        },
+        message="Meeting link retrieved successfully."
+    )
+
+

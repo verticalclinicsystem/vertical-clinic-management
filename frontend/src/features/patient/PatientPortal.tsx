@@ -484,9 +484,13 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
 
   const handleCancelSubmit = async () => {
     if (!cancelApptId) return;
+    if (!cancelReason || !cancelReason.trim()) {
+      triggerToast('error', 'Cancellation reason is required.');
+      return;
+    }
     setIsLoading(true);
     try {
-      await api.patch(`/appointments/${cancelApptId}/cancel`, { cancellation_reason: cancelReason || 'Patient requested cancellation' });
+      await api.patch(`/appointments/${cancelApptId}/cancel`, { cancellation_reason: cancelReason.trim(), cancel_reason: cancelReason.trim() });
       triggerToast('success', 'Appointment cancelled successfully.');
       setCancelApptId(null);
       setCancelReason('');
@@ -691,15 +695,23 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
 
   const handleJoinMeeting = async (appointmentId: string) => {
     try {
-      const res = await api.get(`/appointments/${appointmentId}/meeting-link`);
-      const link = res.data?.meeting_link;
-      if (link) {
-        window.open(link, '_blank');
-      } else {
-        triggerToast('error', 'Meeting link is not active yet.');
-      }
+      const res = await api.post(`/teleconsultations/${appointmentId}/signal-call`);
+      const data = res.data?.data || res.data;
+      const rawRoom = data?.room_name || data?.meeting_url || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
+      const cleanRoom = rawRoom.split('/').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
+      const link = `https://meet.element.io/${cleanRoom}`;
+      window.open(link, '_blank');
+      triggerToast('info', 'Ringing doctor... Launching teleconsultation room.');
     } catch (err: any) {
-      triggerToast('error', getErrorMessage(err, 'Could not retrieve meeting link.'));
+      try {
+        const res2 = await api.get(`/appointments/${appointmentId}/meeting-link`);
+        const rawRoom2 = res2.data?.data?.room_name || res2.data?.room_name || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
+        const cleanRoom2 = rawRoom2.split('/').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
+        const link2 = `https://meet.element.io/${cleanRoom2}`;
+        window.open(link2, '_blank');
+      } catch (e2) {
+        triggerToast('error', getErrorMessage(err, 'Could not start teleconsultation call.'));
+      }
     }
   };
 

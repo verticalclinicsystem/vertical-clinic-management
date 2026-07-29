@@ -348,20 +348,42 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
               <p style={{ fontSize: '0.9rem', marginBottom: '14px' }}>Are you sure you want to cancel this appointment? Cancellation is not allowed within 2 hours of the scheduled time.</p>
 
               <div className="form-group">
-                <label className="form-label">Reason for Cancellation</label>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Reason for Cancellation <span style={{ color: '#ef4444', fontWeight: 'bold' }}>*</span></span>
+                  <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '600', backgroundColor: '#fef2f2', padding: '2px 8px', borderRadius: '4px', border: '1px solid #fca5a5' }}>Mandatory</span>
+                </label>
                 <input
                   type="text"
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="e.g. Schedule conflict, feeling better"
+                  placeholder="e.g. Schedule conflict, emergency, feeling better"
                   className="form-input"
+                  required
+                  style={{
+                    borderColor: !cancelReason.trim() ? '#ef4444' : undefined,
+                    boxShadow: !cancelReason.trim() ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : undefined
+                  }}
                 />
+                {!cancelReason.trim() && (
+                  <span style={{ fontSize: '0.78rem', color: '#ef4444', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 500 }}>
+                    ⚠️ Please provide a cancellation reason to confirm.
+                  </span>
+                )}
               </div>
             </div>
 
             <footer className="modal-footer">
               <button onClick={() => setCancelApptId(null)} className="btn-secondary">Close</button>
-              <button onClick={handleCancelSubmit} className="btn-primary" style={{ backgroundColor: 'var(--error-red)', borderColor: 'var(--error-red)' }} disabled={isLoading}>
+              <button 
+                onClick={handleCancelSubmit} 
+                className="btn-primary" 
+                style={{ 
+                  backgroundColor: !cancelReason.trim() ? '#94a3b8' : 'var(--error-red)', 
+                  borderColor: !cancelReason.trim() ? '#94a3b8' : 'var(--error-red)',
+                  cursor: !cancelReason.trim() ? 'not-allowed' : 'pointer'
+                }} 
+                disabled={isLoading || !cancelReason.trim()}
+              >
                 {isLoading ? 'Cancelling...' : 'Confirm Cancellation'}
               </button>
             </footer>

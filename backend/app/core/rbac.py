@@ -2,27 +2,21 @@
 RBAC (Role-Based Access Control) permission matrix.
 Defines what each role can do throughout the system.
 """
-try:
-    from enum import StrEnum
-except ImportError:
-    from enum import Enum
-
-    class StrEnum(str, Enum):
-        pass
-
-
+from enum import Enum
 from fastapi import Depends
-
 from app.core.exceptions import PermissionDeniedError
 
 
-class UserRole(StrEnum):
+class UserRole(str, Enum):
     PATIENT = "patient"
     RECEPTIONIST = "receptionist"
     DOCTOR = "doctor"
     PHARMACIST = "pharmacist"
     ADMIN = "admin"
     CLINIC_MANAGER = "clinic_manager"
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 # ── Permission Registry ───────────────────────────────────────────────────────
