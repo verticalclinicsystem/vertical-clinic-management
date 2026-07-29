@@ -63,8 +63,8 @@ export const JitsiVideoModal: React.FC<JitsiVideoModalProps> = ({
           {/* LEFT PANEL: IN-APP JITSI VIDEO ROOM */}
           <div className="jitsi-video-wrapper">
             <JitsiMeeting
-              domain="meet.jit.si"
-              roomName={roomName}
+              domain="meet.element.io"
+              roomName={roomName ? roomName.toLowerCase().replace(/[^a-z0-9_]/g, '') : 'vclinic_teleconsult_room'}
               configOverwrite={{
                 startWithAudioMuted: false,
                 startWithVideoMuted: false,
@@ -72,6 +72,8 @@ export const JitsiVideoModal: React.FC<JitsiVideoModalProps> = ({
                 prejoinPageEnabled: false,
                 enableWelcomePage: false,
                 disableDeepLinking: true,
+                enableUserRolesBasedOnToken: false,
+                requireDisplayName: false,
               }}
               interfaceConfigOverwrite={{
                 TOOLBAR_BUTTONS: [

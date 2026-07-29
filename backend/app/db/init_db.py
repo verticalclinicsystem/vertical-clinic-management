@@ -4,6 +4,7 @@ Seeds real clinic data: branches, staff, doctors, patients, appointments, and cl
 No dummy/static data — everything goes into PostgreSQL.
 """
 from __future__ import annotations
+from typing import Any
 
 import logging
 import uuid
@@ -159,7 +160,7 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
         },
     ]
 
-    branch_ids: dict[str, uuid.UUID] = {}
+    branch_ids: dict[str, Any] = {}
     for data in branches_data:
         branch = Branch(**data)
         db.add(branch)
