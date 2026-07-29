@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    DateTime, Float, ForeignKey, Integer, String, Text, func
+    Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -53,6 +53,10 @@ class Consultation(Base):
     symptoms: Mapped[str | None] = mapped_column(Text, nullable=True)
     diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Follow-up Recommendation
+    followup_advised: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    followup_after_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Vitals
     vitals_bp: Mapped[str | None] = mapped_column(String(20), nullable=True)  # e.g., "120/80"
