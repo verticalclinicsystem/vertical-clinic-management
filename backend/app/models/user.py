@@ -18,6 +18,7 @@ class UserRole(str):
     DOCTOR = "doctor"
     PHARMACIST = "pharmacist"
     ADMIN = "admin"
+    CLINIC_MANAGER = "clinic_manager"
 
 
 class User(Base):
@@ -42,7 +43,7 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[str] = mapped_column(
         Enum(
-            "patient", "receptionist", "doctor", "pharmacist", "admin",
+            "patient", "receptionist", "doctor", "pharmacist", "admin", "clinic_manager",
             name="userrole"
         ),
         nullable=False,

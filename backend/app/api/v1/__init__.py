@@ -25,6 +25,7 @@ from app.api.v1 import (
     users,
     receptionists,
     availability_requests,
+    clinic_manager,
 )
 
 router = APIRouter()
@@ -50,4 +51,5 @@ router.include_router(chat.router,              prefix="/chat",             tags
 router.include_router(notifications.router,     prefix="/notifications",    tags=["System & Notifications"])
 router.include_router(ai.router,                prefix="/ai",               tags=["AI Assistant"])
 router.include_router(admin.router,             prefix="/admin",            tags=["Admin Portal"])
+router.include_router(clinic_manager.router,    prefix="/clinic-manager",   tags=["Clinic Manager Portal"])
 
