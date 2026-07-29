@@ -10,6 +10,7 @@ interface PatientHeaderProps {
   notifications: any[];
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
+  onClearAll?: () => void;
   onLogout: () => void;
 }
 
@@ -22,6 +23,7 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
   notifications = [],
   onMarkRead,
   onMarkAllRead,
+  onClearAll,
   onLogout,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -90,11 +92,18 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
             <div className="notifications-dropdown">
               <div className="notifications-header">
                 <h4>Notifications</h4>
-                {unreadCount > 0 && (
-                  <button className="notifications-clear-btn" onClick={() => { onMarkAllRead(); setIsDropdownOpen(false); }}>
-                    Mark all as read
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {unreadCount > 0 && (
+                    <button className="notifications-clear-btn" onClick={() => { onMarkAllRead(); }}>
+                      Mark all read
+                    </button>
+                  )}
+                  {notifications.length > 0 && onClearAll && (
+                    <button className="notifications-clear-btn" style={{ color: '#d9534f' }} onClick={() => { onClearAll(); setIsDropdownOpen(false); }}>
+                      Clear all
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="notifications-list">
                 {notifications.length === 0 ? (

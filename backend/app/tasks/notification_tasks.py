@@ -48,17 +48,16 @@ def _send_sync_notification(
         whatsapp_enabled = patient.notification_whatsapp
         push_enabled = patient.notification_push
 
-    # 1. In-App Notification
-    if push_enabled:
-        noti = Notification(
-            user_id=user_id,
-            title=title,
-            message=message,
-            type=noti_type,
-            is_read=False
-        )
-        session.add(noti)
-        logger.info(f"[Sync In-App] Created notification for user {user_id}: {title}")
+    # 1. In-App Notification (Always write to DB so it populates the bell dropdown history)
+    noti = Notification(
+        user_id=user_id,
+        title=title,
+        message=message,
+        type=noti_type,
+        is_read=False
+    )
+    session.add(noti)
+    logger.info(f"[Sync In-App] Created database notification record for user {user_id}: {title}")
 
     # 2. Email
     if email_enabled:
@@ -153,6 +152,14 @@ def send_appointment_reminders() -> dict:
                             f"Here is your meeting URL: {meeting_url}. "
                             f"The 'Join Meeting' button will activate in your portal 10 mins before."
                         )
+                        # Send to doctor as well
+                        if appt.doctor and appt.doctor.user_id:
+                            pat_name = appt.patient.user.full_name if appt.patient and appt.patient.user else 'Patient'
+                            doc_msg = (
+                                f"Reminder: Your video consultation with patient {pat_name} "
+                                f"starts in 30 minutes. Meeting URL: {meeting_url}."
+                            )
+                            _send_sync_notification(session, appt.doctor.user_id, "Upcoming Teleconsultation (30m)", doc_msg, "reminder_1h")
                     else:
                         msg = (
                             f"Reminder: Your appointment at clinic starts in 30 minutes ("
@@ -171,6 +178,14 @@ def send_appointment_reminders() -> dict:
                             f"Urgent: Your video consultation starts in 10 minutes. "
                             f"Join here: {meeting_url}."
                         )
+                        # Send to doctor as well
+                        if appt.doctor and appt.doctor.user_id:
+                            pat_name = appt.patient.user.full_name if appt.patient and appt.patient.user else 'Patient'
+                            doc_msg = (
+                                f"Urgent: Your video consultation with patient {pat_name} "
+                                f"starts in 10 minutes. Join here: {meeting_url}."
+                            )
+                            _send_sync_notification(session, appt.doctor.user_id, "Upcoming Teleconsultation (10m)", doc_msg, "reminder_10m")
                     else:
                         msg = f"Reminder: Your appointment starts in 10 minutes."
 

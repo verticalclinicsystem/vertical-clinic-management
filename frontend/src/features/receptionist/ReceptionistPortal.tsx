@@ -106,6 +106,16 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
   };
 
+  const handleClearAllNotifications = async () => {
+    try {
+      await api.delete('/notifications/clear-all');
+      setNotifications([]);
+    } catch (err) {
+      console.error("Failed to clear all notifications", err);
+    }
+  };
+
+
   const formatRelativeTime = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
@@ -1001,15 +1011,26 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                     borderBottom: '1px solid #f1f5f9'
                   }}>
                     <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Notifications</h4>
-                    {notifications.filter(n => !n.is_read).length > 0 && (
-                      <button 
-                        className="notifications-clear-btn" 
-                        onClick={() => { handleMarkAllNotificationsRead(); setIsNotiDropdownOpen(false); }}
-                        style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
-                      >
-                        Mark all as read
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {notifications.filter(n => !n.is_read).length > 0 && (
+                        <button 
+                          className="notifications-clear-btn" 
+                          onClick={() => { handleMarkAllNotificationsRead(); }}
+                          style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button 
+                          className="notifications-clear-btn" 
+                          onClick={() => { handleClearAllNotifications(); setIsNotiDropdownOpen(false); }}
+                          style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: '#d9534f', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="notifications-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     {notifications.length === 0 ? (
