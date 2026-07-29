@@ -535,9 +535,10 @@ class AppointmentService:
                 else:
                     update_data["cancelled_by"] = "System"
 
-        # Check if rescheduled or cancelled to send notification
+        # Check if rescheduled, cancelled, or checked in to send notification
         rescheduled = request.appointment_datetime and request.appointment_datetime != appointment.appointment_datetime
         cancelled = request.status == "cancelled" and appointment.status != "cancelled"
+        checked_in = request.status == "checked_in" and appointment.status != "checked_in"
 
         updated = await self.appointment_repo.update(appointment, update_data)
         await self.db.commit()
@@ -566,6 +567,23 @@ class AppointmentService:
                     message=msg,
                     type="general"
                 )
+            elif checked_in:
+                pat_name = full_appt.patient.user.full_name if full_appt.patient and full_appt.patient.user else 'Patient'
+                # Send to patient
+                await noti_service.send_multichannel_notification(
+                    user_id=full_appt.patient.user_id,
+                    title="Checked In",
+                    message="You have been checked in successfully. Please wait for your turn.",
+                    type="general"
+                )
+                # Send to doctor
+                if full_appt.doctor and full_appt.doctor.user_id:
+                    await noti_service.send_multichannel_notification(
+                        user_id=full_appt.doctor.user_id,
+                        title="Patient Checked In",
+                        message=f"{pat_name} has checked in and is waiting in your queue.",
+                        type="general"
+                    )
         except Exception as e:
             logger.error(f"Error sending update notification: {e}")
 

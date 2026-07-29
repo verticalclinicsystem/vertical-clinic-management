@@ -12,11 +12,9 @@ import {
   LogOut,
   ShieldAlert,
   Building,
-  Activity,
   FileText,
   Plus,
   RefreshCw,
-  X,
   ChevronRight
 } from 'lucide-react';
 import { api } from '../../services/api';

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { JitsiMeeting } from '@jitsi/react-sdk';
-import { X, Shield, FileText, CheckCircle, User, Activity, AlertCircle } from 'lucide-react';
+import { X, Shield, FileText, CheckCircle, User } from 'lucide-react';
 import './JitsiVideoModal.css';
 
 interface JitsiVideoModalProps {
@@ -90,9 +90,10 @@ export const JitsiVideoModal: React.FC<JitsiVideoModalProps> = ({
               }}
               userInfo={{
                 displayName: displayName,
+                email: '',
               }}
               onReadyToClose={onClose}
-              getIFrameRef={(iframeRef) => {
+              getIFrameRef={(iframeRef: any) => {
                 iframeRef.style.height = '100%';
                 iframeRef.style.width = '100%';
                 iframeRef.style.border = 'none';

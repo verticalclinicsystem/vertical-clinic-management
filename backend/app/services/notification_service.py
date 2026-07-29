@@ -61,19 +61,17 @@ class NotificationService:
             whatsapp_enabled = patient.notification_whatsapp
             push_enabled = patient.notification_push
 
-        # 1. In-App/Push notification
-        if push_enabled:
-            # Create a DB notification record
-            notification = Notification(
-                user_id=user_id,
-                title=title,
-                message=message,
-                type=type,
-                is_read=False
-            )
-            self.db.add(notification)
-            await self.db.flush()
-            logger.info(f"[In-App Push] Created notification for user {user_id}: {title} - {message}")
+        # 1. In-App notification (Always write to DB so it populates the bell dropdown history)
+        notification = Notification(
+            user_id=user_id,
+            title=title,
+            message=message,
+            type=type,
+            is_read=False
+        )
+        self.db.add(notification)
+        await self.db.flush()
+        logger.info(f"[In-App] Created database notification record for user {user_id}: {title} - {message}")
 
         # 2. Email
         if email_enabled and user.email:

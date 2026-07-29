@@ -107,3 +107,57 @@ async def mark_notification_as_read(
     )
 
 
+@router.delete(
+    "/clear-all",
+    summary="Delete all logged-in user's notifications",
+)
+async def clear_all_notifications(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Delete all notifications of the logged-in user from the database."""
+    from sqlalchemy import delete
+
+    stmt = delete(Notification).where(Notification.user_id == current_user.id)
+    await db.execute(stmt)
+    await db.commit()
+
+    return JSONResponse(
+        status_code=200,
+        content=jsonable_encoder({
+            "success": True,
+            "message": "All notifications cleared successfully.",
+            "data": {},
+        }),
+    )
+
+
+@router.delete(
+    "/{notification_id}",
+    summary="Delete a specific notification",
+)
+async def delete_notification(
+    notification_id: Annotated[uuid.UUID, Path(description="The ID of the notification to delete")],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Delete a specific notification if it belongs to the logged-in user."""
+    from sqlalchemy import delete
+
+    stmt = delete(Notification).where(
+        (Notification.id == notification_id) & (Notification.user_id == current_user.id)
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+    return JSONResponse(
+        status_code=200,
+        content=jsonable_encoder({
+            "success": True,
+            "message": "Notification deleted successfully.",
+            "data": {},
+        }),
+    )
+
+
+

@@ -183,6 +183,18 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const handleClearAllNotifications = async () => {
+    try {
+      await api.delete('/notifications/clear-all');
+      setNotifications([]);
+      triggerToast('success', 'All notifications cleared successfully.');
+    } catch (err) {
+      console.error("Failed to clear notifications", err);
+      triggerToast('error', 'Failed to clear notifications.');
+    }
+  };
+
+
   const clearBookingWizardState = () => {
     setBookingStep(1);
     setSelectedBranchId('');
@@ -474,7 +486,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     if (!cancelApptId) return;
     setIsLoading(true);
     try {
-      await api.post(`/appointments/${cancelApptId}/cancel`, { cancellation_reason: cancelReason || 'Patient requested cancellation' });
+      await api.patch(`/appointments/${cancelApptId}/cancel`, { cancellation_reason: cancelReason || 'Patient requested cancellation' });
       triggerToast('success', 'Appointment cancelled successfully.');
       setCancelApptId(null);
       setCancelReason('');
@@ -841,6 +853,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
               notifications={notifications}
               onMarkRead={handleMarkNotificationRead}
               onMarkAllRead={handleMarkAllNotificationsRead}
+              onClearAll={handleClearAllNotifications}
               onLogout={onLogout}
             />
 

@@ -125,6 +125,16 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const handleClearAllNotifications = async () => {
+    try {
+      await api.delete('/notifications/clear-all');
+      setNotifications([]);
+    } catch (err) {
+      console.error("Failed to clear all notifications", err);
+    }
+  };
+
+
   const formatRelativeTime = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
@@ -423,6 +433,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
+  const [isEditingSummary, setIsEditingSummary] = useState<boolean>(false);
+  const [editedSummaryText, setEditedSummaryText] = useState<string>('');
   const [suggestedMeds, setSuggestedMeds] = useState<any[]>([]);
   const [suggestedTreatment, setSuggestedTreatment] = useState<string>('');
   const [suggestedTreatmentNotes, setSuggestedTreatmentNotes] = useState<string>('');
@@ -827,6 +839,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         };
 
         setAiSummary(summaryObj);
+        setEditedSummaryText(summaryObj.clinical_summary);
         setSuggestedMeds(result.suggested_medications || []);
         setSuggestedTreatment(result.suggested_treatment_plan || '');
         setSuggestedTreatmentNotes(result.treatment_plan_notes || '');
@@ -858,6 +871,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setIsListening(true);
     setApproved(false);
     setAiSummary('');
+    setEditedSummaryText('');
+    setIsEditingSummary(false);
     setSuggestedMeds([]);
     setSuggestedTreatment('');
 
@@ -880,6 +895,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const handleStartVoiceDictation = () => {
     setApproved(false);
     setAiSummary('');
+    setEditedSummaryText('');
+    setIsEditingSummary(false);
     setSuggestedMeds([]);
     setSuggestedTreatment('');
     
@@ -980,20 +997,26 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   // View Patient History
   const handleViewHistory = async (patient: any) => {
     setLoadingHistory(true);
+    setLoadingEmrHistory(true);
     setSelectedPatientHistory({ patient });
+    setEmrLookupPatient({ patient });
     try {
       const consRes = await api.get(`/consultations/?patient_id=${patient.id}`);
       const prescRes = await api.get(`/prescriptions/?patient_id=${patient.id}`);
       
-      setSelectedPatientHistory({
+      const historyData = {
         patient,
         consultations: consRes.data?.data?.items || [],
         prescriptions: prescRes.data?.data?.items || []
-      });
+      };
+      
+      setSelectedPatientHistory(historyData);
+      setEmrLookupPatient(historyData);
     } catch (err) {
       console.error('Error fetching patient history:', err);
     } finally {
       setLoadingHistory(false);
+      setLoadingEmrHistory(false);
     }
   };
 
@@ -1018,6 +1041,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setPrescriptionItems([]);
     setApproved(false);
     setAiSummary(null);
+    setEditedSummaryText('');
+    setIsEditingSummary(false);
 
     // Fetch full patient profile details
     if (appt.patient_id) {
@@ -1067,7 +1092,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const handleSaveConsultation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!diagnosis.trim()) {
-      alert('Please enter a diagnosis.');
+      showToast('Please enter a diagnosis.', 'error');
       return;
     }
 
@@ -1080,7 +1105,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         branch_id: activeAppt.branch_id || dashboardData?.doctor?.branch_id || "4b60cf78-7a68-4437-8423-a19c6a9b9377",
         symptoms,
         diagnosis,
-        notes,
+        notes: notes || editedSummaryText || aiSummary?.clinical_summary || "",
         vitals_bp: vitalsBp,
         vitals_pulse: vitalsPulse,
         vitals_temperature: vitalsTemp
@@ -1097,7 +1122,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
             patient_id: activeAppt.patient_id,
             doctor_id: consultPayload.doctor_id,
             // Use actual doctor notes (which carries AI clinical summary the doctor reviewed)
-            notes: notes.trim() || (aiSummary?.clinical_summary ? aiSummary.clinical_summary : 'Take medicines strictly as directed.'),
+            notes: notes.trim() || editedSummaryText.trim() || (aiSummary?.clinical_summary ? aiSummary.clinical_summary : 'Take medicines strictly as directed.'),
             status: 'active',
             items: prescriptionItems.map(item => ({
               medicine_name: item.medicine_name,
@@ -1109,12 +1134,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           await api.post('/prescriptions/', prescPayload);
         }
 
-        alert('Consultation and prescription recorded successfully!');
+        showToast('Consultation and prescription recorded successfully!', 'success');
         setActiveAppt(null);
         fetchDashboard();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error recording consultation.');
+      showToast(err.response?.data?.message || 'Error recording consultation.', 'error');
     } finally {
       setSavingConsultation(false);
     }
@@ -1147,7 +1172,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
   };
 
-  const queueItems = dashboardData?.today_appointments || [];
+  const queueItems = (dashboardData?.today_appointments || []).filter(
+    (appt: any) => appt.status && ["waiting", "checked_in", "in_consultation", "in consultation", "completed"].includes(appt.status.toLowerCase())
+  );
 
   const doctorName = dashboardData?.doctor?.full_name || 'Doctor';
   const doctorSpecialty = dashboardData?.doctor?.specialization || 'Specialist';
@@ -1344,15 +1371,26 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     borderBottom: '1px solid #f1f5f9'
                   }}>
                     <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Notifications</h4>
-                    {notifications.filter(n => !n.is_read).length > 0 && (
-                      <button 
-                        className="notifications-clear-btn" 
-                        onClick={() => { handleMarkAllNotificationsRead(); setIsNotiDropdownOpen(false); }}
-                        style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
-                      >
-                        Mark all as read
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {notifications.filter(n => !n.is_read).length > 0 && (
+                        <button 
+                          className="notifications-clear-btn" 
+                          onClick={() => { handleMarkAllNotificationsRead(); }}
+                          style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button 
+                          className="notifications-clear-btn" 
+                          onClick={() => { handleClearAllNotifications(); setIsNotiDropdownOpen(false); }}
+                          style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: '#d9534f', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="notifications-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     {notifications.length === 0 ? (
@@ -1552,7 +1590,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     className="doc-btn-secondary" 
                                     style={{ height: '32px', padding: '0 16px', borderRadius: '6px', fontSize: '0.8rem', backgroundColor: '#f0fdf4', color: '#16a34a', borderColor: '#bbf7d0', cursor: 'pointer', fontWeight: '600' }}
                                   >
-                                    Completed
+                                    View History
                                   </button>
                                 ) : (
                                   <button 
@@ -1641,6 +1679,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                   {(() => {
                     const filteredAppts = [...(dashboardData?.today_appointments || [])]
+                      .filter((appt: any) => appt.status && ["waiting", "checked_in", "in_consultation", "in consultation", "completed"].includes(appt.status.toLowerCase()))
                       .filter((appt: any) => !queueSearch || appt.patient_name?.toLowerCase().includes(queueSearch.toLowerCase()))
                       .sort((a: any, b: any) => new Date(b.appointment_datetime).getTime() - new Date(a.appointment_datetime).getTime());
 
@@ -1784,7 +1823,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     }}
                                     onClick={() => handleViewHistory({ id: appt.patient_id, user: { full_name: appt.patient_name }, patient_code: appt.patient_code })}
                                   >
-                                    <CheckCircle size={16} /> Consultation Completed
+                                    <FolderOpen size={16} /> View History
                                   </button>
                                 ) : (
                                   <button 
@@ -2858,29 +2897,83 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                   <Sparkles size={16} color="#0d9488" />
                                   <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f766e' }}>AI Clinical Assistant</span>
                                 </div>
-                                {approved ? (
-                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                                    Approved ✓
-                                  </span>
-                                ) : (
-                                  <button 
-                                    type="button" 
-                                    onClick={() => {
-                                      setApproved(true);
-                                      if (aiSummary?.diagnosis) setDiagnosis(aiSummary.diagnosis);
-                                      showToast('AI Notes Approved!');
-                                    }}
-                                    style={{ fontSize: '0.72rem', backgroundColor: '#0d9488', color: '#ffffff', border: 'none', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}
-                                  >
-                                    Approve Notes
-                                  </button>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {!approved && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isEditingSummary) {
+                                          setIsEditingSummary(false);
+                                          setNotes(editedSummaryText);
+                                          showToast('Summary updated!');
+                                        } else {
+                                          setIsEditingSummary(true);
+                                        }
+                                      }}
+                                      style={{ fontSize: '0.72rem', backgroundColor: '#ffffff', border: '1px solid #99f6e4', color: '#0d9488', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                      {isEditingSummary ? 'Save' : 'Edit'}
+                                    </button>
+                                  )}
+                                  
+                                  {approved ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setApproved(false);
+                                        showToast('Approval revoked.');
+                                      }}
+                                      style={{ 
+                                        fontSize: '0.72rem', 
+                                        backgroundColor: '#dcfce7', 
+                                        color: '#15803d', 
+                                        border: '1px solid #bbf7d0',
+                                        padding: '3px 8px', 
+                                        borderRadius: '4px', 
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '2px'
+                                      }}
+                                      title="Click to undo approval"
+                                    >
+                                      Approved ✓ <X size={10} style={{ marginLeft: '2px' }} />
+                                    </button>
+                                  ) : (
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        setApproved(true);
+                                        setNotes(editedSummaryText || aiSummary?.clinical_summary || '');
+                                        if (aiSummary?.diagnosis) setDiagnosis(aiSummary.diagnosis);
+                                        showToast('AI Notes Approved!');
+                                      }}
+                                      style={{ fontSize: '0.72rem', backgroundColor: '#0d9488', color: '#ffffff', border: 'none', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                      Approve Notes
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               {isAnalyzing ? (
                                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#0d9488' }}>Analyzing voice stream & synthesizing clinical record...</p>
                               ) : (
                                 <div style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                  <div><strong>Summary:</strong> {aiSummary?.clinical_summary}</div>
+                                  {isEditingSummary ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <strong style={{ color: '#0f766e' }}>Edit Summary:</strong>
+                                      <textarea
+                                        value={editedSummaryText}
+                                        onChange={(e) => setEditedSummaryText(e.target.value)}
+                                        className="doc-textarea"
+                                        rows={3}
+                                        style={{ width: '100%', fontSize: '0.8rem', padding: '8px', borderRadius: '6px', borderColor: '#99f6e4', backgroundColor: '#ffffff' }}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div><strong>Summary:</strong> {editedSummaryText || aiSummary?.clinical_summary}</div>
+                                  )}
                                   {aiSummary?.medications && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                                       <span style={{ color: '#0f766e', fontWeight: 700 }}>Suggested Medicines Available</span>
