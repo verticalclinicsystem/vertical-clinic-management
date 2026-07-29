@@ -63,6 +63,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
+  const [followups, setFollowups] = useState<any[]>([]);
   const [preferences, setPreferences] = useState<any>({
     language: 'English',
     notification_email: true,
@@ -266,7 +267,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const fetchPortalData = async () => {
     setIsLoading(true);
     try {
-      const [profileRes, dashRes, statsRes, timelineRes, prefRes, branchRes, docRes] = await Promise.all([
+      const [profileRes, dashRes, statsRes, timelineRes, prefRes, branchRes, docRes, followupsRes] = await Promise.all([
         api.get('/patients/me'),
         api.get('/patients/me/dashboard'),
         api.get('/patients/me/statistics'),
@@ -274,6 +275,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
         api.get('/patients/me/preferences'),
         api.get('/branches'),
         api.get('/doctors'),
+        api.get('/patients/me/follow-ups').catch(() => ({ data: { data: [] } })),
       ]);
 
       setPatientProfile(profileRes.data?.data || profileRes.data);
@@ -285,6 +287,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
       }
       setBranches(extractArrayData(branchRes.data));
       setDoctors(extractArrayData(docRes.data));
+      setFollowups(extractArrayData(followupsRes.data));
 
       try {
         const notiRes = await api.get('/notifications');
@@ -302,6 +305,40 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   useEffect(() => {
     fetchPortalData();
   }, []);
+
+  const handleBookFollowup = (followup: any) => {
+    setSelectedBranchId(followup.branch_id || '');
+    setSelectedDoctorId(followup.doctor_id || '');
+    setTreatmentType(followup.treatment_type || 'Routine Follow-up');
+    setConsultationType('in_person');
+    setBookingSlot('');
+    
+    let targetDate = followup.recommended_date ? followup.recommended_date.split('T')[0] : '';
+    if (targetDate) {
+      const parsedTarget = new Date(targetDate);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (parsedTarget < today) {
+        targetDate = today.toISOString().split('T')[0];
+      }
+    } else {
+      targetDate = new Date().toISOString().split('T')[0];
+    }
+    
+    setBookingDate(targetDate);
+    const d = new Date(targetDate);
+    setCalendarViewMonth(d.getMonth());
+    setCalendarViewYear(d.getFullYear());
+    
+    localStorage.setItem('booking_selected_branch_id', followup.branch_id || '');
+    localStorage.setItem('booking_selected_doctor_id', followup.doctor_id || '');
+    localStorage.setItem('booking_consultation_type', 'in_person');
+    localStorage.setItem('booking_date', targetDate);
+    localStorage.setItem('booking_slot', '');
+    
+    setBookingStep(4);
+    setScreen('book');
+  };
 
   useEffect(() => {
     localStorage.setItem('booking_wizard_step', bookingStep.toString());
@@ -898,6 +935,8 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                   setCancelApptId={setCancelApptId}
                   setViewingAppointment={setViewingAppointment}
                   triggerToast={triggerToast}
+                  followups={followups}
+                  handleBookFollowup={handleBookFollowup}
                 />
               )}
 

@@ -521,8 +521,12 @@ async def list_my_follow_ups(
 
     recommendations = []
     for c in consultations:
-        # Determine follow-up recommended date (e.g. 14 days after consultation)
-        recommended_date = c.consultation_datetime + timedelta(days=14)
+        # Only suggest follow-up if explicitly advised by the doctor
+        if not getattr(c, "followup_advised", False):
+            continue
+
+        days = getattr(c, "followup_after_days", 14) or 14
+        recommended_date = c.consultation_datetime + timedelta(days=days)
         
         # Check if there is already a future booked appointment with the same doctor
         has_future_booking = any(
@@ -699,7 +703,7 @@ async def update_patient(
     service = PatientService(db)
     patient = await service.get_patient(patient_id)
     
-    is_staff = current_user.role in (UserRole.ADMIN, UserRole.RECEPTIONIST)
+    is_staff = current_user.role in (UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.DOCTOR)
     is_owner = patient.user_id == current_user.id
     
     if not (is_staff or is_owner):

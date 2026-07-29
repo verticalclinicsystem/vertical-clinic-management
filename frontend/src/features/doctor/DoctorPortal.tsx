@@ -20,7 +20,6 @@ import {
   List,
   Activity,
   Sparkles,
-  RefreshCw,
   FolderOpen,
   X,
   ChevronRight,
@@ -28,7 +27,8 @@ import {
   Camera,
   FileSpreadsheet,
   AlertTriangle,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
@@ -250,14 +250,117 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [vitalsPulse, setVitalsPulse] = useState<number>(72);
   const [vitalsTemp, setVitalsTemp] = useState<number>(98.6);
   const [vitalsHeight, setVitalsHeight] = useState<string>('172');
+  const [followupAdvised, setFollowupAdvised] = useState<boolean>(false);
+  const [followupAfterDays, setFollowupAfterDays] = useState<number>(7);
   const [vitalsWeight, setVitalsWeight] = useState<string>('74');
   const [vitalsSpo2, setVitalsSpo2] = useState<number>(98);
+  const [calculatedBmiInfo, setCalculatedBmiInfo] = useState<{ bmi: string; label: string; color: string }>({ bmi: '25.0', label: 'Normal', color: '#16a34a' });
   const [patientWorkspaceTab, setPatientWorkspaceTab] = useState<'history' | 'reports' | 'treatment' | 'timeline' | 'vitals' | 'prescriptions' | 'imaging' | null>(null);
   const [activeQuickDrawer, setActiveQuickDrawer] = useState<'history' | 'reports' | 'prescriptions' | null>(null);
   const [showClinicalProfileModal, setShowClinicalProfileModal] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'alerts' | 'vitals' | 'treatment' | 'demographics'>('alerts');
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItemInput[]>([]);
   const [savingConsultation, setSavingConsultation] = useState<boolean>(false);
+
+  // Doctor Profile state
+  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
+  const [profileForm, setProfileForm] = useState<any>({
+    full_name: '',
+    phone: '',
+    avatar_url: '',
+    specialization: '',
+    qualification: '',
+    experience_years: 0,
+    consultation_fee: 0.0,
+    bio: '',
+    registration_number: ''
+  });
+
+  useEffect(() => {
+    if (dashboardData?.doctor) {
+      const doc = dashboardData.doctor;
+      setProfileForm({
+        full_name: doc.full_name || '',
+        phone: doc.phone || '',
+        avatar_url: doc.avatar_url || '',
+        specialization: doc.specialization || '',
+        qualification: doc.qualification || '',
+        experience_years: doc.experience_years || 0,
+        consultation_fee: doc.consultation_fee || 0.0,
+        bio: doc.bio || '',
+        registration_number: doc.registration_number || ''
+      });
+    }
+  }, [dashboardData]);
+
+  const handleSaveDoctorProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileForm.full_name?.trim()) {
+      showToast('Name is required.', 'error');
+      return;
+    }
+    try {
+      // 1. Update user fields
+      await api.patch('/auth/profile', {
+        full_name: profileForm.full_name,
+        phone: profileForm.phone,
+        avatar_url: profileForm.avatar_url
+      });
+
+      // 2. Update doctor professional fields
+      await api.put(`/doctors/${dashboardData.doctor.id}`, {
+        specialization: profileForm.specialization,
+        qualification: profileForm.qualification,
+        experience_years: Number(profileForm.experience_years),
+        consultation_fee: Number(profileForm.consultation_fee),
+        bio: profileForm.bio,
+        registration_number: profileForm.registration_number
+      });
+
+      showToast('Profile updated successfully!', 'success');
+      setIsEditingProfile(false);
+      fetchDashboard();
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to update profile details.';
+      showToast(errorMsg, 'error');
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('report_type', 'Profile Picture');
+      
+      const res = await api.post('/medical-reports/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      const fileUrl = res.data?.data?.file_url || res.data?.file_url || '';
+      if (fileUrl) {
+        // Save immediately to user profile
+        await api.patch('/auth/profile', {
+          avatar_url: fileUrl
+        });
+        
+        setProfileForm((prev: any) => ({ ...prev, avatar_url: fileUrl }));
+        showToast('Profile picture updated successfully!', 'success');
+        fetchDashboard();
+      } else {
+        showToast('Failed to get file URL from upload response.', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to upload profile picture.', 'error');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const parseMedicalAlerts = (patientDetails: any) => {
     let chronicDiseases = 'None';
@@ -505,12 +608,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [savingProcedure, setSavingProcedure] = useState<boolean>(false);
 
   // Follow-up states
-  const [followupPatientId, setFollowupPatientId] = useState<string>('');
-  const [followupDate, setFollowupDate] = useState<string>('');
-  const [followupTime, setFollowupTime] = useState<string>('10:00');
-  const [followupReason, setFollowupReason] = useState<string>('');
-  const [schedulingFollowup, setSchedulingFollowup] = useState<boolean>(false);
-  const [upcomingFollowups, setUpcomingFollowups] = useState<any[]>([]);
+  const [pendingFollowups, setPendingFollowups] = useState<any[]>([]);
+  const [bookedFollowups, setBookedFollowups] = useState<any[]>([]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -754,59 +853,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   // Fetch upcoming followups/appointments for list
   const fetchUpcomingFollowups = async () => {
     try {
-      const res = await api.get('/appointments/?status=confirmed');
+      const res = await api.get('/doctors/me/follow-ups');
       if (res.data && res.data.success) {
-        // filter future dates or just list all confirmed appointments
-        const items = (res.data.data.items || []).map((item: any) => ({
-          ...item,
-          patient_name: item.patient?.user?.full_name || item.patient_name
-        }));
-        setUpcomingFollowups(items);
+        setPendingFollowups(res.data.data?.pending || []);
+        setBookedFollowups(res.data.data?.booked || []);
       }
     } catch (err) {
-      console.error('Error fetching appointments:', err);
-    }
-  };
-
-  // Schedule follow up appointment
-  const handleScheduleFollowup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!followupPatientId || !followupDate) {
-      showToast('Please select a patient and select a valid date.', 'error');
-      return;
-    }
-
-    setSchedulingFollowup(true);
-    try {
-      // Send local datetime string — DO NOT call .toISOString() which converts to UTC
-      const combinedDatetime = `${followupDate}T${followupTime}:00`;
-      const payload = {
-        doctor_id: dashboardData?.doctor?.id || activeAppt?.doctor_id,
-        branch_id: dashboardData?.doctor?.branch_id || activeAppt?.branch_id || '4b60cf78-7a68-4437-8423-a19c6a9b9377',
-        appointment_datetime: combinedDatetime,
-        treatment_type: 'Consultation',
-        consultation_type: 'in_person',
-        notes: followupReason || 'Follow-up consultation'
-      };
-
-      // Let's pass the patient_id explicitly.
-      const payloadWithPatient = {
-        ...payload,
-        patient_id: followupPatientId
-      };
-
-      const resWithPat = await api.post('/appointments/', payloadWithPatient);
-      if (resWithPat.data && resWithPat.data.success) {
-        showToast('Follow-up scheduled successfully!');
-        setFollowupReason('');
-        setFollowupPatientId('');
-        fetchUpcomingFollowups();
-      }
-    } catch (err) {
-      console.error('Error scheduling follow-up:', err);
-      showToast('Failed to schedule follow-up.', 'error');
-    } finally {
-      setSchedulingFollowup(false);
+      console.error('Error fetching follow-ups:', err);
     }
   };
 
@@ -1091,6 +1144,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setAiSummary(null);
     setEditedSummaryText('');
     setIsEditingSummary(false);
+    setFollowupAdvised(false);
+    setFollowupAfterDays(7);
 
     // Fetch full patient profile details
     if (appt.patient_id) {
@@ -1100,8 +1155,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         if (res.data && res.data.success) {
           const patData = res.data.data;
           setActivePatientDetails(patData);
-          if (patData.height) setVitalsHeight(patData.height);
-          if (patData.weight) setVitalsWeight(patData.weight);
+          const h = patData.height || '172';
+          const w = patData.weight || '74';
+          setVitalsHeight(h);
+          setVitalsWeight(w);
+          setCalculatedBmiInfo(calculateBMI(h, w));
         }
       } catch (err) {
         console.error('Error fetching patient profile:', err);
@@ -1146,6 +1204,16 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
     setSavingConsultation(true);
     try {
+      // Persist the latest height & weight back to the patient profile
+      try {
+        await api.put(`/patients/${activeAppt.patient_id}`, {
+          height: vitalsHeight,
+          weight: vitalsWeight
+        });
+      } catch (profileErr) {
+        console.warn('Could not update patient height/weight:', profileErr);
+      }
+
       const consultPayload = {
         appointment_id: activeAppt.id,
         patient_id: activeAppt.patient_id,
@@ -1156,7 +1224,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         notes: notes || editedSummaryText || aiSummary?.clinical_summary || "",
         vitals_bp: vitalsBp,
         vitals_pulse: vitalsPulse,
-        vitals_temperature: vitalsTemp
+        vitals_temperature: vitalsTemp,
+        followup_advised: followupAdvised,
+        followup_after_days: followupAdvised ? followupAfterDays : 0
       };
 
       const consultRes = await api.post('/consultations/', consultPayload);
@@ -1303,11 +1373,19 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           >
             <Calendar size={18} /> Availability
           </div>
+
+          <div className="doc-nav-group-label">PROFILE</div>
+          <div 
+            className={`doc-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('profile'); setSelectedPatientHistory(null); }}
+          >
+            <User size={18} /> My Profile
+          </div>
         </nav>
 
-        <div className="doc-sidebar-footer">
+        <div className="doc-sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button className="doc-btn-switch" onClick={onLogout}>
-            <RefreshCw size={14} /> Switch Role
+            <LogOut size={14} /> Sign Out
           </button>
         </div>
       </aside>
@@ -1326,6 +1404,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               {activeTab === 'followup' && 'Follow-up Center'}
               {activeTab === 'availability' && 'Availability Settings'}
               {activeTab === 'workflow' && 'Full Clinic Workflow'}
+              {activeTab === 'profile' && 'My Profile'}
             </h1>
             <p className="doc-page-subtitle">Doctor Portal · {dashboardData?.doctor?.branch_name ? `${dashboardData.doctor.branch_name} Branch` : 'Loading Branch...'}</p>
           </div>
@@ -1495,8 +1574,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="doc-profile-avatar" style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>
-                  {doctorName.split(' ').map((n: string) => n[0]).join('')}
+                <div className="doc-profile-avatar" style={{ backgroundColor: '#e0f2fe', color: '#0369a1', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {dashboardData?.doctor?.avatar_url ? (
+                    <img src={dashboardData.doctor.avatar_url} alt="Doctor" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    doctorName.split(' ').map((n: string) => n[0]).join('')
+                  )}
                 </div>
                 <div className="doc-profile-info">
                   <span className="doc-profile-name">{doctorName}</span>
@@ -1506,12 +1589,15 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
               {isProfileDropdownOpen && (
                 <div className="profile-dropdown-menu">
+                  <button onClick={() => { setActiveTab('profile'); setIsProfileDropdownOpen(false); }}>
+                    <User size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> View Profile
+                  </button>
                   <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
                     <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
                   </button>
                   <div className="profile-dropdown-divider"></div>
                   <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
-                    <LogOut size={14} style={{ color: '#dc2626' }} /> Switch Role
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Sign Out
                   </button>
                 </div>
               )}
@@ -2175,6 +2261,312 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 </div>
               )}
 
+              {/* TAB: PROFILE */}
+              {activeTab === 'profile' && (
+                <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+                  {/* Top Banner Accent */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
+                    color: '#ffffff',
+                    padding: '28px 32px',
+                    borderRadius: '12px',
+                    marginBottom: '24px',
+                    boxShadow: '0 4px 12px rgba(15, 118, 110, 0.08)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <User size={24} /> Doctor Profile Workspace
+                      </h2>
+                      <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#ccfbf1', opacity: 0.9 }}>
+                        Manage your professional credentials, registration details, and contact profile.
+                      </p>
+                    </div>
+                    <div>
+                      {!isEditingProfile ? (
+                        <button
+                          onClick={() => setIsEditingProfile(true)}
+                          className="doc-btn-primary"
+                          style={{ padding: '10px 20px', fontSize: '0.88rem', backgroundColor: '#ffffff', color: '#0f766e', border: '1px solid #ffffff' }}
+                        >
+                          ✏️ Edit Profile
+                        </button>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button
+                            onClick={() => {
+                              setIsEditingProfile(false);
+                              if (dashboardData?.doctor) {
+                                const doc = dashboardData.doctor;
+                                setProfileForm({
+                                  full_name: doc.full_name || '',
+                                  phone: doc.phone || '',
+                                  avatar_url: doc.avatar_url || '',
+                                  specialization: doc.specialization || '',
+                                  qualification: doc.qualification || '',
+                                  experience_years: doc.experience_years || 0,
+                                  consultation_fee: doc.consultation_fee || 0.0,
+                                  bio: doc.bio || '',
+                                  registration_number: doc.registration_number || ''
+                                });
+                              }
+                            }}
+                            className="doc-btn-secondary"
+                            style={{ padding: '10px 18px', fontSize: '0.88rem', border: '1px solid rgba(255,255,255,0.4)', backgroundColor: 'transparent', color: '#ffffff' }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveDoctorProfile}
+                            className="doc-btn-primary"
+                            style={{ padding: '10px 18px', fontSize: '0.88rem', backgroundColor: '#14b8a6', color: '#ffffff', border: 'none' }}
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '24px' }}>
+                    {/* Left Column: Photo Upload Card */}
+                    <div className="doc-card" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 20px' }}>
+                      <h4 style={{ margin: '0 0 16px 0', fontSize: '0.9rem', color: 'var(--doc-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Profile Picture
+                      </h4>
+                      <div 
+                        style={{ 
+                          position: 'relative', 
+                          width: '130px', 
+                          height: '130px', 
+                          borderRadius: '50%', 
+                          border: '4px solid #f1f5f9', 
+                          overflow: 'hidden', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          backgroundColor: '#e2e8f0', 
+                          marginBottom: '16px',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+                        }}
+                        onClick={() => document.getElementById('doctor-avatar-upload')?.click()}
+                        title="Click to upload profile photo"
+                      >
+                        {profileForm.avatar_url ? (
+                          <img src={profileForm.avatar_url} alt="Doctor" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontSize: '2.5rem', fontWeight: 700, color: '#475569' }}>
+                            {profileForm.full_name ? profileForm.full_name.split(' ').map((n: string) => n[0]).join('') : 'DR'}
+                          </span>
+                        )}
+                        <div 
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#ffffff',
+                            opacity: profileForm.avatar_url ? 0 : 0.8,
+                            transition: 'opacity 0.2s',
+                            fontSize: '0.75rem',
+                            fontWeight: 600
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = profileForm.avatar_url ? '0' : '0.8'}
+                        >
+                          <Camera size={20} style={{ marginBottom: '4px' }} />
+                          {profileForm.avatar_url ? 'Change Photo' : 'Add Photo'}
+                        </div>
+                        {isUploadingAvatar && (
+                          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontSize: '0.75rem', fontWeight: 600 }}>
+                            Uploading...
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ width: '100%' }}>
+                        <label
+                          htmlFor="doctor-avatar-upload"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            width: '100%',
+                            padding: '8px 12px',
+                            backgroundColor: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            color: '#334155',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <Camera size={14} /> Upload Photo
+                        </label>
+                        <input
+                          type="file"
+                          id="doctor-avatar-upload"
+                          accept="image/*"
+                          onChange={handleAvatarUpload}
+                          style={{ display: 'none' }}
+                        />
+                        <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: 'var(--doc-text-muted)' }}>
+                          Supports JPG, PNG (Max 5MB)
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Profile Form Details Card */}
+                    <div className="doc-card">
+                      <h3 style={{ margin: '0 0 20px 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--doc-text-dark)', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                        Credentials & General Information
+                      </h3>
+
+                      <form onSubmit={handleSaveDoctorProfile} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Full Name</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileForm.full_name}
+                              onChange={e => setProfileForm({ ...profileForm, full_name: e.target.value })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', fontWeight: 600, marginTop: '6px' }}>{profileForm.full_name || 'N/A'}</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Registration Number</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileForm.registration_number}
+                              onChange={e => setProfileForm({ ...profileForm, registration_number: e.target.value })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', fontFamily: 'monospace', fontWeight: 600, marginTop: '6px' }}>{profileForm.registration_number || 'N/A'}</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Primary Specialization</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileForm.specialization}
+                              onChange={e => setProfileForm({ ...profileForm, specialization: e.target.value })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>{profileForm.specialization || 'N/A'}</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Qualifications</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileForm.qualification}
+                              onChange={e => setProfileForm({ ...profileForm, qualification: e.target.value })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                              placeholder="e.g. BDS, MDS (Oral Surgery)"
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>{profileForm.qualification || 'N/A'}</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Experience (Years)</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="number"
+                              value={profileForm.experience_years}
+                              onChange={e => setProfileForm({ ...profileForm, experience_years: parseInt(e.target.value) || 0 })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>{profileForm.experience_years ?? 0} Years</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Consultation Fee ($)</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="number"
+                              value={profileForm.consultation_fee}
+                              onChange={e => setProfileForm({ ...profileForm, consultation_fee: parseFloat(e.target.value) || 0.0 })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>${profileForm.consultation_fee ?? '0.00'}</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Email Address</label>
+                          <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px', color: '#64748b' }}>{profileForm.email || 'N/A'}</div>
+                        </div>
+
+                        <div>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Contact Phone</label>
+                          {isEditingProfile ? (
+                            <input
+                              type="text"
+                              value={profileForm.phone}
+                              onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>{profileForm.phone || 'N/A'}</div>
+                          )}
+                        </div>
+
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Professional Biography</label>
+                          {isEditingProfile ? (
+                            <textarea
+                              rows={3}
+                              value={profileForm.bio}
+                              onChange={e => setProfileForm({ ...profileForm, bio: e.target.value })}
+                              className="doc-textarea"
+                              style={{ marginTop: '6px', resize: 'vertical' }}
+                              placeholder="Write a brief professional description..."
+                            />
+                          ) : (
+                            <div className="doc-textarea" style={{ backgroundColor: '#f8fafc', marginTop: '6px', minHeight: '80px', whiteSpace: 'pre-wrap' }}>{profileForm.bio || 'No biography recorded.'}</div>
+                          )}
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* TAB: PATIENTS (CONSULTATION VIEW) */}
               {activeTab === 'patients' && (
                 <>
@@ -2614,69 +3006,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
               {/* TAB: FOLLOW-UP */}
               {activeTab === 'followup' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '24px' }}>
-                  <div className="doc-card">
-                    <h3 className="doc-card-title" style={{ marginBottom: '16px' }}>Schedule Follow-up</h3>
-                    <form onSubmit={handleScheduleFollowup}>
-                      <div className="doc-form-group">
-                        <label className="doc-form-label">Patient Name</label>
-                        <select 
-                          className="doc-input" 
-                          value={followupPatientId} 
-                          onChange={(e) => setFollowupPatientId(e.target.value)}
-                          required
-                        >
-                          <option value="">-- Choose Patient --</option>
-                          {allPatients.map((pat) => (
-                            <option key={pat.id} value={pat.id}>
-                              {pat.user?.full_name} ({pat.patient_code})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div className="doc-form-group">
-                          <label className="doc-form-label">Select Date</label>
-                          <input 
-                            type="date" 
-                            className="doc-input" 
-                            value={followupDate} 
-                            onChange={(e) => setFollowupDate(e.target.value)}
-                            required
-                          />
-                        </div>
-                        <div className="doc-form-group">
-                          <label className="doc-form-label">Select Time</label>
-                          <input 
-                            type="time" 
-                            className="doc-input" 
-                            value={followupTime} 
-                            onChange={(e) => setFollowupTime(e.target.value)}
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="doc-form-group">
-                        <label className="doc-form-label">Follow-up Reason / Clinical Notes</label>
-                        <textarea 
-                          className="doc-textarea" 
-                          rows={3} 
-                          placeholder="e.g. 6-Month scaling checkup, ortho wire revision..."
-                          value={followupReason}
-                          onChange={(e) => setFollowupReason(e.target.value)}
-                        />
-                      </div>
-
-                      <button type="submit" className="doc-btn-primary" style={{ width: '100%' }} disabled={schedulingFollowup}>
-                        {schedulingFollowup ? 'Scheduling...' : 'Schedule Follow-up Appointment'}
-                      </button>
-                    </form>
-                  </div>
-
-                  <div className="doc-card">
-                    <h3 className="doc-card-title" style={{ marginBottom: '16px' }}>Upcoming Clinical Follow-ups</h3>
+                <div className="doc-card" style={{ width: '100%' }}>
+                  <h3 className="doc-card-title" style={{ marginBottom: '16px' }}>Upcoming Clinical Follow-ups</h3>
+                  
+                  <div style={{ marginBottom: '24px' }}>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--doc-text)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>📅</span> Booked Follow-ups ({bookedFollowups.length})
+                    </h4>
                     <div className="doc-table-container">
                       <table className="doc-table">
                         <thead>
@@ -2687,16 +3023,48 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           </tr>
                         </thead>
                         <tbody>
-                          {upcomingFollowups.length === 0 ? (
+                          {bookedFollowups.length === 0 ? (
                             <tr>
-                              <td colSpan={3} style={{ textAlign: 'center', padding: '16px', color: 'var(--doc-text-muted)' }}>No upcoming follow-up appointments scheduled.</td>
+                              <td colSpan={3} style={{ textAlign: 'center', padding: '12px', color: 'var(--doc-text-muted)', fontSize: '0.85rem' }}>No booked follow-up appointments scheduled.</td>
                             </tr>
                           ) : (
-                            upcomingFollowups.map((f: any) => (
-                              <tr key={f.id}>
-                                <td style={{ fontWeight: '600' }}>{f.patient_name}</td>
+                            bookedFollowups.map((f: any, idx: number) => (
+                              <tr key={f.appointment_id || idx}>
+                                <td style={{ fontWeight: '600' }}>{f.patient_name} ({f.patient_code})</td>
                                 <td>{new Date(f.appointment_datetime).toLocaleDateString()} at {new Date(f.appointment_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
                                 <td style={{ fontSize: '0.8rem', color: 'var(--doc-text-muted)' }}>{f.notes || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--doc-text)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>⏳</span> Advised & Pending Booking ({pendingFollowups.length})
+                    </h4>
+                    <div className="doc-table-container">
+                      <table className="doc-table">
+                        <thead>
+                          <tr>
+                            <th>Patient</th>
+                            <th>Recommended By</th>
+                            <th>Reason / Plan</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pendingFollowups.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} style={{ textAlign: 'center', padding: '12px', color: 'var(--doc-text-muted)', fontSize: '0.85rem' }}>No pending recommended follow-ups.</td>
+                            </tr>
+                          ) : (
+                            pendingFollowups.map((f: any, idx: number) => (
+                              <tr key={f.consultation_id || idx}>
+                                <td style={{ fontWeight: '600' }}>{f.patient_name} ({f.patient_code})</td>
+                                <td>{new Date(f.recommended_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--doc-text-muted)' }}>{f.treatment_type}</td>
                               </tr>
                             ))
                           )}
@@ -3166,6 +3534,58 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             style={{ marginBottom: 0, height: '36px', fontSize: '0.84rem' }}
                           />
                         </div>
+
+                        {/* SECTION 4: FOLLOW-UP RECOMMENDATION */}
+                        <div style={{
+                          marginTop: '16px',
+                          padding: '16px',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '12px'
+                        }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: '700', color: '#0f172a' }}>
+                            <input
+                              type="checkbox"
+                              checked={followupAdvised}
+                              onChange={(e) => setFollowupAdvised(e.target.checked)}
+                              style={{ width: '16px', height: '16px', accentColor: 'var(--doc-primary)' }}
+                            />
+                            Advise Follow-up Appointment?
+                          </label>
+                          {followupAdvised && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '24px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>Recommend visit after:</span>
+                                <select
+                                  className="doc-input"
+                                  value={followupAfterDays}
+                                  onChange={(e) => setFollowupAfterDays(Number(e.target.value))}
+                                  style={{ marginBottom: 0, width: '150px', height: '32px', padding: '0 8px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                                >
+                                  <option value={3}>3 Days</option>
+                                  <option value={7}>7 Days (1 Week)</option>
+                                  <option value={14}>14 Days (2 Weeks)</option>
+                                  <option value={30}>30 Days (1 Month)</option>
+                                  <option value={60}>60 Days (2 Months)</option>
+                                  <option value={90}>90 Days (3 Months)</option>
+                                </select>
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: '#0284c7', background: '#e0f2fe', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bae6fd', marginTop: '4px' }}>
+                                📅 Calculated Target Date: <strong>{(() => {
+                                  const d = new Date();
+                                  d.setDate(d.getDate() + followupAfterDays);
+                                  return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                                })()}</strong>
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic' }}>
+                                Note: The patient will be notified on their portal to schedule a follow-up for <strong>{diagnosis || 'Routine Follow-up'}</strong>.
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* ── RIGHT PANEL (30%): DYNAMIC INFORMATION PANEL ── */}
@@ -3290,17 +3710,42 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               </div>
                             </div>
 
-                            {/* Live Calculated BMI Metric */}
-                            {(() => {
-                              const bmiInfo = calculateBMI(vitalsHeight, vitalsWeight);
-                              return (
-                                <div style={{ border: `1px solid ${bmiInfo.color}`, backgroundColor: '#ffffff', padding: '12px', borderRadius: '10px', textAlign: 'center', marginTop: '4px' }}>
-                                  <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Body Mass Index (BMI)</span>
-                                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>{bmiInfo.bmi}</div>
-                                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: bmiInfo.color }}>{bmiInfo.label}</span>
-                                </div>
-                              );
-                            })()}
+                            {/* Calculate BMI Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const bmiRes = calculateBMI(vitalsHeight, vitalsWeight);
+                                setCalculatedBmiInfo(bmiRes);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                width: '100%',
+                                padding: '10px 12px',
+                                backgroundColor: '#0f766e',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontWeight: 700,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s',
+                                marginTop: '4px',
+                                marginBottom: '4px'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0d5c56'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0f766e'}
+                            >
+                              📊 Calculate BMI
+                            </button>
+
+                            <div style={{ border: `1px solid ${calculatedBmiInfo.color}`, backgroundColor: '#ffffff', padding: '12px', borderRadius: '10px', textAlign: 'center', marginTop: '4px' }}>
+                              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Body Mass Index (BMI)</span>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>{calculatedBmiInfo.bmi}</div>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: calculatedBmiInfo.color }}>{calculatedBmiInfo.label}</span>
+                            </div>
                           </div>
                         )}
 
@@ -3510,15 +3955,6 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           }}
                         >
                           <CheckCircle size={16} /> {savingConsultation ? 'Saving...' : 'Complete Consultation'}
-                        </button>
-
-                        <button 
-                          type="button" 
-                          className="doc-btn-secondary" 
-                          style={{ height: '40px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '700' }}
-                          onClick={() => setActiveTab('followup')}
-                        >
-                          <Clock size={16} /> Schedule Follow-up
                         </button>
                       </div>
                     </div>

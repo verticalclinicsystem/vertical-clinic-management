@@ -60,6 +60,8 @@ class ConsultationService:
             "vitals_bp": request.vitals_bp,
             "vitals_pulse": request.vitals_pulse,
             "vitals_temperature": request.vitals_temperature,
+            "followup_advised": request.followup_advised,
+            "followup_after_days": request.followup_after_days,
         }
         
         created = await self.consultation_repo.create(consult_data)

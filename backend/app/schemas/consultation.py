@@ -19,6 +19,8 @@ class ConsultationBase(BaseModel):
     vitals_bp: str | None = Field(None, max_length=20)
     vitals_pulse: int | None = Field(None, ge=0)
     vitals_temperature: float | None = Field(None, ge=0.0)
+    followup_advised: bool = False
+    followup_after_days: int = 0
 
 
 class ConsultationCreate(ConsultationBase):

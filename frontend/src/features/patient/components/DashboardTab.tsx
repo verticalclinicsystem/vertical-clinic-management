@@ -11,6 +11,8 @@ interface DashboardTabProps {
   setCancelApptId: (id: string | null) => void;
   setViewingAppointment: (appt: any) => void;
   triggerToast: (type: 'success' | 'error' | 'info', message: string) => void;
+  followups?: any[];
+  handleBookFollowup?: (followup: any) => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -23,11 +25,76 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   setCancelApptId,
   setViewingAppointment,
   triggerToast,
+  followups = [],
+  handleBookFollowup,
 }) => {
+  const activeFollowups = followups.filter((f: any) => f.status === 'recommended');
+
   if (!dashboardData) return null;
 
   return (
     <div className="dashboard-grid">
+      {/* Follow-up Recommendation Alert */}
+      {activeFollowups.length > 0 && (
+        <div style={{
+          gridColumn: '1 / -1',
+          background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%)',
+          backdropFilter: 'blur(10px)',
+          border: '1.5px solid rgba(20, 184, 166, 0.3)',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '16px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+          marginBottom: '20px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: 'rgba(20, 184, 166, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.4rem'
+            }}>
+              🩺
+            </div>
+            <div>
+              <h4 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                Follow-up Suggested by {activeFollowups[0].doctor_name}
+              </h4>
+              <p style={{ margin: 0, fontSize: '0.86rem', color: '#475569', lineHeight: '1.4' }}>
+                {activeFollowups[0].treatment_type} advised. Recommended Date: <strong>{new Date(activeFollowups[0].recommended_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => handleBookFollowup?.(activeFollowups[0])}
+            style={{
+              padding: '12px 20px',
+              backgroundColor: 'var(--primary-teal, #14b8a6)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(20, 184, 166, 0.25)',
+              transition: 'all 0.2s ease',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Book Follow-up Now <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
       {/* Hero Banner Card */}
       {patientProfile && (
         <div className="hero-banner">
