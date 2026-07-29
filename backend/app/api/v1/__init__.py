@@ -47,6 +47,7 @@ router.include_router(pharmacy.router,          prefix="/pharmacy",         tags
 router.include_router(inventory.router,         prefix="/inventory",        tags=["Pharmacy Portal"])
 router.include_router(medical_reports.router,   prefix="/medical-reports",  tags=["Patient Portal"])
 router.include_router(teleconsultation.router,  prefix="/teleconsultation", tags=["Doctor Portal"])
+router.include_router(teleconsultation.router,  prefix="/teleconsultations", tags=["Doctor Portal"])
 router.include_router(chat.router,              prefix="/chat",             tags=["Direct Messaging & Patient Chat"])
 router.include_router(notifications.router,     prefix="/notifications",    tags=["System & Notifications"])
 router.include_router(ai.router,                prefix="/ai",               tags=["AI Assistant"])

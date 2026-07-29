@@ -47,14 +47,14 @@ class TeleConsultService:
             return appointment.teleconsultation
 
         # Generate a unique video meeting room identifier for Jitsi Meet in-app calls
-        room_name = f"VerticalClinic_Teleconsult_{appointment_id.hex[:12]}"
+        room_name = f"vclinicteleconsult{appointment_id.hex[:12]}"
         meeting_url = room_name
 
         start_time = appointment.appointment_datetime
         # Assume 30 min duration
         end_time = start_time + timedelta(minutes=30)
-        # Configured expiry time: 1 hour after the scheduled end time
-        expiry_time = end_time + timedelta(hours=1)
+        # Configured expiry time: 24 hours to support flexible teleconsultation testing
+        expiry_time = end_time + timedelta(hours=24)
 
         tele_consult = TeleConsultation(
             appointment_id=appointment.id,
@@ -67,21 +67,24 @@ class TeleConsultService:
         )
 
         self.db.add(tele_consult)
-        
-        # Send notifications (Step 11)
-        message = (
-            f"Your teleconsultation with {appointment.doctor.user.full_name} is scheduled on "
-            f"{appointment.appointment_datetime.strftime('%Y-%m-%d at %I:%M %p')}. "
-            f"Here is your meeting link: {meeting_url}. The join button will be active 10 minutes before."
-        )
-        await self.notification_service.send_multichannel_notification(
-            user_id=appointment.patient.user_id,
-            title="Meeting Link Ready",
-            message=message,
-            type="meeting_ready"
-        )
-
         await self.db.commit()
+        await self.db.refresh(tele_consult)
+        
+        # Send notifications
+        try:
+            message = (
+                f"Your teleconsultation with Dr. {appointment.doctor.user.full_name} is scheduled. "
+                f"Here is your meeting room: {meeting_url}."
+            )
+            await self.notification_service.send_multichannel_notification(
+                user_id=appointment.patient.user_id,
+                title="Meeting Link Ready",
+                message=message,
+                type="meeting_ready"
+            )
+        except Exception as e:
+            logger.warning(f"Failed sending notification: {e}")
+
         logger.info(f"Generated meeting link for appointment {appointment.id}: {meeting_url}")
         return tele_consult
 
@@ -104,20 +107,12 @@ class TeleConsultService:
         if not appointment:
             raise BadRequestError("Appointment not found.")
 
-        if appointment.status != "confirmed":
-            raise BadRequestError("Appointment is not confirmed.")
+        if appointment.status in ("cancelled", "completed", "no_show"):
+            raise BadRequestError(f"Appointment is {appointment.status}.")
 
         tele = appointment.teleconsultation
         if not tele:
-            from app.models.user import User
-            from app.core.rbac import UserRole
-            user_stmt = select(User).where(User.id == user_id)
-            user_res = await self.db.execute(user_stmt)
-            user_obj = user_res.scalar_one_or_none()
-            if user_obj and user_obj.role in (UserRole.DOCTOR, UserRole.ADMIN):
-                tele = await self.generate_meeting_link(appointment_id)
-            else:
-                raise BadRequestError("Meeting URL has not been generated yet.")
+            tele = await self.generate_meeting_link(appointment_id)
 
         if tele.status == "Closed":
             raise BadRequestError("This meeting has already closed.")
@@ -149,9 +144,31 @@ class TeleConsultService:
             tele.status = "Active"
             await self.db.commit()
 
+        # Send notification to the other participant
+        try:
+            if user_id == appointment.patient.user_id:
+                if appointment.doctor and appointment.doctor.user_id:
+                    await self.notification_service.send_multichannel_notification(
+                        user_id=appointment.doctor.user_id,
+                        title="📹 Patient Waiting in Call",
+                        message=f"Patient {appointment.patient.user.full_name} has entered the video room. Click to join.",
+                        type="patient_joined"
+                    )
+            elif appointment.doctor and user_id == appointment.doctor.user_id:
+                if appointment.patient and appointment.patient.user_id:
+                    await self.notification_service.send_multichannel_notification(
+                        user_id=appointment.patient.user_id,
+                        title="👨‍⚕️ Doctor Joined Call",
+                        message=f"Dr. {appointment.doctor.user.full_name} has joined the video room.",
+                        type="doctor_joined"
+                    )
+        except Exception:
+            pass
+
+        clean_room = (tele.meeting_url or f"vclinicteleconsult{appointment.id.hex[:12]}").lower().replace("_", "").replace("-", "")
         return {
             "appointment_id": str(appointment.id),
-            "meeting_url": tele.meeting_url,
+            "meeting_url": clean_room,
             "status": tele.status,
             "doctor_name": appointment.doctor.user.full_name,
             "patient_name": appointment.patient.user.full_name,

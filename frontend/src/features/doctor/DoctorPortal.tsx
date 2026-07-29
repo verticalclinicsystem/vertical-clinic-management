@@ -31,6 +31,7 @@ import {
   User
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { JitsiMeeting } from '@jitsi/react-sdk';
 import './DoctorPortal.css';
 
 interface DoctorPortalProps {
@@ -183,7 +184,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   
   // Local Queue Search & Global EMR Search
   const [queueSearch, setQueueSearch] = useState<string>('');
@@ -439,10 +440,57 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     return { bmi: bmiVal, label, color };
   };
 
-  // Video call simulated state
+  // Video call state & Incoming call ringing listener
   const [inVideoCall, setInVideoCall] = useState<boolean>(false);
   const [videoPatientName, setVideoPatientName] = useState<string>('');
   const [videoApptId, setVideoApptId] = useState<string>('');
+  const [videoRoomName, setVideoRoomName] = useState<string>('');
+  const [incomingCall, setIncomingCall] = useState<any>(null);
+
+  useEffect(() => {
+    const checkIncoming = async () => {
+      try {
+        const res = await api.get('/teleconsultations/check-incoming-call');
+        if (res.data && res.data.success && res.data.data?.has_incoming_call) {
+          const callData = res.data.data;
+          if (!inVideoCall && (!incomingCall || incomingCall.appointment_id !== callData.appointment_id)) {
+            setIncomingCall(callData);
+          }
+        }
+      } catch (err) {
+        // silent check
+      }
+    };
+    checkIncoming();
+    const interval = setInterval(checkIncoming, 3000);
+    return () => clearInterval(interval);
+  }, [inVideoCall, incomingCall]);
+
+  const handleAcceptIncomingCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await api.post(`/teleconsultations/${incomingCall.appointment_id}/accept-call`);
+      setVideoRoomName(incomingCall.room_name);
+      setVideoPatientName(incomingCall.caller_name || incomingCall.patient_name || 'Patient');
+      setVideoApptId(incomingCall.appointment_id);
+      setInVideoCall(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIncomingCall(null);
+    }
+  };
+
+  const handleDeclineIncomingCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await api.post(`/teleconsultations/${incomingCall.appointment_id}/decline-call`);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIncomingCall(null);
+    }
+  };
   const [micMuted, setMicMuted] = useState<boolean>(false);
   const [videoMuted, setVideoMuted] = useState<boolean>(false);
   const [lunchStart, setLunchStart] = useState<string>('13:00');
@@ -563,7 +611,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [pendingFollowups, setPendingFollowups] = useState<any[]>([]);
   const [bookedFollowups, setBookedFollowups] = useState<any[]>([]);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
@@ -1219,15 +1267,24 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Join teleconsultation meeting
   const handleJoinVideo = async (appt: any) => {
+    let room = '';
     try {
-      await api.post(`/teleconsultation/${appt.id}/create-link`);
-      showToast('Video consultation room initialized!', 'success');
-      fetchDashboard();
+      const res = await api.post(`/teleconsultations/${appt.id}/join`);
+      const data = res.data?.data || res.data;
+      room = (data?.meeting_url || `vclinicteleconsult${appt.id.replace(/-/g, '').substring(0, 12)}`).toLowerCase().replace(/[^a-z0-9]/g, '');
+      showToast('Video consultation room connected!', 'success');
     } catch (e: any) {
-      console.error(e);
-      showToast('Failed to initialize video call', 'error');
+      try {
+        const res2 = await api.post(`/teleconsultations/${appt.id}/create-link`);
+        const data2 = res2.data?.data || res2.data;
+        room = (data2?.meeting_url || `vclinicteleconsult${appt.id.replace(/-/g, '').substring(0, 12)}`).toLowerCase().replace(/[^a-z0-9]/g, '');
+      } catch (err2) {
+        room = `vclinicteleconsult${appt.id.replace(/-/g, '').substring(0, 12)}`;
+      }
+      showToast('Joining video consultation room...', 'info');
     }
-    setVideoPatientName(appt.patient_name);
+    setVideoRoomName(room);
+    setVideoPatientName(appt.patient_name || appt.patient?.user?.full_name || 'Patient');
     setVideoApptId(appt.id);
     setInVideoCall(true);
   };
@@ -1937,21 +1994,26 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 {appt.consultation_type === 'teleconsultation' && !isCompleted && (
                                   <button 
                                     onClick={() => handleJoinVideo(appt)} 
-                                    className="doc-btn-secondary" 
+                                    className="doc-btn-primary" 
                                     style={{ 
-                                      width: '40px',
+                                      padding: '0 14px',
                                       height: '40px',
-                                      display: 'flex', 
+                                      display: 'inline-flex', 
                                       alignItems: 'center', 
                                       justifyContent: 'center', 
-                                      padding: 0,
-                                      backgroundColor: appt.tele_link ? '#e0f2fe' : '#faf5ff',
-                                      color: appt.tele_link ? '#0369a1' : '#7e22ce',
-                                      borderColor: appt.tele_link ? '#bae6fd' : '#e9d5ff'
+                                      gap: '6px',
+                                      backgroundColor: '#0284c7',
+                                      color: '#ffffff',
+                                      fontWeight: '600',
+                                      fontSize: '0.85rem',
+                                      borderRadius: '8px',
+                                      cursor: 'pointer',
+                                      border: 'none',
+                                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
                                     }}
-                                    title={appt.tele_link ? "Join Teleconsultation Call" : "Initialize Call"}
+                                    title="Join Teleconsultation Video Call"
                                   >
-                                    <Video size={16} />
+                                    <Video size={16} /> Join Video Call
                                   </button>
                                 )}
                               </div>
@@ -3917,6 +3979,114 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         </div>
       </main>
 
+      {/* ── INCOMING TELECONSULTATION CALL RINGING MODAL ── */}
+      {incomingCall && !inVideoCall && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.88)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            border: '2px solid #0284c7',
+            borderRadius: '24px',
+            padding: '40px 32px',
+            width: '90%',
+            maxWidth: '440px',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(2, 132, 199, 0.4)',
+            color: '#ffffff'
+          }}>
+            {/* Ringing Avatar Icon */}
+            <div style={{
+              width: '96px',
+              height: '96px',
+              margin: '0 auto 24px',
+              borderRadius: '50%',
+              backgroundColor: '#0284c7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 25px rgba(2, 132, 199, 0.8)'
+            }}>
+              <Video size={44} color="#ffffff" />
+            </div>
+
+            <div style={{
+              textTransform: 'uppercase',
+              letterSpacing: '1.5px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              color: '#38bdf8',
+              marginBottom: '8px'
+            }}>
+              📞 INCOMING TELECONSULTATION CALL
+            </div>
+
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: '0 0 6px', color: '#f8fafc' }}>
+              {incomingCall.caller_name || 'Patient'}
+            </h2>
+
+            <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 32px' }}>
+              Patient is calling for your scheduled video consultation...
+            </p>
+
+            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+              <button
+                onClick={handleDeclineIncomingCall}
+                style={{
+                  flex: 1,
+                  padding: '14px 20px',
+                  borderRadius: '14px',
+                  border: '1px solid #475569',
+                  backgroundColor: '#334155',
+                  color: '#f1f5f9',
+                  fontWeight: '700',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                <X size={18} /> Decline
+              </button>
+
+              <button
+                onClick={handleAcceptIncomingCall}
+                style={{
+                  flex: 1.4,
+                  padding: '14px 20px',
+                  borderRadius: '14px',
+                  border: 'none',
+                  backgroundColor: '#16a34a',
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 10px 20px -5px rgba(22, 163, 74, 0.5)'
+                }}
+              >
+                <Video size={18} /> Accept & Join Call
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── INTERACTIVE VIDEO CONSULTATION ROOM (MODAL) ── */}
       {inVideoCall && (
         <div className="video-consultation-overlay">
@@ -3929,19 +4099,48 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
             </header>
 
             <div className="video-body">
-              {/* Primary Video Feed */}
-              <div className="video-main-screen">
-                <div className="video-patient-avatar">
-                  {videoPatientName.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div style={{ position: 'absolute', bottom: '20px', left: '20px', color: 'white', fontSize: '0.88rem', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '4px' }}>
-                  {videoPatientName} (Patient Feed)
-                </div>
-
-                {/* Self Feed Overlay */}
-                <div className="video-self-preview">
-                  <span>Dr. Rohan Mehta</span>
-                </div>
+              {/* Primary Video Feed - Realtime Jitsi Video Room */}
+              <div className="video-main-screen" style={{ position: 'relative', overflow: 'hidden', minHeight: '400px', backgroundColor: '#0f172a' }}>
+                {videoRoomName ? (
+                  <JitsiMeeting
+                    domain="meet.element.io"
+                    roomName={videoRoomName ? videoRoomName.toLowerCase().replace(/[^a-z0-9_]/g, '') : 'vclinic_teleconsult_room'}
+                    configOverwrite={{
+                      startWithAudioMuted: false,
+                      startWithVideoMuted: false,
+                      disableThirdPartyRequests: true,
+                      prejoinPageEnabled: false,
+                      enableWelcomePage: false,
+                      disableDeepLinking: true,
+                      enableUserRolesBasedOnToken: false,
+                      requireDisplayName: false,
+                      toolbarButtons: [
+                        'microphone', 'camera', 'desktop', 'fullscreen',
+                        'hangup', 'chat', 'raisehand', 'tileview'
+                      ]
+                    }}
+                    interfaceConfigOverwrite={{
+                      SHOW_JITSI_WATERMARK: false,
+                      SHOW_WATERMARK_FOR_GUESTS: false,
+                      TOOLBAR_BUTTONS: [
+                        'microphone', 'camera', 'desktop', 'fullscreen',
+                        'hangup', 'chat', 'raisehand', 'tileview'
+                      ]
+                    }}
+                    userInfo={{
+                      displayName: dashboardData?.doctor?.full_name || 'Doctor',
+                      email: ''
+                    }}
+                    getIFrameRef={(iframeRef) => {
+                      iframeRef.style.height = '100%';
+                      iframeRef.style.width = '100%';
+                    }}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
+                    Connecting Video Call Stream...
+                  </div>
+                )}
               </div>
 
               {/* Consultation sidebar in-call */}
