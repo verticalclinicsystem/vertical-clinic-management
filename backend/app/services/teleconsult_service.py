@@ -46,11 +46,9 @@ class TeleConsultService:
         if appointment.teleconsultation:
             return appointment.teleconsultation
 
-        # Generate a unique video meeting URL
-        meeting_id = uuid.uuid4()
-        # Create Google Meet styled link
-        meet_code = f"{meeting_id.hex[:3]}-{meeting_id.hex[3:7]}-{meeting_id.hex[7:10]}"
-        meeting_url = f"https://meet.google.com/{meet_code}"
+        # Generate a unique video meeting room identifier for Jitsi Meet in-app calls
+        room_name = f"VerticalClinic_Teleconsult_{appointment_id.hex[:12]}"
+        meeting_url = room_name
 
         start_time = appointment.appointment_datetime
         # Assume 30 min duration

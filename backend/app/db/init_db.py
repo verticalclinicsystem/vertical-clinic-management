@@ -188,6 +188,20 @@ async def _seed_users_and_profiles(
     )
     db.add(admin_user)
 
+    # Create Clinic Manager
+    manager_user = User(
+        id=uuid.uuid4(),
+        full_name="Clinic Operational Manager",
+        email="manager@verticalclinic.com",
+        phone="+919820000005",
+        hashed_password=hash_password("ManagerPassword123!"),
+        role="clinic_manager",
+        branch_id=branch_ids.get("SAT"),
+        is_active=True,
+        is_verified=True,
+    )
+    db.add(manager_user)
+
     if test_mode:
         doctors_to_seed = [
             ("Dr. Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "Orthodontist", "BDS, MDS (Orthodontics)", 12, 900.0, "Specialist in braces, aligners, and bite correction."),

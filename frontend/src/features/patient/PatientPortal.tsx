@@ -110,6 +110,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   // Modals & UI States
   const [rescheduleApptId, setRescheduleApptId] = useState<string | null>(null);
   const [rescheduleDoctorId, setRescheduleDoctorId] = useState<string | null>(null);
+  const [rescheduleConsultationType, setRescheduleConsultationType] = useState<string>('in_person');
   const [rescheduleDate, setRescheduleDate] = useState<string>('');
   const [rescheduleSlots, setRescheduleSlots] = useState<{ time: string; status: string }[]>([]);
   const [rescheduleSlot, setRescheduleSlot] = useState<string>('');
@@ -201,6 +202,33 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     localStorage.removeItem('booking_date');
     localStorage.removeItem('booking_slot');
     localStorage.removeItem('booking_consultation_type');
+  };
+
+  const openRescheduleModal = async (apptId: string, doctorId: string, type: string = 'in_person') => {
+    setRescheduleApptId(apptId);
+    setRescheduleDoctorId(doctorId);
+    setRescheduleConsultationType(type || 'in_person');
+    setRescheduleDate('');
+    setRescheduleSlot('');
+    setRescheduleSlots([]);
+  };
+
+  const handleRescheduleDateSelect = async (dateStr: string, typeOverride?: string) => {
+    setRescheduleDate(dateStr);
+    setRescheduleSlot('');
+    const currentType = typeOverride || rescheduleConsultationType || 'in_person';
+    if (typeOverride) {
+      setRescheduleConsultationType(typeOverride);
+    }
+    if (rescheduleDoctorId && dateStr) {
+      try {
+        const typeParam = `&consultation_type=${currentType}`;
+        const res = await api.get(`/appointments/available-slots?doctor_id=${rescheduleDoctorId}&date=${dateStr}${typeParam}`);
+        setRescheduleSlots(extractArrayData(res.data));
+      } catch (err) {
+        triggerToast('error', 'Could not load slots for rescheduling.');
+      }
+    }
   };
 
   const getInitials = (name?: string): string => {
@@ -423,33 +451,15 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     }
   };
 
-  const openRescheduleModal = async (apptId: string, doctorId: string) => {
-    setRescheduleApptId(apptId);
-    setRescheduleDoctorId(doctorId);
-    setRescheduleDate('');
-    setRescheduleSlot('');
-    setRescheduleSlots([]);
-  };
-
-  const handleRescheduleDateSelect = async (dateStr: string) => {
-    setRescheduleDate(dateStr);
-    setRescheduleSlot('');
-    if (rescheduleDoctorId && dateStr) {
-      try {
-        const res = await api.get(`/appointments/available-slots?doctor_id=${rescheduleDoctorId}&date=${dateStr}`);
-        setRescheduleSlots(extractArrayData(res.data));
-      } catch (err) {
-        triggerToast('error', 'Could not load slots for rescheduling.');
-      }
-    }
-  };
-
   const handleRescheduleSubmit = async () => {
     if (!rescheduleApptId || !rescheduleDate || !rescheduleSlot) return;
     setIsLoading(true);
     try {
       const datetime = `${rescheduleDate}T${rescheduleSlot}:00`;
-      await api.post(`/appointments/${rescheduleApptId}/reschedule`, { new_datetime: datetime });
+      await api.patch(`/appointments/${rescheduleApptId}/reschedule`, {
+        new_datetime: datetime,
+        consultation_type: rescheduleConsultationType
+      });
       triggerToast('success', 'Appointment rescheduled successfully!');
       setRescheduleApptId(null);
       await fetchPortalData();
@@ -1038,6 +1048,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
             formatTimeToAMPM={formatTimeToAMPM}
             cancelApptId={cancelApptId}
             setCancelApptId={setCancelApptId}
+            rescheduleConsultationType={rescheduleConsultationType}
             cancelReason={cancelReason}
             setCancelReason={setCancelReason}
             handleCancelSubmit={handleCancelSubmit}

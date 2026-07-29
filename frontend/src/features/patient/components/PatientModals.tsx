@@ -8,7 +8,7 @@ interface PatientModalsProps {
   rescheduleDate: string;
   rescheduleSlot: string;
   rescheduleSlots: any[];
-  handleRescheduleDateSelect: (date: string) => void;
+  handleRescheduleDateSelect: (date: string, typeParam?: string) => void;
   setRescheduleSlot: (slot: string) => void;
   handleRescheduleSubmit: () => void;
   formatTimeToAMPM: (time: string) => string;
@@ -81,13 +81,15 @@ interface PatientModalsProps {
   conflictAppt: any;
   setConflictAppt: (appt: any) => void;
   setScreen: (screen: any) => void;
-  openRescheduleModal: (apptId: string, doctorId: string) => void;
+  openRescheduleModal: (apptId: string, doctorId: string, type?: string) => void;
+  rescheduleConsultationType?: string;
 }
 
 export const PatientModals: React.FC<PatientModalsProps> = ({
   rescheduleApptId,
   setRescheduleApptId,
   rescheduleDate,
+  rescheduleConsultationType = 'in_person',
   rescheduleSlot,
   rescheduleSlots,
   handleRescheduleDateSelect,
@@ -163,7 +165,9 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
         <div className="modal-overlay">
           <div className="modal-card">
             <header className="modal-header">
-              <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)' }}>Reschedule Appointment</h3>
+              <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)' }}>
+                Reschedule {rescheduleConsultationType === 'teleconsultation' ? 'Teleconsultation' : 'In-Clinic'} Appointment
+              </h3>
               <button onClick={() => setRescheduleApptId(null)} style={{ fontSize: '1.25rem', color: 'var(--text-muted)' }}>&times;</button>
             </header>
 
@@ -176,9 +180,93 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                 borderRadius: '8px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                marginBottom: '16px'
+                marginBottom: '12px'
               }}>
                 Warning: Appointments cannot be rescheduled within 2 hours of the scheduled time. Limit: 2 reschedule attempts maximum.
+              </div>
+
+              {rescheduleConsultationType === 'teleconsultation' ? (
+                <div style={{
+                  backgroundColor: '#f0f9ff',
+                  color: '#0369a1',
+                  border: '1px solid #bae6fd',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  marginBottom: '16px'
+                }}>
+                  📹 Teleconsultation slots are exclusively available from 3:00 PM to 5:00 PM.
+                </div>
+              ) : (
+                <div style={{
+                  backgroundColor: '#f8fafc',
+                  color: '#475569',
+                  border: '1px solid #e2e8f0',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  marginBottom: '16px'
+                }}>
+                  🏥 In-person consultation slots exclude the 3:00 PM – 5:00 PM teleconsultation window.
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Consultation Mode</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rescheduleConsultationType !== 'in_person') {
+                        handleRescheduleDateSelect(rescheduleDate, 'in_person');
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: rescheduleConsultationType === 'in_person' ? '2px solid #0d9488' : '1px solid #cbd5e1',
+                      background: rescheduleConsultationType === 'in_person' ? '#f0fdf4' : '#ffffff',
+                      color: rescheduleConsultationType === 'in_person' ? '#0f766e' : '#475569',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    🏥 In-Clinic Visit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rescheduleConsultationType !== 'teleconsultation') {
+                        handleRescheduleDateSelect(rescheduleDate, 'teleconsultation');
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: rescheduleConsultationType === 'teleconsultation' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                      background: rescheduleConsultationType === 'teleconsultation' ? '#f0f9ff' : '#ffffff',
+                      color: rescheduleConsultationType === 'teleconsultation' ? '#0369a1' : '#475569',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    📹 Teleconsultation (3-5 PM)
+                  </button>
+                </div>
               </div>
 
               <div className="form-group">
@@ -944,9 +1032,10 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                 onClick={() => {
                   const id = conflictAppt.id;
                   const docId = conflictAppt.doctor_id;
+                  const cType = conflictAppt.consultation_type || consultationType || 'in_person';
                   setConflictAppt(null);
                   setScreen('dashboard');
-                  openRescheduleModal(id, docId);
+                  openRescheduleModal(id, docId, cType);
                 }}
                 className="btn-primary"
                 style={{ padding: '10px 18px', fontSize: '0.875rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '8px' }}

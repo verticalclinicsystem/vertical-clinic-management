@@ -177,7 +177,7 @@ async def get_admin_dashboard(
     # ── Staff list ───────────────────────────────────────────────────────
     staff_res = await db.execute(
         select(User).where(
-            User.role.in_([UserRole.ADMIN, UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.RECEPTIONIST])
+            User.role.in_([UserRole.ADMIN, UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.RECEPTIONIST, UserRole.CLINIC_MANAGER])
         ).order_by(User.full_name)
     )
     staff_members = staff_res.scalars().all()
