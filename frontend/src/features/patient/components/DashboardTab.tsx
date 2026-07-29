@@ -7,10 +7,10 @@ interface DashboardTabProps {
   statistics: any;
   setScreen: (screen: any) => void;
   openBookingWizard?: () => void;
-  openRescheduleModal: (apptId: string, doctorId: string) => void;
+  openRescheduleModal: (apptId: string, doctorId: string, type?: string) => void;
   setCancelApptId: (id: string | null) => void;
   setViewingAppointment: (appt: any) => void;
-  triggerToast: (type: 'success' | 'error', message: string) => void;
+  triggerToast: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -55,7 +55,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     triggerToast('error', 'Rescheduling is not allowed within 2 hours of the scheduled time. Please call the clinic.');
                     return;
                   }
-                  openRescheduleModal(firstAppt.id, firstAppt.doctor_id);
+                  openRescheduleModal(firstAppt.id, firstAppt.doctor_id, firstAppt.consultation_type);
                 } else {
                   triggerToast('error', 'No active appointments to reschedule. Please book a new one.');
                 }
@@ -175,7 +175,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   triggerToast('error', 'Rescheduling is not allowed within 2 hours of the scheduled time. Please call the clinic.');
                                   return;
                                 }
-                                openRescheduleModal(appt.id, appt.doctor_id);
+                                openRescheduleModal(appt.id, appt.doctor_id, appt.consultation_type);
                               }}
                               className="action-btn reschedule"
                               style={{ padding: '4px 8px', fontSize: '0.7rem', opacity: isLimitReached || isWithinTwoHours ? 0.5 : 1, cursor: isLimitReached || isWithinTwoHours ? 'not-allowed' : 'pointer' }}

@@ -9,7 +9,7 @@ interface AppointmentsTabProps {
   setAppointmentDateFilter: (date: string) => void;
   setScreen: (screen: any) => void;
   setBookingStep: (step: number) => void;
-  openRescheduleModal: (apptId: string, doctorId: string) => void;
+  openRescheduleModal: (apptId: string, doctorId: string, type?: string) => void;
   setCancelApptId: (id: string | null) => void;
   handleJoinMeeting: (id: string) => void;
   setViewingAppointment: (appt: any) => void;
@@ -210,7 +210,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                                     triggerToast('error', 'Rescheduling is not allowed within 2 hours of the scheduled time. Please call the clinic.');
                                     return;
                                   }
-                                  openRescheduleModal(appt.id, appt.doctor_id);
+                                  openRescheduleModal(appt.id, appt.doctor_id, appt.consultation_type);
                                   setActiveDropdownId(null);
                                 }}
                               >

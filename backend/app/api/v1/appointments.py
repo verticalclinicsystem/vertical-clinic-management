@@ -3,7 +3,7 @@ Appointments router — REST API endpoints for booking and managing clinic sched
 """
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 from datetime import datetime, timezone, time as dt_time
 
@@ -448,23 +448,29 @@ from pydantic import BaseModel
 class RescheduleRequest(BaseModel):
     new_datetime: datetime | None = None
     appointment_datetime: datetime | None = None
+    consultation_type: str | None = None
 
 @router.patch("/{appointment_id}/reschedule")
+@router.post("/{appointment_id}/reschedule")
 async def reschedule_appointment_api(
     appointment_id: UUID,
     request: RescheduleRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
-    """Reschedule the appointment to a new date/time."""
+    """Reschedule the appointment to a new date/time and optional consultation type."""
     target_dt = request.new_datetime or request.appointment_datetime
     if not target_dt:
         raise BadRequestError("Either new_datetime or appointment_datetime must be provided.")
 
     service = AppointmentService(db)
+    update_data: dict[str, Any] = {"appointment_datetime": target_dt}
+    if request.consultation_type:
+        update_data["consultation_type"] = request.consultation_type
+
     updated = await service.update_appointment(
         appointment_id,
-        AppointmentUpdate(appointment_datetime=target_dt),
+        AppointmentUpdate(**update_data),
         current_user_id=current_user.id,
         role=current_user.role,
     )

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Clock, CheckSquare, Square, AlertCircle, MessageSquare } from 'lucide-react';
 import { ChatDrawerModal } from './ChatDrawerModal';
+import { JitsiVideoModal } from './JitsiVideoModal';
 
 interface TeleconsultationTabProps {
   activeTele: any;
@@ -32,6 +33,7 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
   setScreen,
 }) => {
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
 
   const allConsultations: any[] = [];
   if (activeTele) {
@@ -222,7 +224,10 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
 
               {/* Join Meeting Action Button */}
               <button
-                onClick={() => handleJoinMeeting(selectedItem.id)}
+                onClick={() => {
+                  handleJoinMeeting(selectedItem.id);
+                  setIsVideoModalOpen(true);
+                }}
                 className="tele-btn-join"
                 disabled={!selectedItem.can_join || !isMandatoryComplete}
                 style={{
@@ -238,7 +243,7 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                 title={!isMandatoryComplete ? 'Please complete all required pre-consultation checklist items to enable' : ''}
               >
                 <Video size={16} /> 
-                {(!isMandatoryComplete && selectedItem.can_join) ? '🔒 Complete Checklist to Join' : 'Join Meeting'}
+                {(!isMandatoryComplete && selectedItem.can_join) ? '🔒 Complete Checklist to Join' : 'Join Video Consultation'}
               </button>
 
               {/* Direct Messaging Drawer Button */}
@@ -444,6 +449,17 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
         appointment={selectedItem}
         triggerToast={triggerToast}
       />
+
+      {/* In-App Jitsi Video Modal */}
+      {isVideoModalOpen && selectedItem && (
+        <JitsiVideoModal
+          appointmentId={selectedItem.id}
+          doctorName={selectedItem.doctor_name}
+          specialty={selectedItem.specialty}
+          isDoctor={false}
+          onClose={() => setIsVideoModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

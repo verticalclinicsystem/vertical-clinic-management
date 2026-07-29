@@ -190,6 +190,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       };
       const res = await api.post('/users/', payload);
       if (res.data?.success) {
+        alert('Staff member created successfully!');
         setIsAddingStaff(false);
         setShowPassword(false);
         setNewStaffForm({ full_name: '', email: '', phone: '', password: '', role: 'doctor', branch_id: '' });
@@ -199,7 +200,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       }
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.message || 'Error occurred while creating staff member.');
+      const errMsg = err.response?.data?.detail || err.response?.data?.message || 'Error occurred while creating staff member.';
+      alert(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
     }
   };
 
@@ -1273,6 +1275,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <option value="doctor">Doctor</option>
                     <option value="receptionist">Receptionist</option>
                     <option value="pharmacist">Pharmacist</option>
+                    <option value="clinic_manager">Clinic Manager</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
@@ -1386,6 +1389,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <option value="doctor">Doctor</option>
                     <option value="receptionist">Receptionist</option>
                     <option value="pharmacist">Pharmacist</option>
+                    <option value="clinic_manager">Clinic Manager</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
