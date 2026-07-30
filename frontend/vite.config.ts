@@ -5,11 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: [
-      'pseudoambidextrous-tiaralike-baylee.ngrok-free.dev',
-      '.ngrok-free.dev',
-      '.trycloudflare.com',
-    ],
+    host: '0.0.0.0',
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
