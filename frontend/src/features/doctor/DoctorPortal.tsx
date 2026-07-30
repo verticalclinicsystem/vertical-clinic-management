@@ -3543,111 +3543,83 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         </div>
       </main>
 
-      {/* ── INCOMING TELECONSULTATION CALL RINGING MODAL ── */}
+      {/* ── SLEEK FLOATING TELECONSULTATION ALERT NOTIFICATION TOAST (TOP RIGHT) ── */}
       {incomingCall && !inVideoCall && (
         <div style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.88)',
-          backdropFilter: 'blur(10px)',
+          top: '24px',
+          right: '24px',
           zIndex: 99999,
+          backgroundColor: '#0f172a',
+          border: '1px solid #0284c7',
+          borderRadius: '16px',
+          padding: '16px 20px',
+          maxWidth: '380px',
+          boxShadow: '0 20px 35px -10px rgba(2, 132, 199, 0.5)',
+          color: '#ffffff',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          gap: '14px'
         }}>
           <div style={{
-            backgroundColor: '#1e293b',
-            border: '2px solid #0284c7',
-            borderRadius: '24px',
-            padding: '40px 32px',
-            width: '90%',
-            maxWidth: '440px',
-            textAlign: 'center',
-            boxShadow: '0 25px 50px -12px rgba(2, 132, 199, 0.4)',
-            color: '#ffffff'
+            width: '44px',
+            height: '44px',
+            borderRadius: '12px',
+            backgroundColor: '#0284c7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            boxShadow: '0 0 12px rgba(2, 132, 199, 0.6)'
           }}>
-            {/* Ringing Avatar Icon */}
-            <div style={{
-              width: '96px',
-              height: '96px',
-              margin: '0 auto 24px',
-              borderRadius: '50%',
-              backgroundColor: '#0284c7',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 25px rgba(2, 132, 199, 0.8)'
-            }}>
-              <Video size={44} color="#ffffff" />
+            <Video size={22} color="#ffffff" />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              📹 Teleconsultation Alert
             </div>
-
-            <div style={{
-              textTransform: 'uppercase',
-              letterSpacing: '1.5px',
-              fontSize: '0.75rem',
-              fontWeight: '700',
-              color: '#38bdf8',
-              marginBottom: '8px'
-            }}>
-              📞 INCOMING TELECONSULTATION CALL
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', margin: '2px 0' }}>
+              {incomingCall.caller_name || 'Patient'} has joined!
             </div>
-
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: '0 0 6px', color: '#f8fafc' }}>
-              {incomingCall.caller_name || 'Patient'}
-            </h2>
-
-            <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 32px' }}>
-              Patient is calling for your scheduled video consultation...
-            </p>
-
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-              <button
-                onClick={handleDeclineIncomingCall}
-                style={{
-                  flex: 1,
-                  padding: '14px 20px',
-                  borderRadius: '14px',
-                  border: '1px solid #475569',
-                  backgroundColor: '#334155',
-                  color: '#f1f5f9',
-                  fontWeight: '700',
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <X size={18} /> Decline
-              </button>
-
-              <button
-                onClick={handleAcceptIncomingCall}
-                style={{
-                  flex: 1.4,
-                  padding: '14px 20px',
-                  borderRadius: '14px',
-                  border: 'none',
-                  backgroundColor: '#16a34a',
-                  color: '#ffffff',
-                  fontWeight: '700',
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: '0 10px 20px -5px rgba(22, 163, 74, 0.5)'
-                }}
-              >
-                <Video size={18} /> Accept & Join Call
-              </button>
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+              Waiting in video room
             </div>
           </div>
+
+          <button
+            onClick={handleAcceptIncomingCall}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '10px',
+              border: 'none',
+              backgroundColor: '#16a34a',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.4)'
+            }}
+          >
+            Join Call
+          </button>
+
+          <button
+            onClick={handleDeclineIncomingCall}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              padding: '0 4px',
+              lineHeight: 1
+            }}
+            title="Dismiss"
+          >
+            &times;
+          </button>
         </div>
       )}
 
