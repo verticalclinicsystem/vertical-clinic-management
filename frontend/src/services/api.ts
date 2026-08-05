@@ -112,3 +112,13 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const getWebSocketUrl = (): string => {
+  const base = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.host}`;
+  const wsProto = base.startsWith('https') ? 'wss' : 'ws';
+  const cleanBase = base.replace(/^https?:\/\//, '');
+  const token = localStorage.getItem('access_token');
+  const query = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `${wsProto}://${cleanBase}/api/v1/ws${query}`;
+};
+

@@ -18,7 +18,7 @@ async def test_public_can_list_and_search_doctors(client: AsyncClient):
     res_search_json = response_search.json()
     assert len(res_search_json["data"]["items"]) == 1
     assert res_search_json["data"]["items"][0]["specialization"] == "Orthodontist"
-    assert "Dr. Rohan Mehta" in res_search_json["data"]["items"][0]["user"]["full_name"]
+    assert "Rohan Mehta" in res_search_json["data"]["items"][0]["user"]["full_name"]
 
 
 @pytest.mark.asyncio

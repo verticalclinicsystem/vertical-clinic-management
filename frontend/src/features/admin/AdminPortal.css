@@ -960,3 +960,31 @@
   color: #b91c1c;
 }
 
+/* ── Back Navigation Button ── */
+.admin-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--admin-border);
+  background-color: #ffffff;
+  color: var(--admin-primary);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.admin-back-btn:hover {
+  background-color: #f0fdf4;
+  border-color: var(--admin-primary);
+  transform: translateX(-2px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.admin-back-btn:active {
+  transform: scale(0.95) translateX(-2px);
+}
+

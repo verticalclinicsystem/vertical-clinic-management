@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api, getWebSocketUrl } from '../../services/api';
+import { X } from 'lucide-react';
+import { JitsiVideoModal } from './components/JitsiVideoModal';
 import './PatientPortal.css';
 
 import { PatientSidebar } from './components/PatientSidebar';
@@ -59,6 +61,14 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   }, [screen]);
 
   const [patientProfile, setPatientProfile] = useState<any>(null);
+  const [doctorReadyNotification, setDoctorReadyNotification] = useState<{
+    appointmentId: string;
+    doctorName: string;
+    specialty?: string;
+  } | null>(null);
+  const [isGlobalVideoModalOpen, setIsGlobalVideoModalOpen] = useState<boolean>(false);
+  const [globalVideoAppt, setGlobalVideoAppt] = useState<any>(null);
+  const [dismissedNotificationApptId, setDismissedNotificationApptId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
@@ -279,7 +289,21 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
       ]);
 
       setPatientProfile(profileRes.data?.data || profileRes.data);
-      setDashboardData(dashRes.data?.data || dashRes.data);
+      const dashData = dashRes.data?.data || dashRes.data;
+      setDashboardData(dashData);
+
+      // Check if doctor has started the teleconsultation early
+      const tele = dashData?.upcoming_appointments?.find((a: any) => a.consultation_type === 'teleconsultation');
+      if (tele && tele.can_join && !isGlobalVideoModalOpen) {
+        setDoctorReadyNotification({
+          appointmentId: tele.id,
+          doctorName: tele.doctor?.user?.full_name || tele.doctor_name || 'Clinician',
+          specialty: tele.doctor?.specialization || tele.specialty || 'Dentist'
+        });
+        setGlobalVideoAppt(tele);
+      } else {
+        setDoctorReadyNotification(null);
+      }
       setStatistics(statsRes.data?.data || statsRes.data);
       setTimeline(extractArrayData(timelineRes.data));
       if (prefRes.data) {
@@ -304,6 +328,73 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     fetchPortalData();
+  }, []);
+
+  // Real-time WebSocket Queue Update
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWebSocket = () => {
+      try {
+        const wsUrl = getWebSocketUrl();
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          console.log('WebSocket connected for patient portal queue updates');
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'queue_updated') {
+              console.log('Queue update received via WebSocket, refreshing patient portal...');
+              fetchPortalData();
+            } else if (data.event === 'doctor_ready') {
+              console.log('Doctor ready event received via WebSocket:', data);
+              setDoctorReadyNotification({
+                appointmentId: data.appointment_id,
+                doctorName: data.doctor_name || 'your doctor',
+                specialty: ''
+              });
+              setGlobalVideoAppt({
+                id: data.appointment_id,
+                doctor_name: data.doctor_name || 'Doctor',
+                meeting_url: data.meeting_url
+              });
+              fetchPortalData();
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+          }
+        };
+
+        socket.onclose = () => {
+          console.log('WebSocket disconnected, reconnecting in 5s...');
+          reconnectTimeout = setTimeout(connectWebSocket, 5000);
+        };
+
+        socket.onerror = (err) => {
+          console.error('WebSocket error:', err);
+          socket?.close();
+        };
+      } catch (err) {
+        console.error('Failed to establish WebSocket connection:', err);
+        reconnectTimeout = setTimeout(connectWebSocket, 5000);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
   }, []);
 
   const handleBookFollowup = (followup: any) => {
@@ -731,25 +822,21 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   };
 
   const handleJoinMeeting = async (appointmentId: string) => {
-    try {
-      const res = await api.post(`/teleconsultations/${appointmentId}/signal-call`);
-      const data = res.data?.data || res.data;
-      const rawRoom = data?.room_name || data?.meeting_url || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
-      const cleanRoom = rawRoom.split('/').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
-      const link = `https://meet.element.io/${cleanRoom}`;
-      window.open(link, '_blank');
-      triggerToast('info', 'Ringing doctor... Launching teleconsultation room.');
-    } catch (err: any) {
-      try {
-        const res2 = await api.get(`/appointments/${appointmentId}/meeting-link`);
-        const rawRoom2 = res2.data?.data?.room_name || res2.data?.room_name || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
-        const cleanRoom2 = rawRoom2.split('/').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || `vclinicteleconsult${appointmentId.replace(/-/g, '').substring(0, 12)}`;
-        const link2 = `https://meet.element.io/${cleanRoom2}`;
-        window.open(link2, '_blank');
-      } catch (e2) {
-        triggerToast('error', getErrorMessage(err, 'Could not start teleconsultation call.'));
-      }
-    }
+    const upcoming = dashboardData?.upcoming_appointments || [];
+    const today = dashboardData?.today_appointments || [];
+    const appt = upcoming.find((a: any) => a.id === appointmentId) || 
+                 today.find((a: any) => a.id === appointmentId);
+                 
+    const docName = appt?.doctor?.user?.full_name || appt?.doctor_name || 'Doctor';
+    const spec = appt?.doctor?.specialization || appt?.specialty || 'Specialist';
+
+    setGlobalVideoAppt({
+      id: appointmentId,
+      doctor_name: docName,
+      specialty: spec
+    });
+    setIsGlobalVideoModalOpen(true);
+    triggerToast('info', 'Launching in-app video consultation lobby.');
   };
 
   const safeDoctors = Array.isArray(doctors) ? doctors : [];
@@ -1164,6 +1251,92 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
             setScreen={setScreen}
             openRescheduleModal={openRescheduleModal}
           />
+
+          {/* Top Banner Alert when Doctor is Ready early */}
+          {doctorReadyNotification && dismissedNotificationApptId !== doctorReadyNotification.appointmentId && (
+            <div style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              zIndex: 9999,
+              background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+              color: 'white',
+              padding: '16px 20px',
+              borderRadius: '12px',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              border: '1px solid #059669',
+              animation: 'slideIn 0.3s ease-out'
+            }}>
+              <style>{`
+                @keyframes slideIn {
+                  from { transform: translateY(-20px); opacity: 0; }
+                  to { transform: translateY(0); opacity: 1; }
+                }
+              `}</style>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#a7f3d0' }}>
+                  Doctor is Ready!
+                </span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
+                  Dr. {doctorReadyNotification.doctorName} is ready to start your consultation.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    setIsGlobalVideoModalOpen(true);
+                    setDoctorReadyNotification(null);
+                  }}
+                  style={{
+                    background: 'white',
+                    color: '#059669',
+                    border: 'none',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Join Call
+                </button>
+                <button
+                  onClick={() => setDismissedNotificationApptId(doctorReadyNotification.appointmentId)}
+                  style={{
+                    background: 'transparent',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Dismiss"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Global Jitsi Video Modal */}
+          {isGlobalVideoModalOpen && globalVideoAppt && (
+            <JitsiVideoModal
+              appointmentId={globalVideoAppt.id}
+              doctorName={globalVideoAppt.doctor?.user?.full_name || globalVideoAppt.doctor_name || 'your doctor'}
+              specialty={globalVideoAppt.doctor?.specialization || globalVideoAppt.specialty || ''}
+              patientName={patientProfile?.user?.full_name || 'Patient'}
+              isDoctor={false}
+              onClose={() => setIsGlobalVideoModalOpen(false)}
+            />
+          )}
         </>
       )}
     </div>

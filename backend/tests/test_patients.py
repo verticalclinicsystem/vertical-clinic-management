@@ -796,6 +796,57 @@ async def test_patient_preferences_boolean_validation(client: AsyncClient):
     assert patch_invalid_res.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_staff_can_get_patient_history_profile(client: AsyncClient):
+    """Verify that receptionist/doctor/admin can retrieve patient history and profile, but patient cannot."""
+    # 1. Login as Admin to get the patient ID
+    admin_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    admin_token = admin_login.json()["data"]["access_token"]
+    
+    list_res = await client.get(
+        "/api/v1/patients/",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    patients = list_res.json()["data"]["items"]
+    priya_id = next(p["id"] for p in patients if p["patient_code"] == "PT-10001")
+
+    # 2. Login as Doctor -> Success
+    doc_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "doctor@verticalclinic.com", "password": "Doctor@verticalclinic.com"},
+    )
+    doc_token = doc_login.json()["data"]["access_token"]
+    
+    response = await client.get(
+        f"/api/v1/patients/{priya_id}/history-profile",
+        headers={"Authorization": f"Bearer {doc_token}"},
+    )
+    assert response.status_code == 200
+    res_json = response.json()
+    assert res_json["success"] is True
+    assert "patient" in res_json["data"]
+    assert "upcoming_appointments" in res_json["data"]
+    assert "medical_history" in res_json["data"]
+    assert "prescriptions" in res_json["data"]
+    assert "bills" in res_json["data"]
+
+    # 3. Login as Patient Priya -> Forbidden (403)
+    priya_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    priya_token = priya_login.json()["data"]["access_token"]
+    
+    forbidden_response = await client.get(
+        f"/api/v1/patients/{priya_id}/history-profile",
+        headers={"Authorization": f"Bearer {priya_token}"},
+    )
+    assert forbidden_response.status_code == 403
+
+
 
 
 

@@ -175,7 +175,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   <td>{appt.treatment_type}</td>
                   <td>{appt.consultation_type === 'in_person' ? 'In Person' : 'Video Consultation'}</td>
                   <td>
-                    <span className={`status-pill ${appt.status}`}>{appt.status}</span>
+                    <span className={`status-pill ${appt.status.replace(/_/g, '-')}`}>{appt.status.replace(/[_-]/g, ' ')}</span>
                   </td>
                   <td>
                     {['confirmed', 'scheduled', 'rescheduled'].includes(appt.status) ? (

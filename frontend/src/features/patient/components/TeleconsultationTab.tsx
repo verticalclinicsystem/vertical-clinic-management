@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Clock, CheckSquare, Square, AlertCircle, MessageSquare } from 'lucide-react';
 import { ChatDrawerModal } from './ChatDrawerModal';
-import { JitsiVideoModal } from './JitsiVideoModal';
 
 interface TeleconsultationTabProps {
   activeTele: any;
@@ -33,11 +32,10 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
   setScreen,
 }) => {
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
-  const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
 
   const allConsultations: any[] = [];
   if (activeTele) {
-    allConsultations.push({ ...activeTele, status: 'scheduled' });
+    allConsultations.push({ ...activeTele, status: activeTele.status && activeTele.status !== 'completed' ? activeTele.status : 'scheduled' });
   }
   if (pastTeles && pastTeles.length > 0) {
     allConsultations.push(...pastTeles);
@@ -132,7 +130,7 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
       <div className="tele-grid">
         {/* Left Column: Details Box */}
         <div className="tele-main-card">
-          {selectedItem?.status === 'scheduled' ? (
+          {selectedItem?.status !== 'completed' ? (
             <>
               <div className="tele-video-icon-wrap">
                 <Video size={48} className="tele-video-icon" />
@@ -222,11 +220,102 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                 }
               })()}
 
+              {/* Live Queue tracking component */}
+              {selectedItem.queue_position !== undefined && selectedItem.queue_position !== null && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                  borderRadius: '12px',
+                  padding: '18px',
+                  margin: '16px 0',
+                  color: 'white',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  border: '1px solid #334155',
+                  textAlign: 'left'
+                }}>
+                  <style>{`
+                    @keyframes pulse {
+                      0%, 100% { opacity: 1; transform: scale(1); }
+                      50% { opacity: .5; transform: scale(1.2); }
+                    }
+                  `}</style>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        backgroundColor: '#10b981',
+                        boxShadow: '0 0 8px #10b981',
+                        animation: 'pulse 1.5s infinite'
+                      }}></span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#94a3b8' }}>
+                        Live Queue Tracker
+                      </span>
+                    </div>
+                    {selectedItem.status === 'in_consultation' ? (
+                      <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: '#059669', color: 'white', fontWeight: 600 }}>
+                        Active Session
+                      </span>
+                    ) : selectedItem.status === 'checked_in' ? (
+                      <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: '#2563eb', color: 'white', fontWeight: 600 }}>
+                        Checked In
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: '#475569', color: '#cbd5e1', fontWeight: 600 }}>
+                        Pending Check-in
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{ borderRight: '1px solid #334155', paddingRight: '12px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>Queue Position</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f8fafc' }}>
+                        {selectedItem.status === 'in_consultation' ? (
+                          <span style={{ color: '#10b981' }}>Current</span>
+                        ) : selectedItem.status === 'checked_in' ? (
+                          selectedItem.queue_position === 0 ? 'Next' : `#${selectedItem.queue_position + 1}`
+                        ) : (
+                          '--'
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                        {selectedItem.status === 'checked_in' ? (
+                          selectedItem.queue_position === 0 ? 'You are next in line' : `${selectedItem.queue_position} patient(s) ahead`
+                        ) : (
+                          'Awaiting check-in'
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ paddingLeft: '12px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>Est. Wait Time</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f8fafc' }}>
+                        {selectedItem.status === 'in_consultation' ? (
+                          <span style={{ color: '#10b981' }}>0 mins</span>
+                        ) : selectedItem.status === 'checked_in' ? (
+                          `${selectedItem.estimated_wait_minutes} mins`
+                        ) : (
+                          '--'
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                        {selectedItem.status === 'checked_in' ? (
+                          'Subject to call duration'
+                        ) : (
+                          'Checked-in patients priority'
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Join Meeting Action Button */}
               <button
                 onClick={() => {
                   handleJoinMeeting(selectedItem.id);
-                  setIsVideoModalOpen(true);
                 }}
                 className="tele-btn-join"
                 disabled={!selectedItem.can_join || !isMandatoryComplete}
@@ -413,7 +502,7 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
             <div className="tele-past-list">
               {allConsultations.map((item) => {
                 const isSelected = item.id === currentSelectedId;
-                const isUpcoming = item.status === 'scheduled';
+                const isUpcoming = item.status !== 'completed';
                 return (
                   <div
                     key={item.id}
@@ -421,8 +510,11 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                     onClick={() => setSelectedTeleId(item.id)}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div className="tele-past-avatar" style={{ background: isUpcoming ? 'var(--warning-bg)' : 'var(--primary-light)', color: isUpcoming ? 'var(--warning)' : 'var(--primary)' }}>
-                        {isUpcoming ? '⏰' : (item.doctor_name ? item.doctor_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'DR')}
+                      <div className="tele-past-avatar" style={{
+                        background: item.status === 'in_consultation' ? '#f0fdf4' : item.status === 'checked_in' ? '#eff6ff' : isUpcoming ? 'var(--warning-bg)' : 'var(--primary-light)',
+                        color: item.status === 'in_consultation' ? '#16a34a' : item.status === 'checked_in' ? '#2563eb' : isUpcoming ? 'var(--warning)' : 'var(--primary)'
+                      }}>
+                        {item.status === 'in_consultation' ? '🟢' : isUpcoming ? '⏰' : (item.doctor_name ? item.doctor_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'DR')}
                       </div>
                       <div style={{ textAlign: 'left' }}>
                         <div className="tele-past-doc">{item.doctor_name}</div>
@@ -431,8 +523,17 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                         </div>
                       </div>
                     </div>
-                    <span className={`tele-status-chip ${isUpcoming ? 'pending' : ''}`} style={{ background: isUpcoming ? 'var(--warning-bg)' : 'var(--success-bg)', color: isUpcoming ? 'var(--warning)' : 'var(--success)', alignSelf: 'center' }}>
-                      {isUpcoming ? 'Upcoming' : 'Completed'}
+                    <span 
+                      className={`tele-status-chip ${isUpcoming ? 'pending' : ''}`} 
+                      style={{ 
+                        background: item.status === 'in_consultation' ? '#f0fdf4' : item.status === 'checked_in' ? '#eff6ff' : isUpcoming ? 'var(--warning-bg)' : 'var(--success-bg)', 
+                        color: item.status === 'in_consultation' ? '#16a34a' : item.status === 'checked_in' ? '#2563eb' : isUpcoming ? 'var(--warning)' : 'var(--success)', 
+                        alignSelf: 'center',
+                        fontWeight: 600,
+                        border: item.status === 'in_consultation' ? '1px solid #bbf7d0' : item.status === 'checked_in' ? '1px solid #bfdbfe' : 'none'
+                      }}
+                    >
+                      {item.status === 'in_consultation' ? 'Live' : item.status === 'checked_in' ? 'Checked In' : isUpcoming ? 'Upcoming' : 'Completed'}
                     </span>
                   </div>
                 );
@@ -450,16 +551,7 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
         triggerToast={triggerToast}
       />
 
-      {/* In-App Jitsi Video Modal */}
-      {isVideoModalOpen && selectedItem && (
-        <JitsiVideoModal
-          appointmentId={selectedItem.id}
-          doctorName={selectedItem.doctor_name}
-          specialty={selectedItem.specialty}
-          isDoctor={false}
-          onClose={() => setIsVideoModalOpen(false)}
-        />
-      )}
+
     </div>
   );
 };

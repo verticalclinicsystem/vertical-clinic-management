@@ -51,6 +51,28 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(http_bearer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    if not credentials:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        from app.repositories.user_repo import UserRepository
+        user_repo = UserRepository(db)
+        uid = uuid.UUID(user_id)
+        user = await user_repo.get_by_id(uid)
+        if user and user.is_active:
+            return user
+    except Exception:
+        pass
+    return None
+
+
 async def get_current_active_user(
     current_user=Depends(get_current_user),
 ):
@@ -60,4 +82,5 @@ async def get_current_active_user(
 
 # Convenience typed aliases for route signatures
 CurrentUser = Annotated[object, Depends(get_current_user)]
+CurrentUserOptional = Annotated[object, Depends(get_current_user_optional)]
 DBSession = Annotated[AsyncSession, Depends(get_db)]

@@ -3,14 +3,13 @@ Inventory router — endpoints for managing clinic medicine stock.
 """
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db
 from app.core.exceptions import PermissionDeniedError
 from app.models.user import User, UserRole
-from app.models.inventory import Medicine
 from app.schemas.inventory import MedicineCreate, MedicineOut
+from app.services.inventory_service import InventoryService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -29,14 +28,8 @@ async def list_medicines(
     if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.ADMIN]:
          raise PermissionDeniedError("Access denied.")
 
-    skip = (page - 1) * limit
-    stmt = select(Medicine).order_by(Medicine.name).offset(skip).limit(limit)
-    result = await db.execute(stmt)
-    items = result.scalars().all()
-
-    count_stmt = select(func.count(Medicine.id))
-    count_result = await db.execute(count_stmt)
-    total = count_result.scalar_one()
+    service = InventoryService(db)
+    items, total = await service.list_medicines(page, limit)
 
     return ApiResponse.success(
         data={
@@ -62,11 +55,8 @@ async def create_medicine(
     if current_user.role not in [UserRole.PHARMACIST, UserRole.ADMIN]:
         raise PermissionDeniedError("Only pharmacists or admins can add medicines.")
 
-    import uuid
-    medicine = Medicine(id=uuid.uuid4(), **request.model_dump())
-    db.add(medicine)
-    await db.commit()
-    await db.refresh(medicine)
+    service = InventoryService(db)
+    medicine = await service.create_medicine(request)
 
     return ApiResponse.success(
         data=MedicineOut.model_validate(medicine),
@@ -87,32 +77,8 @@ async def list_purchase_orders(
     if current_user.role not in [UserRole.PHARMACIST, UserRole.ADMIN]:
         raise PermissionDeniedError("Access denied.")
 
-    import uuid as _uuid
-    from app.models.inventory import StockTransaction
-
-    stmt = (
-        select(StockTransaction, Medicine)
-        .join(Medicine, Medicine.id == StockTransaction.medicine_id)
-        .where(StockTransaction.transaction_type == "purchase")
-        .order_by(StockTransaction.created_at.desc())
-        .limit(limit)
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
-
-    orders = []
-    for txn, med in rows:
-        orders.append({
-            "id": str(txn.id),
-            "medicine_name": med.name,
-            "supplier": med.supplier or "Unknown",
-            "quantity": txn.change_qty,
-            "unit": med.unit,
-            "amount": round(txn.change_qty * med.unit_price, 2),
-            "status": "Received",
-            "date": txn.created_at.strftime("%d %b %Y"),
-            "notes": txn.notes or "",
-        })
+    service = InventoryService(db)
+    orders = await service.list_purchase_orders(limit)
 
     return ApiResponse.success(
         data={"items": orders, "total": len(orders)},

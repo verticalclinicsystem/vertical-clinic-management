@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.models.notification import Notification
 from app.models.patient import Patient
 from app.models.user import User
+from app.repositories.notification_repo import NotificationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -12,18 +13,51 @@ logger = logging.getLogger(__name__)
 class NotificationService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.repo = NotificationRepository(db)
+
+    async def get_user_notifications(self, user_id: uuid.UUID) -> list[Notification]:
+        """List notifications belonging to a user."""
+        return await self.repo.get_by_user_id(user_id)
+
+    async def mark_all_read(self, user_id: uuid.UUID) -> None:
+        """Mark all unread notifications of the user as read."""
+        await self.repo.mark_all_as_read(user_id)
+        await self.db.commit()
+
+    async def mark_read(self, notification_id: uuid.UUID, user_id: uuid.UUID) -> Notification | None:
+        """Mark a specific notification as read."""
+        notification = await self.repo.get_by_id_and_user_id(notification_id, user_id)
+        if not notification:
+            return None
+        notification.is_read = True
+        self.db.add(notification)
+        await self.db.commit()
+        await self.db.refresh(notification)
+        return notification
+
+    async def clear_all(self, user_id: uuid.UUID) -> None:
+        """Delete all notifications for a user."""
+        await self.repo.clear_all(user_id)
+        await self.db.commit()
+
+    async def delete_notification(self, notification_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        """Delete a specific notification."""
+        notification = await self.repo.get_by_id_and_user_id(notification_id, user_id)
+        if not notification:
+            return False
+        await self.repo.delete(notification)
+        await self.db.commit()
+        return True
 
     async def create_notification(self, user_id: uuid.UUID, title: str, message: str, type: str = "general") -> Notification:
         """Create an in-app notification in the database."""
-        notification = Notification(
-            user_id=user_id,
-            title=title,
-            message=message,
-            type=type,
-            is_read=False
-        )
-        self.db.add(notification)
-        await self.db.flush()
+        notification = await self.repo.create({
+            "user_id": user_id,
+            "title": title,
+            "message": message,
+            "type": type,
+            "is_read": False
+        })
         await self.db.commit()
         return notification
 
@@ -32,7 +66,8 @@ class NotificationService:
         user_id: uuid.UUID,
         title: str,
         message: str,
-        type: str = "general"
+        type: str = "general",
+        attachments: list[tuple[str, bytes, str]] | None = None
     ) -> None:
         """
         Sends notifications across channels based on user preferences.
@@ -62,20 +97,33 @@ class NotificationService:
             push_enabled = patient.notification_push
 
         # 1. In-App notification (Always write to DB so it populates the bell dropdown history)
-        notification = Notification(
-            user_id=user_id,
-            title=title,
-            message=message,
-            type=type,
-            is_read=False
-        )
-        self.db.add(notification)
-        await self.db.flush()
+        await self.repo.create({
+            "user_id": user_id,
+            "title": title,
+            "message": message,
+            "type": type,
+            "is_read": False
+        })
         logger.info(f"[In-App] Created database notification record for user {user_id}: {title} - {message}")
 
         # 2. Email
         if email_enabled and user.email:
-            logger.info(f"[Email Notification] To user {user.email}: Subject: {title} | Body: {message}")
+            if type in ["patient_joined", "doctor_joined", "check_in", "reminder_10m", "reminder_1h"]:
+                logger.info(f"[Email Notification Skip] Skipped email to {user.email} for realtime alert type: {type}")
+            else:
+                logger.info(f"[Email Notification] To user {user.email}: Subject: {title} | Body: {message}")
+                try:
+                    from app.utils.email import send_email
+                    html_body = f"<h3>{title}</h3><p>{message}</p><br/><hr/><p style='font-size: 11px; color: #888;'>This is an automated notification from Vertical Clinic.</p>"
+                    await send_email(
+                        to=user.email,
+                        subject=title,
+                        html_body=html_body,
+                        plain_body=message,
+                        attachments=attachments
+                    )
+                except Exception as email_err:
+                    logger.error(f"Failed to send email to {user.email}: {email_err}")
 
         # 3. SMS
         if sms_enabled and user.phone:

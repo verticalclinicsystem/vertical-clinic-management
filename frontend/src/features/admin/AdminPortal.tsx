@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Home, BarChart2, Package, Users, Layers,
-  Settings, LogOut, Search, Bell, Plus,
+  Settings, ArrowLeft, LogOut, Search, Bell, Plus,
   RefreshCw, Edit, X, Calendar, Check, AlertCircle,
   Eye, EyeOff, Building
 } from 'lucide-react';
@@ -50,7 +50,34 @@ function DonutChart({ segments, total, label }: { segments: { value: number; col
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('admin_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('admin_portal_tab') || 'dashboard');
+  const [tabHistory, setTabHistory] = useState<string[]>([]);
+
+  const changeTab = (newTab: string, pushToHistory = true) => {
+    if (newTab === activeTab) return;
+    if (pushToHistory) {
+      setTabHistory(prev => {
+        const next = [...prev, activeTab];
+        if (next.length > 10) return next.slice(1);
+        return next;
+      });
+    }
+    setActiveTabInternal(newTab);
+    localStorage.setItem('admin_portal_tab', newTab);
+  };
+
+  const goBackTab = () => {
+    if (tabHistory.length === 0) return;
+    const prevTab = tabHistory[tabHistory.length - 1];
+    setTabHistory(prev => prev.slice(0, -1));
+    setActiveTabInternal(prevTab);
+    localStorage.setItem('admin_portal_tab', prevTab);
+  };
+
+  const handleRootTabChange = (newTab: string) => {
+    setTabHistory([]);
+    changeTab(newTab, false);
+  };
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -391,7 +418,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             { id: 'reports', icon: <BarChart2 size={18} />, label: 'Reports' },
             { id: 'inventory', icon: <Package size={18} />, label: 'Inventory Reports' },
           ].map(tab => (
-            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => handleRootTabChange(tab.id)}>
               {tab.icon} {tab.label}
             </div>
           ))}
@@ -402,7 +429,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             { id: 'availability-requests', icon: <Calendar size={18} />, label: 'Availability Requests' },
             { id: 'settings', icon: <Settings size={18} />, label: 'Settings' },
           ].map(tab => (
-            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => handleRootTabChange(tab.id)}>
               {tab.icon} {tab.label}
             </div>
           ))}
@@ -416,17 +443,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
       <main className="admin-main">
         <header className="admin-topbar">
-          <div className="admin-title-area">
-            <h1 className="admin-page-title">
-              {activeTab === 'dashboard' && 'Dashboard'}
-              {activeTab === 'reports' && 'Reports'}
-              {activeTab === 'inventory' && 'Inventory Reports'}
-              {activeTab === 'staff' && 'Staff Management'}
-              {activeTab === 'branches' && 'Branch Management'}
-              {activeTab === 'availability-requests' && 'Availability Change Requests'}
-              {activeTab === 'settings' && 'Settings'}
-            </h1>
-            <p className="admin-page-subtitle">Admin Portal · Vertical Clinic</p>
+          <div className="admin-title-area" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px' }}>
+            {tabHistory.length > 0 && (
+              <button 
+                onClick={goBackTab} 
+                className="admin-back-btn" 
+                title="Go Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <div>
+              <h1 className="admin-page-title" style={{ margin: 0 }}>
+                {activeTab === 'dashboard' && 'Dashboard'}
+                {activeTab === 'reports' && 'Reports'}
+                {activeTab === 'inventory' && 'Inventory Reports'}
+                {activeTab === 'staff' && 'Staff Management'}
+                {activeTab === 'branches' && 'Branch Management'}
+                {activeTab === 'availability-requests' && 'Availability Change Requests'}
+                {activeTab === 'settings' && 'Settings'}
+              </h1>
+              <p className="admin-page-subtitle" style={{ marginTop: '2px', margin: 0 }}>Admin Portal · Vertical Clinic</p>
+            </div>
           </div>
           <div className="admin-topbar-right">
             <button className="admin-icon-btn" title="Refresh" onClick={fetchDashboard}>
@@ -449,7 +487,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
               {isProfileDropdownOpen && (
                 <div className="profile-dropdown-menu">
-                  <button onClick={() => { setActiveTab('settings'); setIsProfileDropdownOpen(false); }}>
+                  <button onClick={() => { handleRootTabChange('settings'); setIsProfileDropdownOpen(false); }}>
                     <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Settings
                   </button>
                   <div className="profile-dropdown-divider"></div>

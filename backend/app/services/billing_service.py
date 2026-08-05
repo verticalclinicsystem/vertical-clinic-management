@@ -112,7 +112,7 @@ class BillingService:
         update_data = request.model_dump(exclude_unset=True)
         
         # If amounts are updated, recalculate grand total and balance due
-        total = invoice.total_amount
+        total = update_data.get("total_amount", invoice.total_amount)
         discount = update_data.get("discount_amount", invoice.discount_amount)
         tax = update_data.get("tax_amount", invoice.tax_amount)
         

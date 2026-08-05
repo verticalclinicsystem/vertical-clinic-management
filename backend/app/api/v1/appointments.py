@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, get_current_user_optional
 from app.core.rbac import UserRole
 from app.core.exceptions import PermissionDeniedError, BadRequestError
 from app.models.user import User
@@ -59,6 +59,7 @@ async def book_appointment(
     appointment = await service.create_appointment(
         patient_id=target_patient_id,
         request=request,
+        role=current_user.role,
     )
     return ApiResponse.success(
         data=to_appointment_out(appointment, current_user.role),
@@ -76,6 +77,7 @@ async def get_available_slots(
     doctor_id: UUID,
     date: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)] = None,
     branch_id: UUID | None = Query(None),
     consultation_type: str | None = Query(None),
 ) -> JSONResponse:
@@ -88,7 +90,7 @@ async def get_available_slots(
             raise BadRequestError("Doctor does not practice at the selected branch.")
 
     service = AppointmentService(db)
-    slots = await service.get_available_slots(doctor_id, date, consultation_type)
+    slots = await service.get_available_slots(doctor_id, date, consultation_type, current_user=current_user)
     return ApiResponse.success(
         data=slots,
         message="Available slots retrieved successfully.",
@@ -496,6 +498,29 @@ async def get_appointment_meeting_link(
             "patient_name": join_info.get("patient_name"),
         },
         message="Meeting link retrieved successfully."
+    )
+
+
+class DoctorDelayRequest(BaseModel):
+    delay_minutes: int
+
+@router.post("/doctor/{doctor_id}/delay", summary="Broadcast emergency delay for a doctor")
+async def broadcast_doctor_delay(
+    doctor_id: UUID,
+    request: DoctorDelayRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Broadcast doctor delay to all scheduled patients for today."""
+    if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
+        raise PermissionDeniedError("Only receptionists or admins can broadcast emergency delays.")
+    
+    service = AppointmentService(db)
+    notified_count = await service.broadcast_emergency_delay(doctor_id, request.delay_minutes)
+    
+    return ApiResponse.success(
+        data={"notified_count": notified_count},
+        message=f"Successfully broadcasted delay of {request.delay_minutes} minutes to {notified_count} patients."
     )
 
 
