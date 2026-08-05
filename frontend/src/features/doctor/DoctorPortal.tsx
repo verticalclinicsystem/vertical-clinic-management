@@ -484,11 +484,53 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [videoPatientName, setVideoPatientName] = useState<string>('');
   const [videoApptId, setVideoApptId] = useState<string>('');
   const [videoRoomName, setVideoRoomName] = useState<string>('');
+  const [incomingCall, setIncomingCall] = useState<any>(null);
 
   useEffect(() => {
-    // Disabled legacy polling for incoming teleconsultation calls.
-    // Patients now wait in the virtual lobby, and doctors launch meetings directly.
-  }, []);
+    const checkIncoming = async () => {
+      try {
+        const res = await api.get('/teleconsultations/check-incoming-call');
+        if (res.data && res.data.success && res.data.data?.has_incoming_call) {
+          const callData = res.data.data;
+          if (!inVideoCall && (!incomingCall || incomingCall.appointment_id !== callData.appointment_id)) {
+            setIncomingCall(callData);
+          }
+        }
+      } catch (err) {
+        // silent check
+      }
+    };
+    checkIncoming();
+    const interval = setInterval(checkIncoming, 3000);
+    return () => clearInterval(interval);
+  }, [inVideoCall, incomingCall]);
+
+  const handleAcceptIncomingCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await api.post(`/teleconsultations/${incomingCall.appointment_id}/accept-call`);
+      setVideoRoomName(incomingCall.room_name);
+      setVideoPatientName(incomingCall.caller_name || incomingCall.patient_name || 'Patient');
+      setVideoApptId(incomingCall.appointment_id);
+      setInVideoCall(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIncomingCall(null);
+    }
+  };
+
+  const handleDeclineIncomingCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await api.post(`/teleconsultations/${incomingCall.appointment_id}/decline-call`);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIncomingCall(null);
+    }
+  };
+
 
 
 
@@ -4093,7 +4135,86 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         </div>
       </main>
 
-      {/* ── INCOMING TELECONSULTATION CALL RINGING MODAL (DISABLED/REPLACED BY WAITING LOBBY FLOW) ── */}
+      {/* ── SLEEK FLOATING TELECONSULTATION ALERT NOTIFICATION TOAST (TOP RIGHT) ── */}
+      {incomingCall && !inVideoCall && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '24px',
+          zIndex: 99999,
+          backgroundColor: '#0f172a',
+          border: '1px solid #0284c7',
+          borderRadius: '16px',
+          padding: '16px 20px',
+          maxWidth: '380px',
+          boxShadow: '0 20px 35px -10px rgba(2, 132, 199, 0.5)',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px'
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '12px',
+            backgroundColor: '#0284c7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            boxShadow: '0 0 12px rgba(2, 132, 199, 0.6)'
+          }}>
+            <Video size={22} color="#ffffff" />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              📹 Teleconsultation Alert
+            </div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', margin: '2px 0' }}>
+              {incomingCall.caller_name || 'Patient'} has joined!
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+              Waiting in video room
+            </div>
+          </div>
+
+          <button
+            onClick={handleAcceptIncomingCall}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '10px',
+              border: 'none',
+              backgroundColor: '#16a34a',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.4)'
+            }}
+          >
+            Join Call
+          </button>
+
+          <button
+            onClick={handleDeclineIncomingCall}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              padding: '0 4px',
+              lineHeight: 1
+            }}
+            title="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
 
       {/* ── INTERACTIVE VIDEO CONSULTATION ROOM (MODAL) ── */}
       {inVideoCall && (
