@@ -8,10 +8,8 @@ import {
   Search,
   Plus, 
   Trash2,
-  VideoOff,
   Mic,
   MicOff,
-  PhoneOff,
   Stethoscope,
   Settings,
   Calendar,
@@ -27,10 +25,11 @@ import {
   Camera,
   FileSpreadsheet,
   AlertTriangle,
+  ArrowLeft,
   LogOut,
   User
 } from 'lucide-react';
-import { api } from '../../services/api';
+import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import './DoctorPortal.css';
 
@@ -52,6 +51,15 @@ interface Leave {
 }
 
 
+
+const formatDocName = (name?: string): string => {
+  if (!name) return '';
+  const trimmed = name.trim();
+  if (/^dr\.?\s+/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `Dr. ${trimmed}`;
+};
 
 const CLINICAL_SCENARIOS: Record<string, { notes: string; aiSummary: string; suggestedMeds: any[]; suggestedTreatment: string }> = {
   braces: {
@@ -89,7 +97,38 @@ const CLINICAL_SCENARIOS: Record<string, { notes: string; aiSummary: string; sug
 };
 
 export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('doctor_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('doctor_portal_tab') || 'dashboard');
+  const [tabHistory, setTabHistory] = useState<string[]>([]);
+
+  const changeTab = (newTab: string, pushToHistory = true) => {
+    if (newTab === activeTab) return;
+    if (pushToHistory) {
+      setTabHistory(prev => {
+        const next = [...prev, activeTab];
+        if (next.length > 10) return next.slice(1);
+        return next;
+      });
+    }
+    setActiveTabInternal(newTab);
+    localStorage.setItem('doctor_portal_tab', newTab);
+  };
+
+  const goBackTab = () => {
+    if (tabHistory.length === 0) return;
+    const prevTab = tabHistory[tabHistory.length - 1];
+    setTabHistory(prev => prev.slice(0, -1));
+    setActiveTabInternal(prevTab);
+    localStorage.setItem('doctor_portal_tab', prevTab);
+  };
+
+  const setActiveTab = (newTab: string) => {
+    changeTab(newTab, true);
+  };
+
+  const handleRootTabChange = (newTab: string) => {
+    setTabHistory([]);
+    changeTab(newTab, false);
+  };
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -445,54 +484,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [videoPatientName, setVideoPatientName] = useState<string>('');
   const [videoApptId, setVideoApptId] = useState<string>('');
   const [videoRoomName, setVideoRoomName] = useState<string>('');
-  const [incomingCall, setIncomingCall] = useState<any>(null);
 
   useEffect(() => {
-    const checkIncoming = async () => {
-      try {
-        const res = await api.get('/teleconsultations/check-incoming-call');
-        if (res.data && res.data.success && res.data.data?.has_incoming_call) {
-          const callData = res.data.data;
-          if (!inVideoCall && (!incomingCall || incomingCall.appointment_id !== callData.appointment_id)) {
-            setIncomingCall(callData);
-          }
-        }
-      } catch (err) {
-        // silent check
-      }
-    };
-    checkIncoming();
-    const interval = setInterval(checkIncoming, 3000);
-    return () => clearInterval(interval);
-  }, [inVideoCall, incomingCall]);
+    // Disabled legacy polling for incoming teleconsultation calls.
+    // Patients now wait in the virtual lobby, and doctors launch meetings directly.
+  }, []);
 
-  const handleAcceptIncomingCall = async () => {
-    if (!incomingCall) return;
-    try {
-      await api.post(`/teleconsultations/${incomingCall.appointment_id}/accept-call`);
-      setVideoRoomName(incomingCall.room_name);
-      setVideoPatientName(incomingCall.caller_name || incomingCall.patient_name || 'Patient');
-      setVideoApptId(incomingCall.appointment_id);
-      setInVideoCall(true);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIncomingCall(null);
-    }
-  };
 
-  const handleDeclineIncomingCall = async () => {
-    if (!incomingCall) return;
-    try {
-      await api.post(`/teleconsultations/${incomingCall.appointment_id}/decline-call`);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIncomingCall(null);
-    }
-  };
-  const [micMuted, setMicMuted] = useState<boolean>(false);
-  const [videoMuted, setVideoMuted] = useState<boolean>(false);
+
   const [lunchStart, setLunchStart] = useState<string>('13:00');
   const [lunchEnd, setLunchEnd] = useState<string>('14:00');
   const [teleStart, setTeleStart] = useState<string>('15:00');
@@ -686,6 +685,66 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     fetchDashboard();
+  }, []);
+
+  // Real-time WebSocket Queue Update
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWebSocket = () => {
+      try {
+        const wsUrl = getWebSocketUrl();
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          console.log('WebSocket connected for queue updates');
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'queue_updated') {
+              console.log('Queue update received via WebSocket, refreshing...');
+              fetchDashboard();
+            } else if (data.event === 'patient_ready') {
+              showToast(`${data.patient_name || 'Patient'} is now ready in the waiting lobby.`, 'info');
+              fetchDashboard();
+            } else if (data.event === 'patient_left') {
+              showToast(`${data.patient_name || 'Patient'} has left the waiting lobby.`, 'info');
+              fetchDashboard();
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+          }
+        };
+
+        socket.onclose = () => {
+          console.log('WebSocket disconnected, reconnecting in 5s...');
+          reconnectTimeout = setTimeout(connectWebSocket, 5000);
+        };
+
+        socket.onerror = (err) => {
+          console.error('WebSocket error:', err);
+          socket?.close();
+        };
+      } catch (err) {
+        console.error('Failed to establish WebSocket connection:', err);
+        reconnectTimeout = setTimeout(connectWebSocket, 5000);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1326,14 +1385,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           <div className="doc-nav-group-label">MAIN</div>
           <div 
             className={`doc-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('dashboard'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('dashboard'); setSelectedPatientHistory(null); }}
           >
             <Home size={18} /> Dashboard
           </div>
 
           <div 
             className={`doc-nav-item ${activeTab === 'queue' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('queue'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('queue'); setSelectedPatientHistory(null); }}
           >
             <List size={18} /> Queue
           </div>
@@ -1341,35 +1400,35 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           <div className="doc-nav-group-label">CONSULTATION</div>
           <div 
             className={`doc-nav-item ${activeTab === 'consultation' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('consultation'); }}
+            onClick={() => { handleRootTabChange('consultation'); }}
           >
             <Stethoscope size={18} /> Consultation
           </div>
 
           <div 
             className={`doc-nav-item ${activeTab === 'prescriptions' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('prescriptions'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('prescriptions'); setSelectedPatientHistory(null); }}
           >
             <FileText size={18} /> Prescription
           </div>
 
           <div 
             className={`doc-nav-item ${activeTab === 'treatment' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('treatment'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('treatment'); setSelectedPatientHistory(null); }}
           >
             <Activity size={18} /> Treatment Plan
           </div>
 
           <div 
             className={`doc-nav-item ${activeTab === 'followup' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('followup'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('followup'); setSelectedPatientHistory(null); }}
           >
             <Clock size={18} /> Follow-up
           </div>
 
           <div 
             className={`doc-nav-item ${activeTab === 'availability' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('availability'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('availability'); setSelectedPatientHistory(null); }}
           >
             <Calendar size={18} /> Availability
           </div>
@@ -1377,7 +1436,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           <div className="doc-nav-group-label">PROFILE</div>
           <div 
             className={`doc-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('profile'); setSelectedPatientHistory(null); }}
+            onClick={() => { handleRootTabChange('profile'); setSelectedPatientHistory(null); }}
           >
             <User size={18} /> My Profile
           </div>
@@ -1394,19 +1453,30 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       <main className="doc-main">
         {/* ── TOPBAR ── */}
         <header className="doc-topbar">
-          <div className="doc-title-area">
-            <h1 className="doc-page-title">
-              {activeTab === 'dashboard' && 'Dashboard'}
-              {activeTab === 'queue' && 'Queue Management'}
-              {activeTab === 'consultation' && 'Consultation'}
-              {activeTab === 'prescriptions' && 'Prescription Workspace'}
-              {activeTab === 'treatment' && 'Treatment Plans'}
-              {activeTab === 'followup' && 'Follow-up Center'}
-              {activeTab === 'availability' && 'Availability Settings'}
-              {activeTab === 'workflow' && 'Full Clinic Workflow'}
-              {activeTab === 'profile' && 'My Profile'}
-            </h1>
-            <p className="doc-page-subtitle">Doctor Portal · {dashboardData?.doctor?.branch_name ? `${dashboardData.doctor.branch_name} Branch` : 'Loading Branch...'}</p>
+          <div className="doc-title-area" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px' }}>
+            {tabHistory.length > 0 && (
+              <button 
+                onClick={goBackTab} 
+                className="doc-back-btn" 
+                title="Go Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <div>
+              <h1 className="doc-page-title" style={{ margin: 0 }}>
+                {activeTab === 'dashboard' && 'Dashboard'}
+                {activeTab === 'queue' && 'Queue Management'}
+                {activeTab === 'consultation' && 'Consultation'}
+                {activeTab === 'prescriptions' && 'Prescription Workspace'}
+                {activeTab === 'treatment' && 'Treatment Plans'}
+                {activeTab === 'followup' && 'Follow-up Center'}
+                {activeTab === 'availability' && 'Availability Settings'}
+                {activeTab === 'workflow' && 'Full Clinic Workflow'}
+                {activeTab === 'profile' && 'My Profile'}
+              </h1>
+              <p className="doc-page-subtitle" style={{ marginTop: '2px', margin: 0 }}>Doctor Portal · {dashboardData?.doctor?.branch_name ? `${dashboardData.doctor.branch_name} Branch` : 'Loading Branch...'}</p>
+            </div>
           </div>
 
           <div ref={globalSearchRef} style={{ flex: 1, maxWidth: '380px', margin: '0 32px', position: 'relative' }}>
@@ -1589,10 +1659,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
               {isProfileDropdownOpen && (
                 <div className="profile-dropdown-menu">
-                  <button onClick={() => { setActiveTab('profile'); setIsProfileDropdownOpen(false); }}>
+                  <button onClick={() => { handleRootTabChange('profile'); setIsProfileDropdownOpen(false); }}>
                     <User size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> View Profile
                   </button>
-                  <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
+                  <button onClick={() => { handleRootTabChange('availability'); setIsProfileDropdownOpen(false); }}>
                     <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
                   </button>
                   <div className="profile-dropdown-divider"></div>
@@ -1698,7 +1768,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                   {initials}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{appt.patient_name}</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{appt.patient_name}</span>
+                                    {appt.tele_status === 'patient_ready' && (
+                                      <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: '800', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                                        Ready in Lobby
+                                      </span>
+                                    )}
+                                  </div>
                                   <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)' }}>
                                     {appt.treatment_type} - {timeStr}
                                   </span>
@@ -1907,7 +1984,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     {initials}
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--doc-text-dark)' }}>{appt.patient_name}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--doc-text-dark)' }}>{appt.patient_name}</span>
+                                      {appt.tele_status === 'patient_ready' && (
+                                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: '800', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                                          Ready
+                                        </span>
+                                      )}
+                                    </div>
                                     <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)' }}>
                                       {appt.patient_code || 'PT-10234'} · {appt.treatment_type}
                                     </span>
@@ -1992,29 +2076,59 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 )}
                                 
                                 {appt.consultation_type === 'teleconsultation' && !isCompleted && (
-                                  <button 
-                                    onClick={() => handleJoinVideo(appt)} 
-                                    className="doc-btn-primary" 
-                                    style={{ 
-                                      padding: '0 14px',
-                                      height: '40px',
-                                      display: 'inline-flex', 
-                                      alignItems: 'center', 
-                                      justifyContent: 'center', 
-                                      gap: '6px',
-                                      backgroundColor: '#0284c7',
-                                      color: '#ffffff',
-                                      fontWeight: '600',
-                                      fontSize: '0.85rem',
-                                      borderRadius: '8px',
-                                      cursor: 'pointer',
-                                      border: 'none',
-                                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
-                                    }}
-                                    title="Join Teleconsultation Video Call"
-                                  >
-                                    <Video size={16} /> Join Video Call
-                                  </button>
+                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flex: 1 }}>
+                                     {appt.tele_status === 'patient_ready' && (
+                                       <span style={{ 
+                                         display: 'inline-flex', 
+                                         alignItems: 'center', 
+                                         gap: '4px', 
+                                         fontSize: '0.7rem', 
+                                         color: '#10b981', 
+                                         fontWeight: '700',
+                                         backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                         padding: '2px 8px',
+                                         borderRadius: '12px',
+                                         border: '1px solid rgba(16, 185, 129, 0.2)',
+                                         marginBottom: '2px',
+                                         animation: 'pulse-badge 2s infinite'
+                                       }}>
+                                         <style>{`
+                                           @keyframes pulse-badge {
+                                             0% { opacity: 0.8; }
+                                             50% { opacity: 1; transform: scale(1.02); }
+                                             100% { opacity: 0.8; }
+                                           }
+                                         `}</style>
+                                         <span style={{ width: '6px', height: '6px', backgroundColor: '#10b981', borderRadius: '50%' }} />
+                                         Patient Ready
+                                       </span>
+                                     )}
+                                     <button 
+                                       onClick={() => handleJoinVideo(appt)} 
+                                       className="doc-btn-primary" 
+                                       style={{ 
+                                         width: '100%',
+                                         padding: '0 14px',
+                                         height: '40px',
+                                         display: 'inline-flex', 
+                                         alignItems: 'center', 
+                                         justifyContent: 'center', 
+                                         gap: '6px',
+                                         backgroundColor: appt.tele_status === 'patient_ready' ? '#10b981' : '#0284c7',
+                                         color: '#ffffff',
+                                         fontWeight: '600',
+                                         fontSize: '0.85rem',
+                                         borderRadius: '8px',
+                                         cursor: 'pointer',
+                                         border: 'none',
+                                         boxShadow: appt.tele_status === 'patient_ready' ? '0 0 12px rgba(16, 185, 129, 0.4)' : '0 2px 6px rgba(2, 132, 199, 0.25)',
+                                         transition: 'all 0.3s ease'
+                                       }}
+                                       title="Join Teleconsultation Video Call"
+                                     >
+                                       <Video size={16} /> Join Video Call
+                                     </button>
+                                   </div>
                                 )}
                               </div>
                             </div>
@@ -2512,7 +2626,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         </div>
 
                         <div>
-                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Consultation Fee ($)</label>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Consultation Fee (₹)</label>
                           {isEditingProfile ? (
                             <input
                               type="number"
@@ -2522,7 +2636,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               style={{ marginTop: '6px' }}
                             />
                           ) : (
-                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>${profileForm.consultation_fee ?? '0.00'}</div>
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px' }}>₹{profileForm.consultation_fee ?? '0.00'}</div>
                           )}
                         </div>
 
@@ -2808,7 +2922,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           </div>
                           <div style={{ textAlign: 'center', borderTop: '1px solid #cbd5e1', width: '120px', paddingTop: '4px' }}>
                             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--doc-primary)', display: 'block' }}>DIGITALLY SIGNED</span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--doc-text-muted)' }}>Dr. {doctorName}</span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--doc-text-muted)' }}>{formatDocName(doctorName)}</span>
                           </div>
                         </div>
 
@@ -3979,113 +4093,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         </div>
       </main>
 
-      {/* ── INCOMING TELECONSULTATION CALL RINGING MODAL ── */}
-      {incomingCall && !inVideoCall && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.88)',
-          backdropFilter: 'blur(10px)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <div style={{
-            backgroundColor: '#1e293b',
-            border: '2px solid #0284c7',
-            borderRadius: '24px',
-            padding: '40px 32px',
-            width: '90%',
-            maxWidth: '440px',
-            textAlign: 'center',
-            boxShadow: '0 25px 50px -12px rgba(2, 132, 199, 0.4)',
-            color: '#ffffff'
-          }}>
-            {/* Ringing Avatar Icon */}
-            <div style={{
-              width: '96px',
-              height: '96px',
-              margin: '0 auto 24px',
-              borderRadius: '50%',
-              backgroundColor: '#0284c7',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 25px rgba(2, 132, 199, 0.8)'
-            }}>
-              <Video size={44} color="#ffffff" />
-            </div>
-
-            <div style={{
-              textTransform: 'uppercase',
-              letterSpacing: '1.5px',
-              fontSize: '0.75rem',
-              fontWeight: '700',
-              color: '#38bdf8',
-              marginBottom: '8px'
-            }}>
-              📞 INCOMING TELECONSULTATION CALL
-            </div>
-
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: '0 0 6px', color: '#f8fafc' }}>
-              {incomingCall.caller_name || 'Patient'}
-            </h2>
-
-            <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 32px' }}>
-              Patient is calling for your scheduled video consultation...
-            </p>
-
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-              <button
-                onClick={handleDeclineIncomingCall}
-                style={{
-                  flex: 1,
-                  padding: '14px 20px',
-                  borderRadius: '14px',
-                  border: '1px solid #475569',
-                  backgroundColor: '#334155',
-                  color: '#f1f5f9',
-                  fontWeight: '700',
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <X size={18} /> Decline
-              </button>
-
-              <button
-                onClick={handleAcceptIncomingCall}
-                style={{
-                  flex: 1.4,
-                  padding: '14px 20px',
-                  borderRadius: '14px',
-                  border: 'none',
-                  backgroundColor: '#16a34a',
-                  color: '#ffffff',
-                  fontWeight: '700',
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: '0 10px 20px -5px rgba(22, 163, 74, 0.5)'
-                }}
-              >
-                <Video size={18} /> Accept & Join Call
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── INCOMING TELECONSULTATION CALL RINGING MODAL (DISABLED/REPLACED BY WAITING LOBBY FLOW) ── */}
 
       {/* ── INTERACTIVE VIDEO CONSULTATION ROOM (MODAL) ── */}
       {inVideoCall && (
@@ -4130,6 +4138,21 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     userInfo={{
                       displayName: dashboardData?.doctor?.full_name || 'Doctor',
                       email: ''
+                    }}
+                    onReadyToClose={() => {
+                      api.post(`/teleconsultations/${videoApptId}/end`)
+                        .then(() => {
+                          const matchedAppt = dashboardData?.today_appointments?.find((a: any) => a.id === videoApptId);
+                          if (matchedAppt) {
+                            handleStartConsultation(matchedAppt);
+                          }
+                          setInVideoCall(false);
+                          fetchDashboard();
+                        })
+                        .catch(() => {
+                          setInVideoCall(false);
+                          fetchDashboard();
+                        });
                     }}
                     getIFrameRef={(iframeRef) => {
                       iframeRef.style.height = '100%';
@@ -4181,30 +4204,6 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               </div>
             </div>
 
-            {/* Video Feed Mute/Hangup Actions Bar */}
-            <footer className="video-controls">
-              <button 
-                onClick={() => setMicMuted(!micMuted)} 
-                className="video-control-btn"
-                title={micMuted ? "Unmute Mic" : "Mute Mic"}
-              >
-                {micMuted ? <MicOff size={18} color="#ef4444" /> : <Mic size={18} />}
-              </button>
-              <button 
-                onClick={() => setVideoMuted(!videoMuted)} 
-                className="video-control-btn"
-                title={videoMuted ? "Turn Video On" : "Turn Video Off"}
-              >
-                {videoMuted ? <VideoOff size={18} color="#ef4444" /> : <Video size={18} />}
-              </button>
-              <button 
-                onClick={() => setInVideoCall(false)} 
-                className="video-control-btn hangup"
-                title="Hang Up Call"
-              >
-                <PhoneOff size={18} />
-              </button>
-            </footer>
           </div>
         </div>
       )}
@@ -4951,7 +4950,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           <div key={c.id} style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginBottom: '6px' }}>
                               <span>Date: {new Date(c.created_at || c.consultation_date).toLocaleDateString()}</span>
-                              <span style={{ color: '#0c6e8c' }}>Dr. {c.doctor_name || 'Clinic Specialist'}</span>
+                              <span style={{ color: '#0c6e8c' }}>{formatDocName(c.doctor_name || 'Clinic Specialist')}</span>
                             </div>
                             <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>
                               <strong>Symptoms:</strong> {c.symptoms || 'None recorded'}

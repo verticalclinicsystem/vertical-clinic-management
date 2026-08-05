@@ -160,6 +160,37 @@ def create_app() -> FastAPI:
     from app.api.v1 import router as v1_router
     app.include_router(v1_router, prefix="/api/v1")
 
+    # ── WebSocket Route ───────────────────────────────────────────────────────
+    from fastapi import WebSocket, WebSocketDisconnect
+    from app.core.websocket import manager
+
+    @app.websocket("/api/v1/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        token = websocket.query_params.get("token")
+        user_id = None
+        role = None
+        branch_id = None
+        if token:
+            try:
+                from app.core.security import decode_access_token
+                payload = decode_access_token(token)
+                user_id = payload.get("sub")
+                role = payload.get("role")
+                branch_id = payload.get("branch_id")
+            except Exception as jwt_err:
+                logger.warning(f"Failed to decode websocket connection token: {jwt_err}")
+
+        await manager.connect(websocket, user_id=user_id, role=role, branch_id=branch_id)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
+        except Exception as e:
+            logger.error(f"WebSocket connection error: {e}")
+            manager.disconnect(websocket)
+
+
     # ── Root & Health Check ───────────────────────────────────────────────────
     @app.get("/", tags=["System & Notifications"], summary="Root endpoint")
     async def root() -> JSONResponse:

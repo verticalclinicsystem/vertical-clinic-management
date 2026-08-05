@@ -66,7 +66,7 @@ from app.schemas.auth import (
     PharmacistCreateRequest,
     AdminCreateRequest,
 )
-from app.utils.email import send_otp_email
+from app.utils.email import send_otp_email, send_welcome_email
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +146,13 @@ class AuthService:
 
         # — Activate via repo —
         await self.user_repo.activate(user)
+
+        # — Send Welcome Email —
+        try:
+            await send_welcome_email(to=user.email, full_name=user.full_name)
+            logger.info(f"Welcome email sent successfully to: {user.email}")
+        except Exception as welcome_err:
+            logger.error(f"Failed to send welcome email to {user.email}: {welcome_err}")
 
         logger.info(f"Account verified: {user.email}")
         return {"email": user.email}

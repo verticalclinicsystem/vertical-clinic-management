@@ -296,17 +296,42 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                       {safeRescheduleSlots.map((slot: any) => {
                         const slotTime = typeof slot === 'string' ? slot : (slot?.time || slot?.start_time || slot?.slot_time || '');
                         const slotStatus = typeof slot === 'string' ? 'available' : (slot?.status || (slot?.is_active === false ? 'booked' : 'available'));
+                        
                         const isBooked = slotStatus === 'booked';
+                        const isLunch = slotStatus === 'lunch_break';
+                        const isTeleOnly = slotStatus === 'tele_only';
+                        const isInClinicOnly = slotStatus === 'in_clinic_only';
+                        
+                        const isDisable = isBooked || isLunch || isTeleOnly || isInClinicOnly;
                         const isSelected = rescheduleSlot === slotTime;
+
+                        let labelSuffix = '';
+                        let tooltip = `Select ${formatTimeToAMPM(slotTime)}`;
+                        
+                        if (isBooked) {
+                          labelSuffix = ' 🔒';
+                          tooltip = 'Already booked';
+                        } else if (isLunch) {
+                          labelSuffix = ' 🥪';
+                          tooltip = 'Lunch Break';
+                        } else if (isTeleOnly) {
+                          labelSuffix = ' 📹';
+                          tooltip = 'Teleconsultation Only';
+                        } else if (isInClinicOnly) {
+                          labelSuffix = ' 🏥';
+                          tooltip = 'In-Clinic Only';
+                        }
+
                         return (
                           <button
                             key={slotTime || Math.random()}
-                            className={`slot-button${isSelected ? ' selected' : ''}${isBooked ? ' booked' : ''}`}
-                            onClick={() => !isBooked && slotTime && setRescheduleSlot(slotTime)}
-                            disabled={isBooked || !slotTime}
-                            title={isBooked ? 'Already booked' : `Select ${formatTimeToAMPM(slotTime)}`}
+                            className={`slot-button${isSelected ? ' selected' : ''}${isDisable ? ' booked' : ''}`}
+                            onClick={() => !isDisable && slotTime && setRescheduleSlot(slotTime)}
+                            disabled={isDisable || !slotTime}
+                            title={tooltip}
                           >
                             {formatTimeToAMPM(slotTime)}
+                            {labelSuffix && <span style={{ fontSize: '0.7rem', marginLeft: '4px' }}>{labelSuffix}</span>}
                           </button>
                         );
                       })}
@@ -822,7 +847,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                 <div>
                   <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Status</label>
                   <p style={{ margin: '4px 0 0' }}>
-                    <span className={`status-pill ${viewingAppointment.status}`}>{viewingAppointment.status}</span>
+                    <span className={`status-pill ${viewingAppointment.status.replace(/_/g, '-')}`}>{viewingAppointment.status.replace(/[_-]/g, ' ')}</span>
                   </p>
                 </div>
                 <div>

@@ -29,9 +29,18 @@ def _send_sync_notification(
     user_id: uuid.UUID,
     title: str,
     message: str,
-    noti_type: str = "general"
+    noti_type: str = "general",
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> None:
     """Helper to dispatch multi-channel alerts synchronously inside a Celery task."""
+    from app.models.user import User
+    user = session.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
+    if not user:
+        logger.warning(f"User {user_id} not found for sync notification")
+        return
+
     # Check preferences
     patient = session.execute(
         select(Patient).where(Patient.user_id == user_id)
@@ -60,12 +69,55 @@ def _send_sync_notification(
     logger.info(f"[Sync In-App] Created database notification record for user {user_id}: {title}")
 
     # 2. Email
-    if email_enabled:
-        logger.info(f"[Sync Email] To {user_id}: {title} | {message}")
+    if email_enabled and user.email:
+        if noti_type in ["patient_joined", "doctor_joined", "check_in", "reminder_10m", "reminder_1h"]:
+            logger.info(f"[Sync Email Skip] Skipped email to {user.email} for realtime alert type: {noti_type}")
+        else:
+            logger.info(f"[Sync Email] Sending to {user.email}: {title}")
+            try:
+                import asyncio
+                from app.utils.email import send_email
+                html_body = f"<h3>{title}</h3><p>{message}</p><br/><hr/><p style='font-size: 11px; color: #888;'>This is an automated notification from Vertical Clinic.</p>"
+                asyncio.run(send_email(
+                    to=user.email,
+                    subject=title,
+                    html_body=html_body,
+                    plain_body=message,
+                    attachments=attachments
+                ))
+            except Exception as email_err:
+                logger.error(f"[Sync Email Error] Failed to send email to {user.email}: {email_err}")
 
     # 3. SMS
-    if sms_enabled:
-        logger.info(f"[Sync SMS] To {user_id}: {message}")
+    if sms_enabled and user.phone:
+        logger.info(f"[Sync SMS] Sending to {user.phone}: {message}")
+        from app.config import settings
+        if settings.SMS_PROVIDER == "twilio" and settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
+            is_dummy = (
+                "dummy" in settings.TWILIO_ACCOUNT_SID.lower()
+                or "your_" in settings.TWILIO_ACCOUNT_SID.lower()
+                or not settings.TWILIO_ACCOUNT_SID
+            )
+            if not is_dummy:
+                try:
+                    from twilio.rest import Client
+                    client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                    to_phone = user.phone
+                    if not to_phone.startswith("+"):
+                        to_phone = f"+91{to_phone}" if len(to_phone) == 10 else f"+{to_phone}"
+                    
+                    client.messages.create(
+                        body=f"{title}: {message}",
+                        from_=settings.TWILIO_FROM_NUMBER,
+                        to=to_phone
+                    )
+                    logger.info(f"[Twilio SMS Sync Success] SMS sent to {to_phone}")
+                except Exception as twilio_err:
+                    logger.error(f"[Twilio SMS Sync Error] Failed to send SMS: {twilio_err}")
+            else:
+                logger.info("[Twilio SMS Sync Dev] Dummy account SID detected. Skipping API request.")
+        else:
+            logger.info(f"[Sync SMS Log Only] SMS provider not twilio or missing credentials: {message}")
 
     # 4. WhatsApp
     if whatsapp_enabled:
@@ -92,7 +144,8 @@ def send_appointment_reminders() -> dict:
                 select(Appointment)
                 .options(
                     joinedload(Appointment.patient).joinedload(Patient.user),
-                    joinedload(Appointment.doctor).joinedload(Doctor.user), # just load doctor user as well if needed
+                    joinedload(Appointment.doctor).joinedload(Doctor.user),
+                    joinedload(Appointment.branch),
                     joinedload(Appointment.teleconsultation)
                 )
                 .where(Appointment.status == "confirmed")
@@ -118,6 +171,19 @@ def send_appointment_reminders() -> dict:
                     appt.reminder_sent_24h = True
                     processed_count += 1
 
+                # ── A.5. 2 Hours Before Reminder ──────────────────────────────────
+                elif 110 <= delta_minutes <= 130 and not appt.reminder_sent_2h:
+                    doc_name = appt.doctor.user.full_name if appt.doctor and appt.doctor.user else 'Doctor'
+                    branch_name = appt.branch.name if appt.branch else 'Vertical Clinic'
+                    time_str = appt_dt.strftime('%I:%M %p')
+                    msg = (
+                        f"Reminder: Your appointment with Dr. {doc_name} is in 2 hours "
+                        f"({time_str}) at {branch_name}. Type: {appt.treatment_type}."
+                    )
+                    _send_sync_notification(session, appt.patient.user_id, "Appointment Reminder (2h)", msg, "reminder_2h")
+                    appt.reminder_sent_2h = True
+                    processed_count += 1
+
                 # ── B. 30 Minutes Before: Generate Meeting URL + Reminder ───────────────
                 elif 20 <= delta_minutes <= 40 and not appt.reminder_sent_1h:
                     meeting_url = None
@@ -125,13 +191,12 @@ def send_appointment_reminders() -> dict:
                         # Generate meeting if not exists
                         tele = appt.teleconsultation
                         if not tele:
-                            meeting_id = uuid.uuid4()
-                            meet_code = f"{meeting_id.hex[:3]}-{meeting_id.hex[3:7]}-{meeting_id.hex[7:10]}"
-                            meeting_url = f"https://meet.google.com/{meet_code}"
+                            room_name = f"vclinicteleconsult{appt.id.hex[:12]}"
+                            meeting_url = room_name
 
                             start_time = appt_dt
                             end_time = start_time + timedelta(minutes=30)
-                            expiry_time = end_time + timedelta(hours=1)  # Expiry buffer
+                            expiry_time = end_time + timedelta(hours=24)
 
                             tele = TeleConsultation(
                                 appointment_id=appt.id,
@@ -147,9 +212,11 @@ def send_appointment_reminders() -> dict:
                         else:
                             meeting_url = tele.meeting_url
 
+                        clean_room = meeting_url.lower().replace("_", "").replace("-", "")
+                        full_link = f"https://meet.element.io/{clean_room}"
                         msg = (
                             f"Your video consultation starts in 30 minutes. "
-                            f"Here is your meeting URL: {meeting_url}. "
+                            f"Here is your meeting URL: {full_link}. "
                             f"The 'Join Meeting' button will activate in your portal 10 mins before."
                         )
                         # Send to doctor as well
@@ -157,7 +224,7 @@ def send_appointment_reminders() -> dict:
                             pat_name = appt.patient.user.full_name if appt.patient and appt.patient.user else 'Patient'
                             doc_msg = (
                                 f"Reminder: Your video consultation with patient {pat_name} "
-                                f"starts in 30 minutes. Meeting URL: {meeting_url}."
+                                f"starts in 30 minutes. Meeting URL: {full_link}."
                             )
                             _send_sync_notification(session, appt.doctor.user_id, "Upcoming Teleconsultation (30m)", doc_msg, "reminder_1h")
                     else:
@@ -173,7 +240,9 @@ def send_appointment_reminders() -> dict:
                 # ── C. 10 Minutes Before Reminder ────────────────────────────────
                 elif 5 <= delta_minutes <= 15 and not appt.reminder_sent_10m:
                     if appt.consultation_type == "teleconsultation":
-                        meeting_url = appt.teleconsultation.meeting_url if appt.teleconsultation else "https://meet.google.com/abc-defg-hij"
+                        room_name = appt.teleconsultation.meeting_url if appt.teleconsultation else f"vclinicteleconsult{appt.id.hex[:12]}"
+                        clean_room = room_name.lower().replace("_", "").replace("-", "")
+                        meeting_url = f"https://meet.element.io/{clean_room}"
                         msg = (
                             f"Urgent: Your video consultation starts in 10 minutes. "
                             f"Join here: {meeting_url}."
@@ -227,3 +296,63 @@ def send_appointment_reminders() -> dict:
     except Exception as exc:
         logger.error("Appointment reminders task failed: %s", exc)
         return {"error": str(exc)}
+
+
+@celery_app.task(name="app.tasks.notification_tasks.auto_expire_stale_appointments")
+def auto_expire_stale_appointments() -> dict:
+    """
+    Auto-expires unresolved past appointments by marking them as 'no_show'.
+    Runs periodically.
+    """
+    now = datetime.now(timezone.utc)
+    updated_count = 0
+
+    try:
+        with Session(_engine) as session:
+            # Query appointments where:
+            # - status is in ["pending", "confirmed", "checked_in", "in_consultation"]
+            # - scheduled time is older than 4 hours from now
+            stmt = (
+                select(Appointment)
+                .where(
+                    Appointment.status.in_(["pending", "confirmed", "checked_in", "in_consultation"]),
+                    Appointment.appointment_datetime < now - timedelta(hours=4)
+                )
+            )
+            stale_appointments = session.execute(stmt).scalars().all()
+
+            for appt in stale_appointments:
+                # For teleconsultations, close any active meeting first
+                if appt.consultation_type == "teleconsultation":
+                    tele = appt.teleconsultation
+                    if tele:
+                        tele.status = "Closed"
+                
+                appt.status = "no_show"
+                updated_count += 1
+                
+                # Send a notification to the patient about the missed appointment
+                try:
+                    msg = (
+                        f"Your scheduled appointment for {appt.treatment_type} on "
+                        f"{appt.appointment_datetime.strftime('%Y-%m-%d %H:%M')} was marked as no-show."
+                    )
+                    _send_sync_notification(
+                        session=session,
+                        user_id=appt.patient.user_id,
+                        title="Appointment Missed (No-Show)",
+                        message=msg,
+                        noti_type="general"
+                    )
+                except Exception as noti_err:
+                    logger.warning("Failed to send no-show notification for appt %s: %s", appt.id, noti_err)
+
+            session.commit()
+
+        logger.info("Auto-expire stale appointments: updated %d appointments to no_show", updated_count)
+        return {"updated": updated_count, "ran_at": now.isoformat()}
+
+    except Exception as exc:
+        logger.error("Auto-expire stale appointments task failed: %s", exc)
+        return {"error": str(exc)}
+

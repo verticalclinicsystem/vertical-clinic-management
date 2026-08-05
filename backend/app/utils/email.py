@@ -8,10 +8,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
-import aiosmtplib
 
 from app.config import settings
 
@@ -156,40 +152,43 @@ async def send_email(
     subject: str,
     html_body: str,
     plain_body: str,
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> None:
     """
-    Low-level async SMTP sender.
-    Connects to SMTP_HOST:SMTP_PORT with STARTTLS and logs in
-    using SMTP_USER / SMTP_PASSWORD from settings.
+    Low-level async sender using Mailgun HTTP API.
     """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{settings.FROM_NAME} <{settings.FROM_EMAIL}>"
-    msg["To"] = to
+    if not settings.MAILGUN_API_KEY or not settings.MAILGUN_DOMAIN:
+        raise ValueError("Mailgun API Key and Domain must be configured to send emails.")
 
-    # Plain text first (fallback), HTML second (preferred by mail clients)
-    msg.attach(MIMEText(plain_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    import httpx
+    url = f"https://api.mailgun.net/v3/{settings.MAILGUN_DOMAIN}/messages"
+    data = {
+        "from": f"{settings.FROM_NAME} <{settings.FROM_EMAIL}>",
+        "to": to,
+        "subject": subject,
+        "text": plain_body,
+        "html": html_body,
+    }
+    files = []
+    if attachments:
+        for filename, content, mime_type in attachments:
+            files.append(("attachment", (filename, content, mime_type)))
 
-    import asyncio
-    try:
-        # Use a 10-second timeout to allow Gmail TLS handshake to complete
-        await asyncio.wait_for(
-            aiosmtplib.send(
-                msg,
-                hostname=settings.SMTP_HOST,
-                port=settings.SMTP_PORT,
-                username=settings.SMTP_USER,
-                password=settings.SMTP_PASSWORD,
-                start_tls=settings.SMTP_PORT == 587, # only try start_tls on port 587
-            ),
-            timeout=10.0
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            url,
+            auth=("api", settings.MAILGUN_API_KEY),
+            data=data,
+            files=files if files else None,
+            timeout=12.0
         )
-        logger.info("Email sent to=%r subject=%r", to, subject)
-    except Exception as exc:
-        logger.warning("Failed to send email to=%r: %s (%s)", to, exc, type(exc).__name__, exc_info=True)
-        if settings.is_production:
-            raise
+        if resp.status_code in (200, 201):
+            logger.info("Email sent via Mailgun HTTP API to=%r subject=%r", to, subject)
+            return
+        else:
+            err_msg = f"Mailgun API failed (status={resp.status_code}): {resp.text}"
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
 
 
@@ -212,5 +211,92 @@ async def send_otp_email(*, to: str, otp: str, purpose: str) -> None:
     )
     html_body = _build_otp_html(otp, purpose, app_name)
     plain_body = _build_otp_plain(otp, purpose, app_name)
+
+    await send_email(to=to, subject=subject, html_body=html_body, plain_body=plain_body)
+
+
+async def send_welcome_email(*, to: str, full_name: str) -> None:
+    """
+    Send a styled welcome email to the user after successful registration and verification.
+    """
+    app_name = settings.APP_NAME
+    subject = f"Welcome to {app_name}!"
+    
+    html_body = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome to {app_name}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0"
+               style="background:#ffffff;border-radius:12px;
+                      box-shadow:0 2px 12px rgba(0,0,0,0.08);overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#0f7bab,#0a5c80);
+                        padding:32px 40px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;
+                          letter-spacing:0.5px;">
+                {app_name}
+              </h1>
+              <p style="margin:6px 0 0;color:#c8e8f5;font-size:13px;">
+                Clinic Management System
+              </p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px;">
+              <h2 style="margin:0 0 12px;color:#1a2e3b;font-size:20px;">Welcome to {app_name}!</h2>
+              <p style="margin:0 0 16px;color:#4a5568;font-size:15px;line-height:1.6;">
+                Dear <strong>{full_name}</strong>,
+              </p>
+              <p style="margin:0 0 20px;color:#4a5568;font-size:15px;line-height:1.6;">
+                Your account has been successfully verified. You can now log in to the portal using your registered email address.
+              </p>
+              <p style="margin:0 0 20px;color:#4a5568;font-size:15px;line-height:1.6;">
+                Thank you for choosing {app_name}.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8fafc;padding:20px 40px;
+                        border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="margin:0;color:#a0aec0;font-size:12px;">
+                © 2025 {app_name}. All rights reserved.
+              </p>
+              <p style="margin:4px 0 0;color:#a0aec0;font-size:12px;">
+                This is an automated message — please do not reply.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+    plain_body = (
+        f"Welcome to {app_name}!\n"
+        f"{'=' * 40}\n\n"
+        f"Dear {full_name},\n\n"
+        f"Your account has been successfully verified. You can now log in to the portal using your registered email address.\n\n"
+        f"Thank you for choosing {app_name}.\n\n"
+        f"Best regards,\n"
+        f"{app_name} Team\n\n"
+        f"{'=' * 40}\n"
+        f"This is an automated message. Do not reply."
+    )
 
     await send_email(to=to, subject=subject, html_body=html_body, plain_body=plain_body)

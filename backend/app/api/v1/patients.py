@@ -126,10 +126,56 @@ async def get_patient_dashboard(
     upcoming_appointments = []
     appointment_history = []
     for appt in all_appts:
-        if appt.appointment_datetime >= now and appt.status in ["pending", "confirmed"]:
+        if appt.status in ["pending", "confirmed", "checked_in", "in_consultation"]:
             upcoming_appointments.append(appt)
         else:
             appointment_history.append(appt)
+
+    # Calculate queue estimation for upcoming appointments today
+    from app.models.appointment import Appointment
+    IST = timezone(timedelta(hours=5, minutes=30))
+    today_ist = datetime.now(IST).date()
+    upcoming_serialized = []
+    for appt in upcoming_appointments:
+        appt_out = to_patient_appt_out(appt)
+        appt_date_ist = appt.appointment_datetime.astimezone(IST).date()
+        if appt_date_ist == today_ist and appt.status in ["confirmed", "checked_in", "in_consultation"]:
+            day_start_ist = datetime.combine(today_ist, datetime.min.time()).replace(tzinfo=IST)
+            day_end_ist = datetime.combine(today_ist, datetime.max.time()).replace(tzinfo=IST)
+            doctor_appts_stmt = select(Appointment).where(
+                Appointment.doctor_id == appt.doctor_id,
+                Appointment.appointment_datetime >= day_start_ist,
+                Appointment.appointment_datetime <= day_end_ist,
+                Appointment.status.in_(["in_consultation", "checked_in", "confirmed"])
+            )
+            doctor_appts_res = await db.execute(doctor_appts_stmt)
+            doctor_appts = list(doctor_appts_res.scalars().all())
+
+            def queue_sort_key(a):
+                status_priority = {"in_consultation": 0, "checked_in": 1, "confirmed": 2}
+                return (status_priority.get(a.status, 3), a.appointment_datetime)
+
+            sorted_queue = sorted(doctor_appts, key=queue_sort_key)
+
+            try:
+                queue_index = next(idx for idx, a in enumerate(sorted_queue) if a.id == appt.id)
+                patients_ahead = queue_index
+                wait_minutes = patients_ahead * 15
+                if appt.status == "in_consultation":
+                    wait_minutes = 0
+            except StopIteration:
+                patients_ahead = 0
+                wait_minutes = 0
+
+            appt_dict = appt_out.model_dump()
+            appt_dict["queue_position"] = patients_ahead
+            appt_dict["estimated_wait_minutes"] = wait_minutes
+            upcoming_serialized.append(appt_dict)
+        else:
+            appt_dict = appt_out.model_dump()
+            appt_dict["queue_position"] = None
+            appt_dict["estimated_wait_minutes"] = None
+            upcoming_serialized.append(appt_dict)
 
     # 3. Get prescriptions
     prescription_service = PrescriptionService(db)
@@ -188,12 +234,12 @@ async def get_patient_dashboard(
     visits_this_year = visits_res.scalar_one()
 
     # 9. Get follow-ups
-    from app.models.appointment import Appointment
+    from app.models.appointment import Appointment as ApptModel
     stmt = (
-        select(Appointment)
+        select(ApptModel)
         .where(
-            Appointment.patient_id == patient_id,
-            Appointment.status.in_(["pending", "confirmed"])
+            ApptModel.patient_id == patient_id,
+            ApptModel.status.in_(["pending", "confirmed"])
         )
     )
     result = await db.execute(stmt)
@@ -235,7 +281,7 @@ async def get_patient_dashboard(
             "active_prescriptions_count": len(prescriptions),
             "balance_due": total_balance_due,
             "visits_this_year": visits_this_year,
-            "upcoming_appointments": [to_patient_appt_out(a) for a in upcoming_appointments],
+            "upcoming_appointments": upcoming_serialized,
             "appointment_history": [to_patient_appt_out(a) for a in appointment_history],
             "past_appointments": [to_patient_appt_out(a) for a in appointment_history],
             "prescriptions": [PrescriptionOut.model_validate(p) for p in prescriptions],
@@ -1088,4 +1134,179 @@ async def get_patient_timeline(
     return ApiResponse.success(
         data=timeline,
         message="Patient medical timeline retrieved successfully.",
+    )
+
+
+# ── 12. GET /patients/{patient_id}/history-profile ───────────────────────────
+@router.get(
+    "/{patient_id}/history-profile",
+    summary="Get patient's complete history and profile (staff only)",
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST))],
+)
+async def get_patient_history_profile(
+    patient_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """
+    Fetch patient demographic details, stats, upcoming and past appointments,
+    prescriptions, medical history, invoices, and follow-ups.
+    """
+    from app.services.appointment_service import AppointmentService
+    from app.services.prescription_service import PrescriptionService
+    from app.services.consultation_service import ConsultationService
+    from app.services.billing_service import BillingService
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select, func
+
+    # Import schemas
+    from app.schemas.appointment import AppointmentOut
+    from app.schemas.prescription import PrescriptionOut
+    from app.schemas.consultation import ConsultationOut
+    from app.schemas.medical_report import MedicalReportOut
+    from app.schemas.invoice import InvoiceOut
+    from app.schemas.patient import FollowUpRecommendationOut
+
+    def to_patient_appt_out(a) -> AppointmentOut:
+        out = AppointmentOut.model_validate(a)
+        out.map_status_for_role("patient")
+        return out
+
+    service = PatientService(db)
+    patient = await service.get_patient(patient_id)
+    if not patient:
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError("Patient not found.")
+
+    # 1. Preferred branch details
+    branch_name = None
+    if patient.preferred_branch_id:
+        branch = await service.branch_repo.get_by_id(patient.preferred_branch_id)
+        if branch:
+            branch_name = branch.name
+
+    # 2. Get appointments
+    appt_service = AppointmentService(db)
+    all_appts, _ = await appt_service.list_appointments(
+        page=1,
+        limit=100,
+        patient_id=patient_id,
+    )
+    
+    upcoming_appointments = []
+    appointment_history = []
+    for appt in all_appts:
+        if appt.status in ["pending", "confirmed", "checked_in", "in_consultation"]:
+            upcoming_appointments.append(appt)
+        else:
+            appointment_history.append(appt)
+
+    # 3. Get prescriptions
+    prescription_service = PrescriptionService(db)
+    prescriptions, _ = await prescription_service.list_prescriptions(
+        page=1,
+        limit=50,
+        patient_id=patient_id,
+    )
+
+    # 4. Get medical history (consultations)
+    consultation_service = ConsultationService(db)
+    consultations, _ = await consultation_service.list_consultations(
+        page=1,
+        limit=50,
+        patient_id=patient_id,
+    )
+
+    # 5. Get medical reports
+    from app.services.medical_report_service import MedicalReportService
+    report_service = MedicalReportService(db)
+    reports = await report_service.get_reports_by_user_id(patient.user_id) if patient.user_id else []
+
+    # 6. Get bills (invoices)
+    billing_service = BillingService(db)
+    invoices, _ = await billing_service.list_invoices(
+        page=1,
+        limit=50,
+        patient_id=patient_id,
+    )
+
+    # 7. Get balance due
+    from app.models.invoice import Invoice
+    balance_stmt = (
+        select(func.sum(Invoice.balance_due))
+        .where(
+            Invoice.patient_id == patient_id,
+            Invoice.status.in_(["unpaid", "partially_paid"])
+        )
+    )
+    balance_res = await db.execute(balance_stmt)
+    total_balance_due = float(balance_res.scalar() or 0.0)
+
+    # 8. Get visits this year
+    current_year = datetime.now(timezone.utc).year
+    start_of_year = datetime(current_year, 1, 1, tzinfo=timezone.utc)
+    from app.models.consultation import Consultation
+    visits_stmt = (
+        select(func.count(Consultation.id))
+        .where(
+            Consultation.patient_id == patient_id,
+            Consultation.consultation_datetime >= start_of_year
+        )
+    )
+    visits_res = await db.execute(visits_stmt)
+    visits_this_year = visits_res.scalar_one()
+
+    # 9. Get follow-ups
+    from app.models.appointment import Appointment as ApptModel
+    stmt = (
+        select(ApptModel)
+        .where(
+            ApptModel.patient_id == patient_id,
+            ApptModel.status.in_(["pending", "confirmed"])
+        )
+    )
+    result = await db.execute(stmt)
+    future_appointments = list(result.scalars().all())
+
+    follow_ups = []
+    for c in consultations:
+        recommended_date = c.consultation_datetime + timedelta(days=14)
+        has_future_booking = any(
+            appt.doctor_id == c.doctor_id and appt.appointment_datetime > c.consultation_datetime
+            for appt in future_appointments
+        )
+        status = "booked" if has_future_booking else "recommended"
+
+        treatment_type = "Routine Follow-up"
+        if c.diagnosis:
+            treatment_type = f"Follow-up for {c.diagnosis}"
+
+        follow_ups.append({
+            "id": c.id,
+            "consultation_id": c.id,
+            "doctor_id": c.doctor_id,
+            "doctor_name": c.doctor.user.full_name if c.doctor and c.doctor.user else "Doctor",
+            "branch_id": c.branch_id,
+            "branch_name": c.branch.name if c.branch else "Main Branch",
+            "recommended_date": recommended_date,
+            "treatment_type": treatment_type,
+            "notes": f"Recommended follow-up based on visit on {c.consultation_datetime.strftime('%Y-%m-%d')}.",
+            "status": status,
+        })
+
+    return ApiResponse.success(
+        data={
+            "patient": PatientOut.model_validate(patient),
+            "upcoming_appointments_count": len(upcoming_appointments),
+            "active_prescriptions_count": len(prescriptions),
+            "balance_due": total_balance_due,
+            "visits_this_year": visits_this_year,
+            "upcoming_appointments": [to_patient_appt_out(a) for a in upcoming_appointments],
+            "appointment_history": [to_patient_appt_out(a) for a in appointment_history],
+            "prescriptions": [PrescriptionOut.model_validate(p) for p in prescriptions],
+            "medical_history": [ConsultationOut.model_validate(c) for c in consultations],
+            "reports": [MedicalReportOut.model_validate(r) for r in reports],
+            "bills": [InvoiceOut.model_validate(i) for i in invoices],
+            "follow_ups": [FollowUpRecommendationOut.model_validate(f) for f in follow_ups],
+        },
+        message="Patient history and profile details retrieved successfully.",
     )

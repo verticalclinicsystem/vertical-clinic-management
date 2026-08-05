@@ -9,7 +9,7 @@ import {
   LogOut, 
   Loader2, 
   FileText, 
-  DollarSign, 
+  IndianRupee, 
   CreditCard, 
   UserPlus, 
   CalendarPlus, 
@@ -19,13 +19,18 @@ import {
   UserCheck, 
   X,
   User,
+  ArrowLeft,
   ArrowRight,
   Stethoscope,
   Trash2,
   Settings,
-  Bell
+  Bell,
+  Edit2,
+  History,
+  Eye,
+  Mail
 } from 'lucide-react';
-import { api } from '../../services/api';
+import { api, getWebSocketUrl } from '../../services/api';
 import './ReceptionistPortal.css';
 
 interface ReceptionistPortalProps {
@@ -68,8 +73,48 @@ const formatTimeToAMPM = (timeStr: string): string => {
   return `${displayHour.toString().padStart(2, '0')}:${minStr} ${ampm}`;
 };
 
+const formatDocName = (name?: string): string => {
+  if (!name) return '';
+  const trimmed = name.trim();
+  if (/^dr\.?\s+/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `Dr. ${trimmed}`;
+};
+
 export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('receptionist_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('receptionist_portal_tab') || 'dashboard');
+  const [tabHistory, setTabHistory] = useState<string[]>([]);
+
+  const changeTab = (newTab: string, pushToHistory = true) => {
+    if (newTab === activeTab) return;
+    if (pushToHistory) {
+      setTabHistory(prev => {
+        const next = [...prev, activeTab];
+        if (next.length > 10) return next.slice(1);
+        return next;
+      });
+    }
+    setActiveTabInternal(newTab);
+    localStorage.setItem('receptionist_portal_tab', newTab);
+  };
+
+  const goBackTab = () => {
+    if (tabHistory.length === 0) return;
+    const prevTab = tabHistory[tabHistory.length - 1];
+    setTabHistory(prev => prev.slice(0, -1));
+    setActiveTabInternal(prevTab);
+    localStorage.setItem('receptionist_portal_tab', prevTab);
+  };
+
+  const setActiveTab = (newTab: string) => {
+    changeTab(newTab, true);
+  };
+
+  const handleRootTabChange = (newTab: string) => {
+    setTabHistory([]);
+    changeTab(newTab, false);
+  };
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -218,6 +263,33 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
   const [showBookModal, setShowBookModal] = useState<boolean>(false);
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [showEditBillingModal, setShowEditBillingModal] = useState<boolean>(false);
+  const [selectedInvoiceForEdit, setSelectedInvoiceForEdit] = useState<any>(null);
+  const [showInvoicePreviewModal, setShowInvoicePreviewModal] = useState<boolean>(false);
+  const [selectedInvoiceForPreview, setSelectedInvoiceForPreview] = useState<any>(null);
+  const [sendingEmailStatus, setSendingEmailStatus] = useState<boolean>(false);
+  const [showPatientHistoryModal, setShowPatientHistoryModal] = useState<boolean>(false);
+  const [selectedPatientForHistory, setSelectedPatientForHistory] = useState<any>(null);
+  const [patientHistoryData, setPatientHistoryData] = useState<any>(null);
+  const [loadingPatientHistory, setLoadingPatientHistory] = useState<boolean>(false);
+  const [historyModalTab, setHistoryModalTab] = useState<'appointments' | 'consultations' | 'prescriptions' | 'bills'>('appointments');
+  const [editBillingForm, setEditBillingForm] = useState({
+    total_amount: 0,
+    discount_amount: 0,
+    tax_amount: 0,
+    status: 'unpaid',
+  });
+  const [editPendingCharges, setEditPendingCharges] = useState<{
+    consultations: any[];
+    treatment_plans: any[];
+    standard_materials: any[];
+  } | null>(null);
+  const [loadingEditPendingCharges, setLoadingEditPendingCharges] = useState<boolean>(false);
+  const [editSelectedConsultationId, setEditSelectedConsultationId] = useState<string | null>(null);
+  const [editSelectedTreatmentPlanId, setEditSelectedTreatmentPlanId] = useState<string | null>(null);
+  const [editIncludeMedicines, setEditIncludeMedicines] = useState<boolean>(true);
+  const [editIncludeMaterials, setEditIncludeMaterials] = useState<boolean>(true);
+  const [editCustomMaterialsCost, setEditCustomMaterialsCost] = useState<number>(0);
   
   // Form states
   const [registerForm, setRegisterForm] = useState({
@@ -250,6 +322,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [rescheduleTime, setRescheduleTime] = useState<string>('');
   const [rescheduleSlots, setRescheduleSlots] = useState<{ time: string; status: string }[]>([]);
   const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState<boolean>(false);
+  const [isCustomTimeBooking, setIsCustomTimeBooking] = useState<boolean>(false);
+  const [isCustomTimeReschedule, setIsCustomTimeReschedule] = useState<boolean>(false);
+  const [rescheduleConsultationType, setRescheduleConsultationType] = useState<string>('in_person');
 
   const [billingForm, setBillingForm] = useState({
     patient_id: '',
@@ -375,9 +450,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   };
 
   // Main data fetching
-  const fetchPortalData = async () => {
+  const fetchPortalData = async (silent = false) => {
     if (!selectedBranchId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       // 1. Fetch appointments for this branch
       const apptRes = await api.get(`/appointments/?branch_id=${selectedBranchId}&limit=100`);
@@ -400,7 +475,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       console.error(err);
       showToast('Error fetching database records.', 'error');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -412,6 +487,69 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     if (selectedBranchId) {
       fetchPortalData();
     }
+  }, [selectedBranchId]);
+
+  // Real-time WebSocket Queue Update
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWebSocket = () => {
+      try {
+        const wsUrl = getWebSocketUrl();
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          console.log('WebSocket connected for queue updates');
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'queue_updated') {
+              console.log('Queue update received via WebSocket, refreshing...');
+              fetchPortalData(true);
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+          }
+        };
+
+        socket.onclose = () => {
+          console.log('WebSocket disconnected, reconnecting in 5s...');
+          reconnectTimeout = setTimeout(connectWebSocket, 5000);
+        };
+
+        socket.onerror = (err) => {
+          console.error('WebSocket error:', err);
+          socket?.close();
+        };
+      } catch (err) {
+        console.error('Failed to establish WebSocket connection:', err);
+        reconnectTimeout = setTimeout(connectWebSocket, 5000);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
+  }, [selectedBranchId]);
+
+  // Fallback Polling for Real-time sync (every 15 seconds)
+  useEffect(() => {
+    if (!selectedBranchId) return;
+    const interval = setInterval(() => {
+      fetchPortalData(true);
+    }, 15000);
+    return () => clearInterval(interval);
   }, [selectedBranchId]);
 
   // Load available slots when doctor and date change
@@ -466,7 +604,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       setLoadingRescheduleSlots(true);
       try {
         const res = await api.get(
-          `/appointments/available-slots?doctor_id=${appt.doctor_id}&date=${rescheduleDate}&branch_id=${selectedBranchId}&consultation_type=${appt.consultation_type || 'in_person'}`
+          `/appointments/available-slots?doctor_id=${appt.doctor_id}&date=${rescheduleDate}&branch_id=${selectedBranchId}&consultation_type=${rescheduleConsultationType}`
         );
         if (res.data?.success) {
           setRescheduleSlots(res.data.data || []);
@@ -479,7 +617,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       }
     };
     loadRescheduleSlots();
-  }, [rescheduleApptId, rescheduleDate, selectedBranchId, appointments]);
+  }, [rescheduleApptId, rescheduleDate, selectedBranchId, rescheduleConsultationType, appointments]);
 
   const handleCancel = async (appointmentId: string) => {
     if (!window.confirm('Are you sure you want to cancel this appointment?')) {
@@ -504,7 +642,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     try {
       const datetimeStr = `${rescheduleDate}T${rescheduleTime}:00`;
       const res = await api.patch(`/appointments/${rescheduleApptId}/reschedule`, {
-        new_datetime: datetimeStr
+        new_datetime: datetimeStr,
+        consultation_type: rescheduleConsultationType
       });
       if (res.data?.success) {
         showToast('Appointment rescheduled successfully.', 'success');
@@ -712,6 +851,110 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }));
   }, [pendingCharges, selectedConsultationId, selectedTreatmentPlanId, includeMedicines, includeMaterials, customMaterialsCost]);
 
+  const fetchEditPendingCharges = async (patientId: string, invoice: any) => {
+    if (!patientId || !invoice) {
+      setEditPendingCharges(null);
+      return;
+    }
+    setLoadingEditPendingCharges(true);
+    try {
+      const res = await api.get(`/billing/calculate-pending?patient_id=${patientId}&exclude_invoice_id=${invoice.id}`);
+      if (res.data?.success) {
+        const data = res.data.data;
+        setEditPendingCharges(data);
+        
+        // Pre-select current invoice's consultation/treatment plan
+        setEditSelectedConsultationId(invoice.consultation_id || null);
+        setEditSelectedTreatmentPlanId(invoice.treatment_plan_id || null);
+        
+        // Include medicines by default
+        setEditIncludeMedicines(true);
+        
+        const materialsSum = data.standard_materials ? data.standard_materials.reduce((sum: number, item: any) => sum + item.cost, 0) : 0;
+        
+        // Calculate base sum of current linked items
+        let baseSum = 0;
+        if (invoice.consultation_id && data.consultations) {
+          const c = data.consultations.find((x: any) => x.id === invoice.consultation_id);
+          if (c) {
+            baseSum += c.consultation_fee || 0;
+            if (c.prescriptions) {
+              c.prescriptions.forEach((p: any) => {
+                if (p.items) {
+                  p.items.forEach((item: any) => {
+                    baseSum += item.total_price || 0;
+                  });
+                }
+              });
+            }
+          }
+        }
+        if (invoice.treatment_plan_id && data.treatment_plans) {
+          const tp = data.treatment_plans.find((x: any) => x.id === invoice.treatment_plan_id);
+          if (tp && tp.procedures) {
+            tp.procedures.forEach((proc: any) => {
+              baseSum += proc.cost || 0;
+            });
+          }
+        }
+        
+        const diff = invoice.total_amount - baseSum;
+        if (diff > 0) {
+          setEditIncludeMaterials(true);
+          setEditCustomMaterialsCost(Math.round(diff * 100) / 100);
+        } else {
+          setEditIncludeMaterials(false);
+          setEditCustomMaterialsCost(materialsSum);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error loading invoice charges breakdown.', 'error');
+    } finally {
+      setLoadingEditPendingCharges(false);
+    }
+  };
+
+  useEffect(() => {
+    let subtotal = 0;
+    if (editPendingCharges) {
+      if (editSelectedConsultationId) {
+        const selectedConsultation = editPendingCharges.consultations.find(c => c.id === editSelectedConsultationId);
+        if (selectedConsultation) {
+          subtotal += selectedConsultation.consultation_fee || 0;
+          if (editIncludeMedicines && selectedConsultation.prescriptions) {
+            selectedConsultation.prescriptions.forEach((p: any) => {
+              if (p.items) {
+                p.items.forEach((item: any) => {
+                  subtotal += item.total_price || 0;
+                });
+              }
+            });
+          }
+        }
+      }
+      
+      if (editSelectedTreatmentPlanId) {
+        const selectedPlan = editPendingCharges.treatment_plans.find(p => p.id === editSelectedTreatmentPlanId);
+        if (selectedPlan && selectedPlan.procedures) {
+          selectedPlan.procedures.forEach((proc: any) => {
+            subtotal += proc.cost || 0;
+          });
+        }
+      }
+      
+      if (editIncludeMaterials) {
+        subtotal += Number(editCustomMaterialsCost) || 0;
+      }
+    } else if (selectedInvoiceForEdit) {
+      subtotal = selectedInvoiceForEdit.total_amount;
+    }
+    setEditBillingForm(prev => ({
+      ...prev,
+      total_amount: Math.round(subtotal * 100) / 100
+    }));
+  }, [editPendingCharges, editSelectedConsultationId, editSelectedTreatmentPlanId, editIncludeMedicines, editIncludeMaterials, editCustomMaterialsCost, selectedInvoiceForEdit]);
+
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!billingForm.patient_id || billingForm.total_amount <= 0) {
@@ -751,6 +994,62 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       setSubmitLoading(false);
     }
   };
+
+  const handleUpdateInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvoiceForEdit) return;
+    setSubmitLoading(true);
+    try {
+      const res = await api.put(`/billing/${selectedInvoiceForEdit.id}`, {
+        total_amount: Number(editBillingForm.total_amount),
+        discount_amount: Number(editBillingForm.discount_amount),
+        tax_amount: Number(editBillingForm.tax_amount),
+        status: editBillingForm.status,
+        consultation_id: editSelectedConsultationId || null,
+        treatment_plan_id: editSelectedTreatmentPlanId || null,
+      });
+
+      if (res.data?.success) {
+        showToast('Invoice updated successfully.', 'success');
+        setShowEditBillingModal(false);
+        setSelectedInvoiceForEdit(null);
+        setEditPendingCharges(null);
+        await fetchPortalData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Error updating invoice.', 'error');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  const fetchPatientHistoryProfile = async (patientId: string) => {
+    if (!patientId) return;
+    setLoadingPatientHistory(true);
+    setPatientHistoryData(null);
+    try {
+      const res = await api.get(`/patients/${patientId}/history-profile`);
+      if (res.data?.success) {
+        setPatientHistoryData(res.data.data);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Error loading patient history profile.', 'error');
+    } finally {
+      setLoadingPatientHistory(false);
+    }
+  };
+
+  // Auto-calculate 18% GST whenever edit total_amount changes
+  useEffect(() => {
+    const total = Number(editBillingForm.total_amount) || 0;
+    const tax = Math.round(total * 0.18 * 100) / 100;
+    setEditBillingForm(prev => ({
+      ...prev,
+      tax_amount: tax
+    }));
+  }, [editBillingForm.total_amount]);
 
   // Auto-calculate 18% GST whenever total_amount changes
   useEffect(() => {
@@ -814,6 +1113,24 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     } catch (error) {
       console.error(error);
       showToast('Failed to download invoice PDF.', 'error');
+    }
+  };
+
+  const handleSendInvoiceEmail = async (invoiceId: string, invoiceNumber: string) => {
+    setSendingEmailStatus(true);
+    try {
+      const res = await api.post(`/billing/${invoiceId}/send-email`);
+      if (res.data?.success) {
+        showToast(`Invoice ${invoiceNumber} emailed successfully!`, 'success');
+      } else {
+        showToast(res.data?.message || 'Failed to send invoice email.', 'error');
+      }
+    } catch (error: any) {
+      console.error(error);
+      const errMsg = error.response?.data?.message || 'Failed to send invoice email.';
+      showToast(errMsg, 'error');
+    } finally {
+      setSendingEmailStatus(false);
     }
   };
 
@@ -935,14 +1252,14 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             { id: 'queue', icon: <Clock size={18} />, label: 'Queue Board' },
             { id: 'checkin', icon: <UserCheck size={18} />, label: 'Check-In' },
             { id: 'patients', icon: <Users size={18} />, label: 'Patient Intake' },
-            { id: 'billing', icon: <DollarSign size={18} />, label: 'Billing' },
+            { id: 'billing', icon: <IndianRupee size={18} />, label: 'Billing' },
             { id: 'invoices', icon: <FileText size={18} />, label: 'Invoices' },
             { id: 'availability', icon: <Calendar size={18} />, label: 'Availability' },
           ].map(tab => (
             <div 
               key={tab.id} 
               className={`recep-nav-item ${activeTab === tab.id ? 'active' : ''}`} 
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleRootTabChange(tab.id)}
             >
               {tab.icon} {tab.label}
             </div>
@@ -960,20 +1277,31 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       <main className="recep-main">
         {/* Topbar */}
         <header className="recep-topbar">
-          <div className="recep-title-area">
-            <h2 className="recep-page-title">
-              {activeTab === 'dashboard' && 'Daily Dashboard'}
-              {activeTab === 'calendar' && 'Appointment Calendar'}
-              {activeTab === 'queue' && 'Real-time Queue Manager'}
-              {activeTab === 'checkin' && 'Patient Check-In'}
-              {activeTab === 'patients' && 'Patient Directory & Intake'}
-              {activeTab === 'billing' && 'Create Clinic Bill'}
-              {activeTab === 'invoices' && 'Invoices & Payments'}
-              {activeTab === 'availability' && 'Availability & Leave Settings'}
-            </h2>
-            <span className="recep-page-subtitle">
-              Managing operations for front desk staff
-            </span>
+          <div className="recep-title-area" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px' }}>
+            {tabHistory.length > 0 && (
+              <button 
+                onClick={goBackTab} 
+                className="recep-back-btn" 
+                title="Go Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <div>
+              <h2 className="recep-page-title" style={{ margin: 0 }}>
+                {activeTab === 'dashboard' && 'Daily Dashboard'}
+                {activeTab === 'calendar' && 'Appointment Calendar'}
+                {activeTab === 'queue' && 'Real-time Queue Manager'}
+                {activeTab === 'checkin' && 'Patient Check-In'}
+                {activeTab === 'patients' && 'Patient Directory & Intake'}
+                {activeTab === 'billing' && 'Create Clinic Bill'}
+                {activeTab === 'invoices' && 'Invoices & Payments'}
+                {activeTab === 'availability' && 'Availability & Leave Settings'}
+              </h2>
+              <span className="recep-page-subtitle" style={{ marginTop: '2px', display: 'block' }}>
+                Managing operations for front desk staff
+              </span>
+            </div>
           </div>
 
           <div className="recep-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -1089,7 +1417,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
               {isProfileDropdownOpen && (
                 <div className="profile-dropdown-menu">
-                  <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
+                  <button onClick={() => { handleRootTabChange('availability'); setIsProfileDropdownOpen(false); }}>
                     <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
                   </button>
                   <div className="profile-dropdown-divider"></div>
@@ -1274,7 +1602,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   <tr key={appt.id}>
                                     <td><strong className="recep-appt-id">{apptId}</strong></td>
                                     <td><strong>{appt.patient?.user?.full_name || 'Walk-in'}</strong></td>
-                                    <td>Dr. {appt.doctor?.user?.full_name || 'Staff Doctor'}</td>
+                                    <td>{formatDocName(appt.doctor?.user?.full_name || 'Staff Doctor')}</td>
                                     <td>{timeStr}</td>
                                     <td>
                                       <span className={`badge ${badgeClass}`}>{displayStatus}</span>
@@ -1404,7 +1732,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   .filter(d => d.branch_id === selectedBranchId)
                                   .map(doc => (
                                     <th key={doc.id} className="doc-col-header">
-                                      Dr. {doc.user?.full_name || 'Staff'}
+                                      {formatDocName(doc.user?.full_name || 'Staff')}
                                     </th>
                                   ))}
                               </tr>
@@ -1419,7 +1747,11 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                 { label: '02:00 PM', hour24: 14 },
                                 { label: '03:00 PM', hour24: 15 },
                                 { label: '04:00 PM', hour24: 16 },
-                                { label: '05:00 PM', hour24: 17 }
+                                { label: '05:00 PM', hour24: 17 },
+                                { label: '06:00 PM', hour24: 18 },
+                                { label: '07:00 PM', hour24: 19 },
+                                { label: '08:00 PM', hour24: 20 },
+                                { label: '09:00 PM', hour24: 21 }
                               ].map(slot => {
                                 return (
                                   <tr key={slot.hour24}>
@@ -1546,7 +1878,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   <div className="detail-info-block">
                                     <div className="info-row">
                                       <strong>Doctor:</strong>
-                                      <span>Dr. {appt.doctor?.user?.full_name || 'Staff'}</span>
+                                      <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
                                     </div>
                                     <div className="info-row">
                                       <strong>Treatment:</strong>
@@ -1577,9 +1909,36 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                           style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
                                         />
                                       </div>
+                                      <div className="form-group" style={{ marginBottom: '8px' }}>
+                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px', fontWeight: 'bold' }}>Consultation Type</label>
+                                        <select
+                                          value={rescheduleConsultationType}
+                                          onChange={(e) => setRescheduleConsultationType(e.target.value)}
+                                          style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
+                                        >
+                                          <option value="in_person">In-Clinic Visit</option>
+                                          <option value="teleconsultation">Teleconsultation</option>
+                                        </select>
+                                      </div>
                                       <div className="form-group" style={{ marginBottom: '12px' }}>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px', fontWeight: 'bold' }}>Available Time Slot</label>
-                                        {loadingRescheduleSlots ? (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', margin: 0 }}>Available Time Slot</label>
+                                          <button
+                                            type="button"
+                                            onClick={() => setIsCustomTimeReschedule(!isCustomTimeReschedule)}
+                                            style={{ background: 'none', border: 'none', color: '#0d9488', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+                                          >
+                                            {isCustomTimeReschedule ? 'Select from list' : '✍️ Custom Time'}
+                                          </button>
+                                        </div>
+                                        {isCustomTimeReschedule ? (
+                                          <input
+                                            type="time"
+                                            value={rescheduleTime}
+                                            onChange={(e) => setRescheduleTime(e.target.value)}
+                                            style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
+                                          />
+                                        ) : loadingRescheduleSlots ? (
                                           <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Loading slots...</div>
                                         ) : (
                                           <select
@@ -1589,12 +1948,30 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                           >
                                             <option value="">-- Select Time Slot --</option>
                                             {rescheduleSlots
-                                              .filter((s) => s.status === 'available')
-                                              .map((s) => (
-                                                <option key={s.time} value={s.time}>
-                                                  {formatTimeToAMPM(s.time)}
-                                                </option>
-                                              ))}
+                                              .map((s) => {
+                                                let label = formatTimeToAMPM(s.time);
+                                                const isExpired = s.status === 'expired';
+                                                if (s.status === 'booked') {
+                                                  label += ' (Booked)';
+                                                } else if (isExpired) {
+                                                  label += ' (Expired)';
+                                                } else if (s.status === 'lunch_break') {
+                                                  label += ' (Lunch Break)';
+                                                } else if (s.status === 'tele_only') {
+                                                  label += ' (Tele Only)';
+                                                } else if (s.status === 'in_clinic_only') {
+                                                  label += ' (In-Clinic Only)';
+                                                }
+                                                const isApptInPast = appt.status === 'no_show' || new Date(appt.appointment_datetime) < new Date();
+                                                const isTypeMismatch = (rescheduleConsultationType === 'in_person' && s.status === 'tele_only') ||
+                                                                       (rescheduleConsultationType === 'teleconsultation' && s.status === 'in_clinic_only');
+                                                const isDisabled = (isExpired && !isApptInPast) || s.status === 'booked' || s.status === 'lunch_break' || isTypeMismatch;
+                                                return (
+                                                  <option key={s.time} value={s.time} disabled={isDisabled}>
+                                                    {label}
+                                                  </option>
+                                                );
+                                              })}
                                           </select>
                                         )}
                                       </div>
@@ -1637,6 +2014,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                             onClick={() => {
                                               setRescheduleApptId(appt.id);
                                               setRescheduleDate(getLocalTodayDate());
+                                              setRescheduleConsultationType(appt.consultation_type || 'in_person');
+                                              setIsCustomTimeReschedule(false);
                                             }}
                                             style={{ flex: 1, padding: '8px', fontSize: '0.85rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                                           >
@@ -1709,7 +2088,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                       <div className="timeline-item-content">
                                         <h5>{appt.patient?.user?.full_name || 'Walk-in'}</h5>
                                         <span className="timeline-item-sub">
-                                          Dr. {appt.doctor?.user?.full_name || 'Staff'} • {appt.treatment_type}
+                                          {formatDocName(appt.doctor?.user?.full_name || 'Staff')} • {appt.treatment_type}
                                         </span>
                                       </div>
                                       <div className={`timeline-item-status status-${appt.status}`} />
@@ -1749,8 +2128,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               </div>
                               <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
                               <span className="card-code">{appt.patient?.patient_code}</span>
-                              <div className="card-meta">
-                                <span>Dr. {appt.doctor?.user?.full_name || 'Staff'}</span>
+                                                             <div className="card-meta">
+                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
                                 <span>{appt.treatment_type}</span>
                               </div>
                                <div className="card-actions">
@@ -1782,8 +2161,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               </div>
                               <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
                               <span className="card-code">{appt.patient?.patient_code}</span>
-                              <div className="card-meta">
-                                <span>Dr. {appt.doctor?.user?.full_name || 'Staff'}</span>
+                                                             <div className="card-meta">
+                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
                                 <span>{appt.treatment_type}</span>
                               </div>
                               <p className="card-notes"><em>Wait queue...</em></p>
@@ -1811,8 +2190,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               </div>
                               <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
                               <span className="card-code">{appt.patient?.patient_code}</span>
-                              <div className="card-meta">
-                                <span>Dr. {appt.doctor?.user?.full_name || 'Staff'}</span>
+                                                             <div className="card-meta">
+                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
                                 <span>{appt.treatment_type}</span>
                               </div>
                             </div>
@@ -1839,8 +2218,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               </div>
                               <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
                               <span className="card-code">{appt.patient?.patient_code}</span>
-                              <div className="card-meta">
-                                <span>Dr. {appt.doctor?.user?.full_name || 'Staff'}</span>
+                                                             <div className="card-meta">
+                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
                                 <span>{appt.treatment_type}</span>
                               </div>
                               <div className="card-actions mt-1">
@@ -1935,16 +2314,6 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   <td>
                                     <div className="recep-actions-row">
                                       <button 
-                                        className="btn-action-book" 
-                                        title="Book Appointment"
-                                        onClick={() => {
-                                          setSelectedPatientForBooking(p);
-                                          setShowBookModal(true);
-                                        }}
-                                      >
-                                        <CalendarPlus size={16} /> Book
-                                      </button>
-                                      <button 
                                         className="btn-action-bill" 
                                         title="Generate Invoice"
                                         onClick={() => {
@@ -1957,7 +2326,18 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                           setActiveTab('billing');
                                         }}
                                       >
-                                        <DollarSign size={16} /> Bill
+                                        <IndianRupee size={16} /> Bill
+                                      </button>
+                                      <button 
+                                        className="btn-action-history" 
+                                        title="View Patient History & Profile"
+                                        onClick={() => {
+                                          setSelectedPatientForHistory(p);
+                                          fetchPatientHistoryProfile(p.id);
+                                          setShowPatientHistoryModal(true);
+                                        }}
+                                      >
+                                        <History size={16} /> History
                                       </button>
                                     </div>
                                   </td>
@@ -2024,7 +2404,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   <option value="">-- Do Not Bill Consultation --</option>
                                   {pendingCharges.consultations.map((c: any) => (
                                     <option key={c.id} value={c.id}>
-                                      Dr. {c.doctor_name} ({new Date(c.consultation_datetime).toLocaleDateString()}) - Fee: ₹{c.consultation_fee}
+                                      {formatDocName(c.doctor_name)} ({new Date(c.consultation_datetime).toLocaleDateString()}) - Fee: ₹{c.consultation_fee}
                                     </option>
                                   ))}
                                 </select>
@@ -2034,6 +2414,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
                                     <input
                                       type="checkbox"
+                                      className="recep-checkbox"
                                       checked={includeMedicines}
                                       onChange={(e) => setIncludeMedicines(e.target.checked)}
                                     />
@@ -2076,6 +2457,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
                                 <input
                                   type="checkbox"
+                                  className="recep-checkbox"
                                   checked={includeMaterials}
                                   onChange={(e) => setIncludeMaterials(e.target.checked)}
                                 />
@@ -2194,7 +2576,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           return (
                             <>
                               <div className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                                <span>Consultation: Dr. {consultation?.doctor_name}</span>
+                                <span>Consultation: {formatDocName(consultation?.doctor_name)}</span>
                                 <span>₹{(consultation?.consultation_fee || 0).toFixed(2)}</span>
                               </div>
                               {includeMedicines && consultation?.prescriptions?.map((p: any) => 
@@ -2345,6 +2727,16 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                 <td>{new Date(inv.created_at).toLocaleDateString()}</td>
                                 <td>
                                   <div className="recep-actions-row">
+                                    <button 
+                                      className="btn-download"
+                                      onClick={() => {
+                                        setSelectedInvoiceForPreview(inv);
+                                        setShowInvoicePreviewModal(true);
+                                      }}
+                                      title="View Details & Receipt"
+                                    >
+                                      <Eye size={14} /> View Details
+                                    </button>
                                     {inv.balance_due > 0 && (
                                       <button 
                                         className="btn-pay"
@@ -2361,13 +2753,6 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                         <CreditCard size={14} /> Pay
                                       </button>
                                     )}
-                                    <button 
-                                      className="btn-download"
-                                      onClick={() => handleDownloadPDF(inv.id, inv.invoice_number)}
-                                      title="Download PDF Receipt"
-                                    >
-                                      <Download size={14} /> Receipt
-                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -2529,7 +2914,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               </div>
                               <div className="detail-row">
                                 <span className="label">Doctor Assigned</span>
-                                <span className="value font-medium">Dr. {appt.doctor?.user?.full_name || 'N/A'}</span>
+                                <span className="value font-medium">{formatDocName(appt.doctor?.user?.full_name || 'N/A')}</span>
                               </div>
                               <div className="detail-row">
                                 <span className="label">Scheduled Time</span>
@@ -3033,7 +3418,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                     <option value="">Select Doctor</option>
                     {doctors.filter(d => d.branch_id === selectedBranchId).map(doc => (
                       <option key={doc.id} value={doc.id}>
-                        Dr. {doc.user?.full_name} ({doc.specialization})
+                        {formatDocName(doc.user?.full_name)} ({doc.specialization})
                       </option>
                     ))}
                   </select>
@@ -3062,22 +3447,58 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 </div>
 
                 <div className="form-group">
-                  <label>Available Slots *</label>
-                  <select 
-                    required
-                    disabled={loadingSlots || !bookingForm.doctor_id || !bookingForm.appointment_date}
-                    value={bookingForm.appointment_time} 
-                    onChange={e => setBookingForm({ ...bookingForm, appointment_time: e.target.value })}
-                  >
-                    <option value="">{loadingSlots ? 'Calculating...' : 'Select Slot'}</option>
-                    {availableSlots
-                      .filter((s: any) => s.status === 'available')
-                      .map((slot: any) => (
-                        <option key={slot.time} value={slot.time}>
-                          {formatTimeToAMPM(slot.time)}
-                        </option>
-                      ))}
-                  </select>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ margin: 0 }}>Available Slots *</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomTimeBooking(!isCustomTimeBooking)}
+                      style={{ background: 'none', border: 'none', color: '#0d9488', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+                    >
+                      {isCustomTimeBooking ? 'Select from list' : '✍️ Custom Time'}
+                    </button>
+                  </div>
+                  {isCustomTimeBooking ? (
+                    <input 
+                      type="time"
+                      required
+                      value={bookingForm.appointment_time} 
+                      onChange={e => setBookingForm({ ...bookingForm, appointment_time: e.target.value })}
+                      style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
+                    />
+                  ) : (
+                    <select 
+                      required
+                      disabled={loadingSlots || !bookingForm.doctor_id || !bookingForm.appointment_date}
+                      value={bookingForm.appointment_time} 
+                      onChange={e => setBookingForm({ ...bookingForm, appointment_time: e.target.value })}
+                    >
+                      <option value="">{loadingSlots ? 'Calculating...' : 'Select Slot'}</option>
+                      {availableSlots
+                        .map((slot: any) => {
+                          let label = formatTimeToAMPM(slot.time);
+                          const isExpired = slot.status === 'expired';
+                          if (slot.status === 'booked') {
+                            label += ' (Booked)';
+                          } else if (isExpired) {
+                            label += ' (Expired)';
+                          } else if (slot.status === 'lunch_break') {
+                            label += ' (Lunch Break)';
+                          } else if (slot.status === 'tele_only') {
+                            label += ' (Tele Only)';
+                          } else if (slot.status === 'in_clinic_only') {
+                            label += ' (In-Clinic Only)';
+                          }
+                          const isTypeMismatch = (bookingForm.consultation_type === 'in_person' && slot.status === 'tele_only') ||
+                                                 (bookingForm.consultation_type === 'teleconsultation' && slot.status === 'in_clinic_only');
+                          const isDisabled = isExpired || slot.status === 'booked' || slot.status === 'lunch_break' || isTypeMismatch;
+                          return (
+                            <option key={slot.time} value={slot.time} disabled={isDisabled}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -3126,7 +3547,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             </div>
             <form onSubmit={handleRecordPayment}>
               <div className="booking-patient-badge">
-                <DollarSign size={16} />
+                <IndianRupee size={16} />
                 <span>Invoice: <strong>{selectedInvoiceForPayment?.invoice_number}</strong> | Balance Due: <strong>₹{selectedInvoiceForPayment?.balance_due.toFixed(2)}</strong></span>
               </div>
 
@@ -3181,6 +3602,694 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         </div>
       )}
 
+      {/* MODAL: Edit Bill / Invoice */}
+      {showEditBillingModal && (
+        <div className="recep-modal-overlay">
+          <div className="recep-modal-content">
+            <div className="recep-modal-header">
+              <h3>Edit Invoice: {selectedInvoiceForEdit?.invoice_number}</h3>
+              <button className="close-btn" onClick={() => setShowEditBillingModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateInvoice}>
+              <div className="booking-patient-badge">
+                <FileText size={16} />
+                <span>Patient: <strong>{selectedInvoiceForEdit?.patient?.user?.full_name}</strong> ({selectedInvoiceForEdit?.patient?.patient_code})</span>
+              </div>
+
+              {loadingEditPendingCharges && (
+                <div className="form-help-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1rem 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                  <Loader2 size={16} className="spin-icon" /> Loading clinical charges breakdown...
+                </div>
+              )}
+
+              {editPendingCharges && (
+                <div className="pending-charges-section" style={{ margin: '1rem 0', padding: '1rem', background: 'var(--surface-2)', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 1rem 0', color: 'var(--primary-dark)', fontSize: '0.95rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+                    Clinical Breakdown
+                  </h4>
+
+                  {/* 1. Consultations selection */}
+                  {editPendingCharges.consultations && editPendingCharges.consultations.length > 0 ? (
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink-2)' }}>Select Consultation to Bill</label>
+                      <select
+                        className="recep-select-field"
+                        style={{ padding: '8px 12px', fontSize: '0.88rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
+                        value={editSelectedConsultationId || ''}
+                        onChange={(e) => setEditSelectedConsultationId(e.target.value || null)}
+                      >
+                        <option value="">-- Do Not Bill Consultation --</option>
+                        {editPendingCharges.consultations.map((c: any) => (
+                          <option key={c.id} value={c.id}>
+                            {formatDocName(c.doctor_name)} ({new Date(c.consultation_datetime).toLocaleDateString()}) - Fee: ₹{c.consultation_fee}
+                          </option>
+                        ))}
+                      </select>
+                      
+                      {/* 2. Medicines checkbox */}
+                      {editSelectedConsultationId && editPendingCharges.consultations.find(c => c.id === editSelectedConsultationId)?.prescriptions?.some((p: any) => p.items?.length > 0) && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--ink-2)' }}>
+                          <input
+                            type="checkbox"
+                            className="recep-checkbox"
+                            checked={editIncludeMedicines}
+                            onChange={(e) => setEditIncludeMedicines(e.target.checked)}
+                          />
+                          Include Dispensed Prescriptions/Medicines (₹{
+                            editPendingCharges.consultations.find(c => c.id === editSelectedConsultationId)?.prescriptions?.reduce((sum: number, p: any) => 
+                              sum + (p.items?.reduce((pSum: number, item: any) => pSum + (item.total_price || 0), 0) || 0)
+                            , 0).toFixed(2)
+                          })
+                        </label>
+                      )}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>No unbilled consultations found.</p>
+                  )}
+
+                  {/* 3. Treatment plan selection */}
+                  {editPendingCharges.treatment_plans && editPendingCharges.treatment_plans.length > 0 ? (
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink-2)' }}>Select Treatment Plan / Procedures</label>
+                      <select
+                        className="recep-select-field"
+                        style={{ padding: '8px 12px', fontSize: '0.88rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
+                        value={editSelectedTreatmentPlanId || ''}
+                        onChange={(e) => setEditSelectedTreatmentPlanId(e.target.value || null)}
+                      >
+                        <option value="">-- Do Not Bill Treatment Plan --</option>
+                        {editPendingCharges.treatment_plans.map((p: any) => (
+                          <option key={p.id} value={p.id}>
+                            {p.title} ({p.procedures?.length} procedures) - Cost: ₹{p.procedures?.reduce((sum: number, proc: any) => sum + proc.cost, 0)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>No active/unbilled treatment plans found.</p>
+                  )}
+
+                  {/* 4. Used Materials & Consumables */}
+                  <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: 'var(--ink-2)' }}>
+                      <input
+                        type="checkbox"
+                        className="recep-checkbox"
+                        checked={editIncludeMaterials}
+                        onChange={(e) => setEditIncludeMaterials(e.target.checked)}
+                      />
+                      Include Used Clinical Things / Materials (₹)
+                    </label>
+                    {editIncludeMaterials && (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        style={{ marginTop: '0.5rem', padding: '8px 12px', fontSize: '0.88rem', width: '100%', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
+                        value={editCustomMaterialsCost}
+                        onChange={(e) => setEditCustomMaterialsCost(parseFloat(e.target.value) || 0)}
+                        placeholder="Enter materials cost"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="recep-form-grid">
+                <div className="form-group">
+                  <label>Subtotal / Base Amount (₹) *</label>
+                  <input 
+                    type="number" 
+                    required 
+                    readOnly
+                    min="0"
+                    step="0.01"
+                    value={editBillingForm.total_amount || 0} 
+                    style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Discount Amount (₹)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="0.01"
+                    value={editBillingForm.discount_amount} 
+                    onChange={e => setEditBillingForm({ ...editBillingForm, discount_amount: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>GST / Tax Amount (₹)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="0.01"
+                    value={editBillingForm.tax_amount} 
+                    onChange={e => setEditBillingForm({ ...editBillingForm, tax_amount: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Status *</label>
+                  <select 
+                    value={editBillingForm.status} 
+                    onChange={e => setEditBillingForm({ ...editBillingForm, status: e.target.value })}
+                  >
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partially_paid">Partial</option>
+                    <option value="paid">Paid</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                <div className="billing-summary-badge full-width" style={{ gridColumn: 'span 2', marginTop: '10px' }}>
+                  <span>Grand Total (Auto-calculated):</span>
+                  <strong>₹{Math.max(0, editBillingForm.total_amount - editBillingForm.discount_amount + editBillingForm.tax_amount).toFixed(2)}</strong>
+                </div>
+
+                <div className="billing-summary-badge full-width" style={{ gridColumn: 'span 2', background: 'var(--surface-2)' }}>
+                  <span>Amount Already Paid:</span>
+                  <strong>₹{selectedInvoiceForEdit?.amount_paid.toFixed(2)}</strong>
+                </div>
+
+                <div className="billing-summary-badge full-width" style={{ gridColumn: 'span 2', border: '1px solid var(--border)' }}>
+                  <span>Balance Due:</span>
+                  <strong style={{ color: Math.max(0, (editBillingForm.total_amount - editBillingForm.discount_amount + editBillingForm.tax_amount) - (selectedInvoiceForEdit?.amount_paid || 0)) > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                    ₹{Math.max(0, (editBillingForm.total_amount - editBillingForm.discount_amount + editBillingForm.tax_amount) - (selectedInvoiceForEdit?.amount_paid || 0)).toFixed(2)}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="recep-modal-actions">
+                <button type="button" className="btn-cancel" onClick={() => setShowEditBillingModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-submit" disabled={submitLoading}>
+                  {submitLoading ? <Loader2 size={16} className="spin-icon" /> : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Invoice Preview & Digital Receipt */}
+      {showInvoicePreviewModal && selectedInvoiceForPreview && (
+        <div className="recep-modal-overlay">
+          <div className="recep-modal-content" style={{ maxWidth: '650px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="recep-modal-header" style={{ paddingBottom: '12px', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Invoice Receipt</h3>
+                <small style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No: {selectedInvoiceForPreview.invoice_number}</small>
+              </div>
+              <button className="close-btn" onClick={() => setShowInvoicePreviewModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', padding: '0.75rem 1rem', backgroundColor: 'var(--surface-2)', borderRadius: '8px' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--muted)', fontWeight: 600 }}>Created On</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{new Date(selectedInvoiceForPreview.created_at).toLocaleDateString()}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--muted)', fontWeight: 600 }}>Invoice Status</div>
+                <span className={`badge ${
+                  selectedInvoiceForPreview.status === 'paid' ? 'badge-completed' :
+                  selectedInvoiceForPreview.status === 'partially_paid' ? 'badge-confirmed' :
+                  selectedInvoiceForPreview.status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
+                }`} style={{ marginTop: '4px', display: 'inline-block' }}>
+                  {selectedInvoiceForPreview.status === 'paid' ? 'Paid' :
+                   selectedInvoiceForPreview.status === 'partially_paid' ? 'Partial' :
+                   selectedInvoiceForPreview.status === 'cancelled' ? 'Cancelled' : 'Unpaid'}
+                </span>
+              </div>
+            </div>
+
+            {/* Patient & Clinic Information */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+              <div>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Billed To</h4>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{selectedInvoiceForPreview.patient?.user?.full_name}</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--ink-2)' }}>Code: {selectedInvoiceForPreview.patient?.patient_code}</div>
+                {selectedInvoiceForPreview.patient?.user?.email && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--ink-2)' }}>Email: {selectedInvoiceForPreview.patient?.user?.email}</div>
+                )}
+                {selectedInvoiceForPreview.patient?.user?.phone && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--ink-2)' }}>Phone: {selectedInvoiceForPreview.patient?.user?.phone}</div>
+                )}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Issued By</h4>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Vertical Clinic</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--ink-2)' }}>Main Branch, Ahmedabad</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--ink-2)' }}>contact@verticalclinic.com</div>
+              </div>
+            </div>
+
+            {/* Billing Items Table */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Clinical Charges Breakdown</h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', paddingBottom: '8px', textAlign: 'left', fontWeight: 600, color: 'var(--ink-2)' }}>
+                    <th style={{ padding: '8px 0' }}>Item Description</th>
+                    <th style={{ padding: '8px 0', textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* 1. Consultation */}
+                  {selectedInvoiceForPreview.consultation && (
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 0' }}>
+                        <div>Consultation Fee</div>
+                        <small style={{ color: 'var(--muted)' }}>{formatDocName(selectedInvoiceForPreview.consultation.doctor?.user?.full_name)}</small>
+                      </td>
+                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                        ₹{(selectedInvoiceForPreview.consultation.doctor?.consultation_fee || 500).toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* 2. Prescription Items */}
+                  {selectedInvoiceForPreview.prescription_items && selectedInvoiceForPreview.prescription_items.length > 0 && (
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 0' }}>
+                        <div>Dispensed Medicines / Prescriptions</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                          {selectedInvoiceForPreview.prescription_items.map((item: any, idx: number) => (
+                            <span key={idx} style={{ fontSize: '0.75rem', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', color: 'var(--primary-dark)' }}>
+                              {item.medicine_name}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 0', textAlign: 'right', verticalAlign: 'middle' }}>
+                        Included
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* 3. Treatment Plan */}
+                  {selectedInvoiceForPreview.treatment_plan && (
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 0' }}>
+                        <div>Treatment Plan Procedures</div>
+                        <small style={{ color: 'var(--muted)' }}>{selectedInvoiceForPreview.treatment_plan.title}</small>
+                      </td>
+                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                        ₹{(selectedInvoiceForPreview.treatment_plan.procedures?.reduce((sum: number, p: any) => sum + (p.cost || 0), 0) || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
+                  
+                  {/* Default fallback row if no consultation/treatment plan (standard bill) */}
+                  {!selectedInvoiceForPreview.consultation && !selectedInvoiceForPreview.treatment_plan && (
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 0' }}>General Consultation & Billed Services</td>
+                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                        ₹{selectedInvoiceForPreview.total_amount.toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Calculations Summary Grid */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '280px', marginLeft: 'auto', marginBottom: '2rem', fontSize: '0.88rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--ink-2)' }}>Subtotal:</span>
+                <span>₹{selectedInvoiceForPreview.total_amount.toFixed(2)}</span>
+              </div>
+              {selectedInvoiceForPreview.discount_amount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--danger)' }}>
+                  <span>Discount:</span>
+                  <span>-₹{selectedInvoiceForPreview.discount_amount.toFixed(2)}</span>
+                </div>
+              )}
+              {selectedInvoiceForPreview.tax_amount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--ink-2)' }}>GST / Tax:</span>
+                  <span>+₹{selectedInvoiceForPreview.tax_amount.toFixed(2)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', borderTop: '2px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
+                <span>Grand Total:</span>
+                <span>₹{selectedInvoiceForPreview.grand_total.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontWeight: 600 }}>
+                <span>Amount Paid:</span>
+                <span>₹{selectedInvoiceForPreview.amount_paid.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px', fontWeight: 700 }}>
+                <span>Balance Due:</span>
+                <span style={{ color: selectedInvoiceForPreview.balance_due > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                  ₹{selectedInvoiceForPreview.balance_due.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions Toolbar Footer */}
+            <div className="recep-modal-actions" style={{ justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '16px', margin: 0 }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  type="button" 
+                  className="btn-download"
+                  style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink)' }}
+                  onClick={() => handleDownloadPDF(selectedInvoiceForPreview.id, selectedInvoiceForPreview.invoice_number)}
+                  title="Download PDF"
+                >
+                  <Download size={14} /> PDF
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-download"
+                  style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink)' }}
+                  disabled={sendingEmailStatus}
+                  onClick={() => handleSendInvoiceEmail(selectedInvoiceForPreview.id, selectedInvoiceForPreview.invoice_number)}
+                  title="Email Receipt to Patient"
+                >
+                  {sendingEmailStatus ? <Loader2 size={14} className="spin-icon" /> : <Mail size={14} />} Email
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {selectedInvoiceForPreview.balance_due > 0 && (
+                  <button 
+                    type="button" 
+                    className="btn-pay"
+                    onClick={() => {
+                      setShowInvoicePreviewModal(false);
+                      setSelectedInvoiceForPayment(selectedInvoiceForPreview);
+                      setPaymentForm({
+                        amount: selectedInvoiceForPreview.balance_due,
+                        payment_method: 'cash',
+                        transaction_reference: '',
+                      });
+                      setShowPaymentModal(true);
+                    }}
+                  >
+                    <CreditCard size={14} /> Pay Balance
+                  </button>
+                )}
+                <button 
+                  type="button" 
+                  className="btn-edit"
+                  onClick={() => {
+                    setShowInvoicePreviewModal(false);
+                    setSelectedInvoiceForEdit(selectedInvoiceForPreview);
+                    setEditBillingForm({
+                      total_amount: selectedInvoiceForPreview.total_amount,
+                      discount_amount: selectedInvoiceForPreview.discount_amount,
+                      tax_amount: selectedInvoiceForPreview.tax_amount,
+                      status: selectedInvoiceForPreview.status,
+                    });
+                    fetchEditPendingCharges(selectedInvoiceForPreview.patient_id, selectedInvoiceForPreview);
+                    setShowEditBillingModal(true);
+                  }}
+                >
+                  <Edit2 size={14} /> Edit
+                </button>
+                <button type="button" className="btn-cancel" onClick={() => setShowInvoicePreviewModal(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Patient History & Complete Profile */}
+      {showPatientHistoryModal && (
+        <div className="recep-modal-overlay">
+          <div className="recep-modal-content" style={{ maxWidth: '1000px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <History size={24} style={{ color: 'var(--primary)' }} />
+                <div>
+                  <h3 style={{ margin: 0 }}>Patient Profile & EMR History</h3>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+                    Complete patient records and clinical visits timeline
+                  </span>
+                </div>
+              </div>
+              <button className="close-btn" onClick={() => { setShowPatientHistoryModal(false); setPatientHistoryData(null); }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="recep-modal-body" style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', padding: '20px 0' }}>
+              {/* Left Side: Demographic Card */}
+              <div className="patient-demographics-sidebar" style={{ borderRight: '1px solid var(--border)', paddingRight: '20px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                  <div style={{
+                    width: '70px',
+                    height: '70px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--primary-light)',
+                    color: 'var(--primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.5rem',
+                    fontWeight: 'bold',
+                    margin: '0 auto 10px auto'
+                  }}>
+                    {selectedPatientForHistory?.user?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'PT'}
+                  </div>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>{selectedPatientForHistory?.user?.full_name || 'N/A'}</h4>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                    {selectedPatientForHistory?.patient_code}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
+                  <div>
+                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Phone</strong>
+                    <span>{selectedPatientForHistory?.user?.phone || '—'}</span>
+                  </div>
+                  <div>
+                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Email</strong>
+                    <span>{selectedPatientForHistory?.user?.email || '—'}</span>
+                  </div>
+                  <div>
+                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Gender / Age</strong>
+                    <span>
+                      {selectedPatientForHistory?.gender || '—'} / {selectedPatientForHistory?.date_of_birth ? `${new Date().getFullYear() - new Date(selectedPatientForHistory.date_of_birth).getFullYear()} Yrs` : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Blood Group</strong>
+                    <span>{selectedPatientForHistory?.blood_group || '—'}</span>
+                  </div>
+                  <div>
+                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Address</strong>
+                    <span style={{ display: 'block', lineHeight: 1.3 }}>{selectedPatientForHistory?.address || '—'}</span>
+                  </div>
+                  <div style={{ marginTop: '10px', padding: '10px', background: 'var(--surface-2)', borderRadius: '8px' }}>
+                    <strong style={{ color: 'var(--primary-dark)', display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Insurance Details</strong>
+                    <span style={{ display: 'block', fontSize: '0.8rem' }}>
+                      {selectedPatientForHistory?.insurance_provider 
+                        ? `${selectedPatientForHistory.insurance_provider} (Policy: ${selectedPatientForHistory.insurance_policy_no || '—'})` 
+                        : 'No active insurance policy'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Side: EMR Timeline & Tabs */}
+              <div className="patient-emr-tabs-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {loadingPatientHistory ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '40px' }}>
+                    <Loader2 size={32} className="spin-icon" style={{ color: 'var(--primary)', marginBottom: '10px' }} />
+                    <p style={{ color: 'var(--muted)' }}>Retrieving patient's complete history profile...</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Tabs navigation */}
+                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '15px', gap: '15px' }}>
+                      {(['appointments', 'consultations', 'prescriptions', 'bills'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setHistoryModalTab(tab)}
+                          style={{
+                            padding: '8px 12px',
+                            background: 'none',
+                            border: 'none',
+                            borderBottom: historyModalTab === tab ? '2px solid var(--primary)' : 'none',
+                            color: historyModalTab === tab ? 'var(--primary)' : 'var(--muted)',
+                            fontWeight: historyModalTab === tab ? 'bold' : 'normal',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            textTransform: 'capitalize'
+                          }}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Tab contents */}
+                    <div style={{ flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
+                      {historyModalTab === 'appointments' && (
+                        <div>
+                          <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary-dark)' }}>Appointments</h4>
+                          {(!patientHistoryData?.upcoming_appointments?.length && !patientHistoryData?.appointment_history?.length) ? (
+                            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No appointment records found.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {patientHistoryData?.upcoming_appointments?.map((appt: any) => (
+                                <div key={appt.id} style={{ padding: '10px', border: '1px solid var(--primary-light)', background: '#eff6ff', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div>
+                                    <strong style={{ display: 'block', fontSize: '0.9rem' }}>{appt.treatment_type}</strong>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                                      {formatDocName(appt.doctor?.user?.full_name)} &middot; {new Date(appt.appointment_datetime).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <span className="badge badge-confirmed" style={{ fontSize: '0.75rem' }}>Upcoming</span>
+                                </div>
+                              ))}
+                              {patientHistoryData?.appointment_history?.map((appt: any) => (
+                                <div key={appt.id} style={{ padding: '10px', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div>
+                                    <strong style={{ display: 'block', fontSize: '0.9rem' }}>{appt.treatment_type}</strong>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                                      {formatDocName(appt.doctor?.user?.full_name)} &middot; {new Date(appt.appointment_datetime).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <span className={`badge badge-${appt.status}`} style={{ fontSize: '0.75rem' }}>{appt.status}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {historyModalTab === 'consultations' && (
+                        <div>
+                          <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary-dark)' }}>Clinical Visits / Consultations</h4>
+                          {!patientHistoryData?.medical_history?.length ? (
+                            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No clinical consultations found.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                              {patientHistoryData.medical_history.map((c: any) => (
+                                <div key={c.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface-1)' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <strong style={{ fontSize: '0.9rem', color: 'var(--primary)' }}>Visit with {formatDocName(c.doctor?.user?.full_name)}</strong>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{new Date(c.consultation_datetime).toLocaleDateString()}</span>
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.82rem', marginTop: '6px' }}>
+                                    <div>
+                                      <strong style={{ display: 'block', color: 'var(--muted)' }}>Symptoms:</strong>
+                                      <span>{c.symptoms || '—'}</span>
+                                    </div>
+                                    <div>
+                                      <strong style={{ display: 'block', color: 'var(--muted)' }}>Diagnosis:</strong>
+                                      <span>{c.diagnosis || '—'}</span>
+                                    </div>
+                                  </div>
+                                  {c.notes && (
+                                    <div style={{ marginTop: '8px', fontSize: '0.82rem', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+                                      <strong style={{ display: 'block', color: 'var(--muted)' }}>Clinical Notes:</strong>
+                                      <span style={{ fontStyle: 'italic' }}>{c.notes}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {historyModalTab === 'prescriptions' && (
+                        <div>
+                          <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary-dark)' }}>Prescriptions</h4>
+                          {!patientHistoryData?.prescriptions?.length ? (
+                            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No prescriptions found.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {patientHistoryData.prescriptions.map((p: any) => (
+                                <div key={p.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                                    <strong style={{ fontSize: '0.88rem' }}>Issued by {formatDocName(p.doctor?.user?.full_name)}</strong>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{new Date(p.created_at).toLocaleDateString()}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {p.items?.map((item: any, idx: number) => (
+                                      <div key={idx} style={{ fontSize: '0.82rem', display: 'flex', justifyContent: 'space-between' }}>
+                                        <span><strong>{item.medicine_name}</strong> ({item.dosage})</span>
+                                        <span style={{ color: 'var(--muted)' }}>{item.duration} &middot; {item.instructions}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {historyModalTab === 'bills' && (
+                        <div>
+                          <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary-dark)' }}>Billing Invoices</h4>
+                          {!patientHistoryData?.bills?.length ? (
+                            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No billing invoices found.</p>
+                          ) : (
+                            <div className="recep-table-container">
+                              <table className="recep-table" style={{ fontSize: '0.8rem' }}>
+                                <thead>
+                                  <tr>
+                                    <th>Inv Number</th>
+                                    <th>Date</th>
+                                    <th>Grand Total</th>
+                                    <th>Paid</th>
+                                    <th>Balance</th>
+                                    <th>Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {patientHistoryData.bills.map((b: any) => (
+                                    <tr key={b.id}>
+                                      <td><strong>{b.invoice_number}</strong></td>
+                                      <td>{new Date(b.created_at).toLocaleDateString()}</td>
+                                      <td>₹{b.grand_total.toFixed(2)}</td>
+                                      <td>₹{b.amount_paid.toFixed(2)}</td>
+                                      <td style={{ color: b.balance_due > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 600 }}>
+                                        ₹{b.balance_due.toFixed(2)}
+                                      </td>
+                                      <td>
+                                        <span className={`badge badge-${b.status}`}>
+                                          {b.status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            <div className="recep-modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: '15px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn-cancel" onClick={() => { setShowPatientHistoryModal(false); setPatientHistoryData(null); }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: Clinical Details Modal */}
       {selectedApptDetails && (
         <div className="recep-modal-overlay" onClick={() => setSelectedApptDetails(null)}>
@@ -3216,7 +4325,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#475569', textTransform: 'uppercase' }}>Appointment Info</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
-                    <div><strong>Doctor:</strong> Dr. {selectedApptDetails.doctor?.user?.full_name || 'Staff'}</div>
+                    <div><strong>Doctor:</strong> {formatDocName(selectedApptDetails.doctor?.user?.full_name || 'Staff')}</div>
                     <div><strong>Treatment:</strong> {selectedApptDetails.treatment_type}</div>
                     <div><strong>Type:</strong> {selectedApptDetails.consultation_type === 'teleconsultation' ? 'Teleconsultation' : 'In-Person'}</div>
                     <div><strong>Time:</strong> {getLocalApptDate(selectedApptDetails.appointment_datetime)} at {formatTimeToAMPM(getLocalApptTime(selectedApptDetails.appointment_datetime))}</div>

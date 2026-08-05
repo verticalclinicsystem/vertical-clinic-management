@@ -490,19 +490,47 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             const renderSlotButton = (slot: any) => {
               const slotTime = getSlotTime(slot);
               const slotStatus = getSlotStatus(slot);
+              
               const isBooked = slotStatus === 'booked';
+              const isLunch = slotStatus === 'lunch_break';
+              const isTeleOnly = slotStatus === 'tele_only';
+              const isInClinicOnly = slotStatus === 'in_clinic_only';
+              const isExpired = slotStatus === 'expired';
+              
+              const isDisable = isBooked || isLunch || isTeleOnly || isInClinicOnly || isExpired;
               const isSelected = bookingSlot === slotTime;
+
+              let labelSuffix = '';
+              let tooltip = `Book ${formatTimeToAMPM(slotTime)}`;
+              
+              if (isBooked) {
+                labelSuffix = ' 🔒';
+                tooltip = 'This slot is already booked';
+              } else if (isLunch) {
+                labelSuffix = ' 🥪';
+                tooltip = 'Lunch Break';
+              } else if (isTeleOnly) {
+                labelSuffix = ' 📹';
+                tooltip = 'Teleconsultation Only';
+              } else if (isInClinicOnly) {
+                labelSuffix = ' 🏥';
+                tooltip = 'In-Clinic Only';
+              } else if (isExpired) {
+                labelSuffix = ' ⏳';
+                tooltip = 'Slot Expired';
+              }
+
               return (
                 <button
                   key={slotTime || Math.random()}
                   type="button"
-                  className={`slot-item-btn${isSelected ? ' selected' : ''}${isBooked ? ' booked' : ''}`}
-                  onClick={() => !isBooked && slotTime && setBookingSlot(slotTime)}
-                  disabled={isBooked || !slotTime}
-                  title={isBooked ? 'This slot is already booked' : `Book ${formatTimeToAMPM(slotTime)}`}
+                  className={`slot-item-btn${isSelected ? ' selected' : ''}${isDisable ? ' booked' : ''}`}
+                  onClick={() => !isDisable && slotTime && setBookingSlot(slotTime)}
+                  disabled={isDisable || !slotTime}
+                  title={tooltip}
                 >
                   {formatTimeToAMPM(slotTime)}
-                  {isBooked && <span style={{ fontSize: '0.7rem', marginLeft: '4px' }}>🔒</span>}
+                  {labelSuffix && <span style={{ fontSize: '0.7rem', marginLeft: '4px' }}>{labelSuffix}</span>}
                 </button>
               );
             };
@@ -676,7 +704,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       </div>
                       <div className="legend-item">
                         <div className="legend-dot booked" />
-                        <span>Booked</span>
+                        <span>Booked / Unavailable</span>
                       </div>
                     </div>
                   </div>

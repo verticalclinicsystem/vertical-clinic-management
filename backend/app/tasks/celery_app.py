@@ -55,4 +55,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.otp_tasks.purge_expired_otps",
         "schedule": crontab(minute="*/30"),   # every 30 min
     },
+    # Auto-expire stale appointments (pending, confirmed, checked_in, in_consultation) every 30 minutes
+    "auto-expire-stale-appointments": {
+        "task": "app.tasks.notification_tasks.auto_expire_stale_appointments",
+        "schedule": crontab(minute="*/30"),   # every 30 min
+    },
 }
+

@@ -224,7 +224,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                      <span className={`status-pill ${appt.status}`}>{appt.status}</span>
+                      <span className={`status-pill ${appt.status.replace(/_/g, '-')}`}>{appt.status.replace(/[_-]/g, ' ')}</span>
                       {['confirmed', 'rescheduled'].includes(appt.status) && (() => {
                         const isLimitReached = (appt.reschedule_count || 0) >= 2;
                         const apptTime = new Date(appt.appointment_datetime).getTime();
