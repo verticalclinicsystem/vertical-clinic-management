@@ -15,6 +15,7 @@ from app.core.rbac import UserRole, require_roles
 from app.models.user import User
 from app.schemas.medical_report import MedicalReportOut
 from app.services.medical_report_service import MedicalReportService
+from app.services.patient_service import PatientService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -42,19 +43,14 @@ async def upload_medical_report(
         from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can upload medical reports.")
 
-    # Create static uploads directory
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    # Unique file name
-    file_ext = os.path.splitext(file.filename or "")[1]
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    dest_path = os.path.join(UPLOAD_DIR, unique_filename)
-
-    # Save to disk
-    with open(dest_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    file_url = f"/static/uploads/{unique_filename}"
+    from app.services.cloudinary_service import CloudinaryService
+    
+    # Upload directly to Cloudinary CDN
+    patient_service = PatientService(db)
+    patient = await patient_service.get_patient_by_user_id(current_user.id)
+    patient_id_str = str(patient.id) if patient is not None else str(current_user.id)
+    
+    file_url = await CloudinaryService.upload_medical_report(file, patient_id=patient_id_str)
     report_name = file.filename or "report.pdf"
 
     service = MedicalReportService(db)

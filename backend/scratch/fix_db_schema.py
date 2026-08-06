@@ -26,6 +26,12 @@ async def run_fix():
         print("Adding avatar_url column to users if not exists...")
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
 
+        print("Adding followup_advised column to consultations if not exists...")
+        await conn.execute(text("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS followup_advised BOOLEAN NOT NULL DEFAULT FALSE;"))
+
+        print("Adding followup_after_days column to consultations if not exists...")
+        await conn.execute(text("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS followup_after_days INTEGER NOT NULL DEFAULT 0;"))
+
         print("Checking/creating otp_records table...")
         await conn.execute(text("""
             DO $$ BEGIN
