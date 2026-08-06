@@ -57,10 +57,10 @@ def create_access_token(
     return _create_token(data=data, expires_delta=delta)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, token_version: int = 1) -> str:
     """Create a long-lived refresh token used to issue new access tokens."""
     return _create_token(
-        data={"sub": user_id, "type": "refresh"},
+        data={"sub": user_id, "type": "refresh", "token_version": token_version},
         expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
 

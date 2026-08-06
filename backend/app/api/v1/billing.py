@@ -25,6 +25,18 @@ router = APIRouter()
 def invoice_to_out(invoice) -> dict:
     """Convert an Invoice ORM object to InvoiceOut dict, enriching with prescription items."""
     data = InvoiceOut.model_validate(invoice).model_dump()
+    
+    # Enforce accurate payment status based on real balance_due & amount_paid
+    if data.get("status") != "cancelled":
+        bal = float(data.get("balance_due", 0.0))
+        paid = float(data.get("amount_paid", 0.0))
+        if bal <= 0:
+            data["status"] = "paid"
+        elif paid > 0:
+            data["status"] = "partially_paid"
+        else:
+            data["status"] = "unpaid"
+
     # Attach prescription items from the linked consultation (for bill breakdown)
     items = []
     if invoice.consultation and hasattr(invoice.consultation, 'prescriptions'):
@@ -39,6 +51,7 @@ def invoice_to_out(invoice) -> dict:
                     })
     data["prescription_items"] = items
     return data
+
 
 
 # ── 1. POST /billing ───────────────────────────────────────────────────────────

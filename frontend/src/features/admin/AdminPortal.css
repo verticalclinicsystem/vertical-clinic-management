@@ -638,6 +638,11 @@
   color: #374151;
 }
 
+.admin-status-badge.suspended {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
 .admin-status-badge.low {
   background-color: #fee2e2;
   color: #991b1b;

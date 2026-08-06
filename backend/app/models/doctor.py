@@ -31,6 +31,7 @@ class Doctor(Base):
         index=True,
     )
 
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     specialization: Mapped[str] = mapped_column(String(150), nullable=False)
     qualification: Mapped[str | None] = mapped_column(String(200), nullable=True)
     experience_years: Mapped[int] = mapped_column(Integer, default=0)

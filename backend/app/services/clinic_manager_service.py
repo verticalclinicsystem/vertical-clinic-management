@@ -93,6 +93,7 @@ class ClinicManagerService:
         doctor = Doctor(
             id=uuid.uuid4(),
             user_id=user.id,
+            name=user.full_name,
             branch_id=branch_id,
             specialization=specialization,
             qualification=qualification,
@@ -177,6 +178,7 @@ class ClinicManagerService:
         receptionist = Receptionist(
             id=uuid.uuid4(),
             user_id=user.id,
+            name=user.full_name,
             branch_id=branch_id,
             employee_code=code,
             shift_timing=shift_timing,

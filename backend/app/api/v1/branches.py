@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 from app.core.rbac import UserRole, require_roles
 from app.schemas.auth import UserOut
 from app.schemas.branch import (
@@ -298,12 +298,21 @@ async def get_branch_patients(
 )
 async def get_branch_appointments(
     branch_id: UUID,
+    current_user: Annotated[Any, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
-    """Fetch all appointments scheduled at this branch (returns empty list for now)."""
+    """Fetch all appointments scheduled at this branch."""
     service = BranchService(db)
     appointments = await service.get_branch_appointments(branch_id)
+    
+    from app.schemas.appointment import AppointmentOut
+    out_items = []
+    for appt in appointments:
+        out = AppointmentOut.model_validate(appt)
+        out.map_status_for_role(current_user.role)
+        out_items.append(out.model_dump())
+        
     return ApiResponse.success(
-        data=appointments,
+        data=out_items,
         message="Branch appointments retrieved successfully.",
     )

@@ -48,6 +48,21 @@ async def get_current_user(
     if not user.is_active:
         raise AuthenticationError("Account is deactivated")
 
+    # Check for temporary suspension
+    from datetime import datetime, timezone, timedelta
+    if user.suspended_until and user.suspended_until > datetime.now(timezone.utc):
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        suspended_until_ist = user.suspended_until.astimezone(ist_tz)
+        formatted_time = suspended_until_ist.strftime("%d %b %Y, %I:%M %p")
+        raise AuthenticationError(
+            f"Your account is suspended until {formatted_time} (IST)."
+        )
+
+    # Check for token version/session revocation
+    token_version = payload.get("token_version")
+    if token_version != user.token_version:
+        raise AuthenticationError("Session expired or revoked")
+
     return user
 
 
@@ -67,6 +82,12 @@ async def get_current_user_optional(
         uid = uuid.UUID(user_id)
         user = await user_repo.get_by_id(uid)
         if user and user.is_active:
+            from datetime import datetime, timezone
+            if user.suspended_until and user.suspended_until > datetime.now(timezone.utc):
+                return None
+            token_version = payload.get("token_version")
+            if token_version != user.token_version:
+                return None
             return user
     except Exception:
         pass
