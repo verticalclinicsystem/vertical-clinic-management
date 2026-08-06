@@ -47,8 +47,9 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // If unauthorized and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // If unauthorized and we haven't retried yet, and it is not a login or refresh request
+    const isAuthRequest = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/refresh-token');
+    if (error.response?.status === 401 && !originalRequest?._retry && !isAuthRequest) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });

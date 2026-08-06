@@ -186,29 +186,67 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               <div className="branch-selection-list">
                 {safeBranches.map((b: any) => {
                   const isSelected = selectedBranchId === b.id;
+                  const isInactive = b.is_active === false || b.status === 'inactive';
+
                   return (
                     <div
                       key={b.id}
-                      className={`branch-card-horizontal ${isSelected ? 'selected' : ''}`}
-                      onClick={() => handleBranchSelect(b.id)}
+                      className={`branch-card-horizontal ${isSelected ? 'selected' : ''} ${isInactive ? 'inactive' : ''}`}
+                      onClick={() => {
+                        if (!isInactive) {
+                          handleBranchSelect(b.id);
+                        }
+                      }}
+                      style={isInactive ? {
+                        opacity: 0.65,
+                        backgroundColor: '#f8fafc',
+                        borderColor: '#cbd5e1',
+                        cursor: 'not-allowed',
+                        position: 'relative'
+                      } : {}}
                     >
-                      <div className="branch-image-placeholder">
+                      <div className="branch-image-placeholder" style={isInactive ? { opacity: 0.5 } : {}}>
                         <span>🏥 {b.name.substring(0, 2)}</span>
                       </div>
                       <div className="branch-info-main">
-                        <div className="branch-title-row">
+                        <div className="branch-title-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span className="location-pin-badge">📍</span>
-                          <h4>{b.name} Branch</h4>
+                          <h4 style={{ color: isInactive ? '#64748b' : 'var(--ink)' }}>{b.name} Branch</h4>
+                          {isInactive && (
+                            <span style={{
+                              backgroundColor: '#fee2e2',
+                              color: '#991b1b',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '2px 10px',
+                              borderRadius: '12px',
+                              border: '1px solid #fca5a5',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#dc2626' }} />
+                              Temporarily Closed
+                            </span>
+                          )}
                         </div>
                         <p className="branch-address">{b.address}</p>
                         <p className="branch-phone">📞 {b.phone}</p>
+                        {isInactive && (
+                          <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#dc2626', fontWeight: 600 }}>
+                            ⚠️ This location is currently inactive & not accepting new appointments.
+                          </p>
+                        )}
                       </div>
-                      <div className="branch-info-extra">
+                      <div className="branch-info-extra" style={isInactive ? { opacity: 0.6 } : {}}>
                         <p className="branch-working-hours">🕒 Mon - Sat: 9:00 AM - 9:00 PM | Sun: 9:00 AM - 2:00 PM</p>
                         <p className="branch-parking">🅿️ Parking Available</p>
                       </div>
                       <div className="branch-radio-wrapper">
-                        <div className={`custom-radio-circle ${isSelected ? 'checked' : ''}`} />
+                        <div
+                          className={`custom-radio-circle ${isSelected ? 'checked' : ''}`}
+                          style={isInactive ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
+                        />
                       </div>
                     </div>
                   );

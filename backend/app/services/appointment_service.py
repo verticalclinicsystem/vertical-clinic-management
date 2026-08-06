@@ -262,7 +262,8 @@ class AppointmentService:
                     start_leave = datetime.strptime(leave["start_date"], "%Y-%m-%d").date()
                     end_leave = datetime.strptime(leave["end_date"], "%Y-%m-%d").date()
                     if start_leave <= appt_date_ist <= end_leave:
-                        raise BadRequestError(f"Doctor is on leave from {leave['start_date']} to {leave['end_date']} ({leave.get('reason', 'No reason specified')}).")
+                        next_available = end_leave + timedelta(days=1)
+                        raise BadRequestError(f"Doctor is currently on leave and will be available from {next_available.strftime('%Y-%m-%d')}.")
 
                 # Check lunch break
                 lunch_start = meta.get("lunch_start")

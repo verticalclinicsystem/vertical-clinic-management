@@ -82,6 +82,66 @@ const formatDocName = (name?: string): string => {
   return `Dr. ${trimmed}`;
 };
 
+const parseClinicalJson = (input: any) => {
+  if (!input) return null;
+  if (typeof input === 'object') return input;
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
+const formatClinicalDisplay = (input: any): string => {
+  if (!input) return '—';
+  const parsed = parseClinicalJson(input);
+  if (parsed && typeof parsed === 'object') {
+    const parts: string[] = [];
+    if (parsed.chronicDiseases && parsed.chronicDiseases.toLowerCase() !== 'none') {
+      parts.push(parsed.chronicDiseases);
+    }
+    if (parsed.highRiskFlags && parsed.highRiskFlags.toLowerCase() !== 'none') {
+      parts.push(`High Risk: ${parsed.highRiskFlags}`);
+    }
+    if (parsed.specialCondition && parsed.specialCondition.toLowerCase() !== 'none') {
+      parts.push(`Special: ${parsed.specialCondition}`);
+    }
+    if (parsed.disability && parsed.disability.toLowerCase() !== 'none') {
+      parts.push(`Disability: ${parsed.disability}`);
+    }
+    return parts.length > 0 ? parts.join(' | ') : 'None';
+  }
+  return String(input);
+};
+
+const formatClinicalEdit = (input: any): string => {
+  if (!input) return '';
+  const parsed = parseClinicalJson(input);
+  if (parsed && typeof parsed === 'object') {
+    const parts: string[] = [];
+    if (parsed.chronicDiseases && parsed.chronicDiseases.toLowerCase() !== 'none') {
+      parts.push(parsed.chronicDiseases);
+    }
+    if (parsed.highRiskFlags && parsed.highRiskFlags.toLowerCase() !== 'none') {
+      parts.push(parsed.highRiskFlags);
+    }
+    if (parsed.specialCondition && parsed.specialCondition.toLowerCase() !== 'none') {
+      parts.push(parsed.specialCondition);
+    }
+    if (parsed.disability && parsed.disability.toLowerCase() !== 'none') {
+      parts.push(parsed.disability);
+    }
+    return parts.join(', ');
+  }
+  return String(input);
+};
+
 export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('receptionist_portal_tab') || 'dashboard');
   const [tabHistory, setTabHistory] = useState<string[]>([]);
@@ -193,6 +253,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       if (notiDropdownRef.current && !notiDropdownRef.current.contains(event.target as Node)) {
         setIsNotiDropdownOpen(false);
       }
+      if (globalSearchRef.current && !globalSearchRef.current.contains(event.target as Node)) {
+        setIsGlobalSearchDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
@@ -273,6 +336,120 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [patientHistoryData, setPatientHistoryData] = useState<any>(null);
   const [loadingPatientHistory, setLoadingPatientHistory] = useState<boolean>(false);
   const [historyModalTab, setHistoryModalTab] = useState<'appointments' | 'consultations' | 'prescriptions' | 'bills'>('appointments');
+  
+  // Global Patient Search
+  const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
+  const [isGlobalSearchDropdownOpen, setIsGlobalSearchDropdownOpen] = useState<boolean>(false);
+  const globalSearchRef = useRef<HTMLDivElement>(null);
+
+  const handleGlobalSearch = async (query: string) => {
+    setGlobalSearchQuery(query);
+    if (!query.trim()) {
+      setGlobalSearchResults([]);
+      setIsGlobalSearchDropdownOpen(false);
+      return;
+    }
+    try {
+      const res = await api.get(`/patients/?search=${encodeURIComponent(query)}`);
+      if (res.data && res.data.success) {
+        setGlobalSearchResults(res.data.data.items || []);
+        setIsGlobalSearchDropdownOpen(true);
+      }
+    } catch (err) {
+      console.error('Error in global patient search:', err);
+    }
+  };
+
+  const handleSelectGlobalPatient = (patient: any) => {
+    setIsGlobalSearchDropdownOpen(false);
+    setGlobalSearchQuery('');
+    setSelectedPatientForHistory(patient);
+    fetchPatientHistoryProfile(patient.id);
+    setIsEditingPatientProfile(false);
+    setShowPatientHistoryModal(true);
+  };
+  const [isEditingPatientProfile, setIsEditingPatientProfile] = useState<boolean>(false);
+  const [savingPatientProfile, setSavingPatientProfile] = useState<boolean>(false);
+  const [editPatientForm, setEditPatientForm] = useState({
+    full_name: '',
+    phone: '',
+    email: '',
+    gender: 'Male',
+    date_of_birth: '',
+    blood_group: '',
+    address: '',
+    allergies: '',
+    chronic_conditions: '',
+    emergency_contact_name: '',
+    emergency_contact_relation: '',
+    emergency_contact_phone: '',
+    insurance_provider: '',
+    insurance_policy_no: '',
+  });
+
+  const handleStartEditPatient = (patientObj?: any) => {
+    const target = patientObj || selectedPatientForHistory;
+    if (!target) return;
+    setEditPatientForm({
+      full_name: target.user?.full_name || target.name || '',
+      phone: target.user?.phone || '',
+      email: target.user?.email || '',
+      gender: target.gender || 'Male',
+      date_of_birth: target.date_of_birth ? target.date_of_birth.split('T')[0] : '',
+      blood_group: target.blood_group || '',
+      address: target.address || '',
+      allergies: formatClinicalEdit(target.allergies),
+      chronic_conditions: formatClinicalEdit(target.chronic_conditions),
+      emergency_contact_name: target.emergency_contact_name || '',
+      emergency_contact_relation: target.emergency_contact_relation || '',
+      emergency_contact_phone: target.emergency_contact_phone || '',
+      insurance_provider: target.insurance_provider || '',
+      insurance_policy_no: target.insurance_policy_no || '',
+    });
+    setIsEditingPatientProfile(true);
+  };
+
+  const handleSavePatientProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedPatientForHistory) return;
+    setSavingPatientProfile(true);
+    try {
+      const payload: any = {
+        full_name: editPatientForm.full_name,
+        phone: editPatientForm.phone,
+        gender: editPatientForm.gender,
+        blood_group: editPatientForm.blood_group,
+        address: editPatientForm.address,
+        allergies: editPatientForm.allergies,
+        chronic_conditions: editPatientForm.chronic_conditions,
+        emergency_contact_name: editPatientForm.emergency_contact_name,
+        emergency_contact_relation: editPatientForm.emergency_contact_relation,
+        emergency_contact_phone: editPatientForm.emergency_contact_phone,
+        insurance_provider: editPatientForm.insurance_provider,
+        insurance_policy_no: editPatientForm.insurance_policy_no,
+      };
+
+      if (editPatientForm.date_of_birth) {
+        payload.date_of_birth = `${editPatientForm.date_of_birth}T00:00:00Z`;
+      }
+
+      const res = await api.put(`/patients/${selectedPatientForHistory.id}`, payload);
+      if (res.data?.success) {
+        showToast('Patient profile updated successfully!', 'success');
+        const updatedPatient = res.data.data;
+        setSelectedPatientForHistory(updatedPatient);
+        setIsEditingPatientProfile(false);
+        // Refresh local patient list
+        fetchPortalData(true);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to update patient profile.', 'error');
+    } finally {
+      setSavingPatientProfile(false);
+    }
+  };
   const [editBillingForm, setEditBillingForm] = useState({
     total_amount: 0,
     discount_amount: 0,
@@ -363,6 +540,16 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const getInvoiceEffectiveStatus = (inv: any) => {
+    if (!inv) return 'unpaid';
+    if (inv.status === 'cancelled') return 'cancelled';
+    const bal = typeof inv.balance_due === 'number' ? inv.balance_due : parseFloat(inv.balance_due || 0);
+    const paid = typeof inv.amount_paid === 'number' ? inv.amount_paid : parseFloat(inv.amount_paid || 0);
+    if (bal <= 0) return 'paid';
+    if (paid > 0 && bal > 0) return 'partially_paid';
+    return 'unpaid';
   };
 
   const fetchMyRequests = async () => {
@@ -1302,6 +1489,72 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 Managing operations for front desk staff
               </span>
             </div>
+          </div>
+
+          {/* Global Patient EMR Search Bar */}
+          <div ref={globalSearchRef} style={{ flex: 1, maxWidth: '380px', margin: '0 24px', position: 'relative' }}>
+            <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} size={16} />
+            <input 
+              type="text" 
+              className="recep-input-field" 
+              style={{ paddingLeft: '38px', height: '38px', width: '100%', borderRadius: '10px', fontSize: '0.85rem', margin: 0 }} 
+              placeholder="Search patient by name, phone, code..." 
+              value={globalSearchQuery}
+              onChange={(e) => handleGlobalSearch(e.target.value)}
+              onFocus={() => { if (globalSearchQuery.trim()) setIsGlobalSearchDropdownOpen(true); }}
+            />
+            {isGlobalSearchDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                right: 0,
+                backgroundColor: '#ffffff',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+                zIndex: 999,
+                maxHeight: '320px',
+                overflowY: 'auto',
+                padding: '6px 0'
+              }}>
+                {globalSearchResults.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                    No matching patient records found.
+                  </div>
+                ) : (
+                  globalSearchResults.map((pat: any) => (
+                    <div 
+                      key={pat.id} 
+                      onClick={() => handleSelectGlobalPatient(pat)}
+                      style={{
+                        padding: '10px 16px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        borderBottom: '1px solid var(--surface-2)',
+                        textAlign: 'left'
+                      }}
+                      className="global-search-item"
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                          {pat.user?.full_name || pat.name || 'Walk-in Patient'}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', background: 'var(--primary-light)', color: 'var(--primary)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          {pat.patient_code}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', fontSize: '0.78rem', color: 'var(--muted)' }}>
+                        <span>Phone: {pat.user?.phone || '—'}</span>
+                        <span>Gender: {pat.gender || '—'}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           <div className="recep-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -2314,30 +2567,17 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   <td>
                                     <div className="recep-actions-row">
                                       <button 
-                                        className="btn-action-bill" 
-                                        title="Generate Invoice"
-                                        onClick={() => {
-                                          setBillingForm({
-                                            patient_id: p.id,
-                                            total_amount: 0,
-                                            discount_amount: 0,
-                                            tax_amount: 0,
-                                          });
-                                          setActiveTab('billing');
-                                        }}
-                                      >
-                                        <IndianRupee size={16} /> Bill
-                                      </button>
-                                      <button 
                                         className="btn-action-history" 
-                                        title="View Patient History & Profile"
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', borderRadius: '6px' }}
+                                        title="View Patient Profile & Details"
                                         onClick={() => {
                                           setSelectedPatientForHistory(p);
                                           fetchPatientHistoryProfile(p.id);
+                                          setIsEditingPatientProfile(false);
                                           setShowPatientHistoryModal(true);
                                         }}
                                       >
-                                        <History size={16} /> History
+                                        <Eye size={16} /> View Details
                                       </button>
                                     </div>
                                   </td>
@@ -2714,15 +2954,20 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                   ₹{inv.balance_due.toLocaleString('en-IN')}
                                 </td>
                                 <td>
-                                  <span className={`badge ${
-                                    inv.status === 'paid' ? 'badge-completed' :
-                                    inv.status === 'partially_paid' ? 'badge-confirmed' :
-                                    inv.status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
-                                  }`}>
-                                    {inv.status === 'paid' ? 'Paid' :
-                                     inv.status === 'partially_paid' ? 'Partial' :
-                                     inv.status === 'cancelled' ? 'Cancelled' : 'Unpaid'}
-                                  </span>
+                                  {(() => {
+                                    const effStatus = getInvoiceEffectiveStatus(inv);
+                                    return (
+                                      <span className={`badge ${
+                                        effStatus === 'paid' ? 'badge-completed' :
+                                        effStatus === 'partially_paid' ? 'badge-confirmed' :
+                                        effStatus === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
+                                      }`}>
+                                        {effStatus === 'paid' ? 'Paid' :
+                                         effStatus === 'partially_paid' ? 'Partial' :
+                                         effStatus === 'cancelled' ? 'Cancelled' : 'Unpaid'}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td>{new Date(inv.created_at).toLocaleDateString()}</td>
                                 <td>
@@ -3818,15 +4063,20 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
               </div>
               <div>
                 <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--muted)', fontWeight: 600 }}>Invoice Status</div>
-                <span className={`badge ${
-                  selectedInvoiceForPreview.status === 'paid' ? 'badge-completed' :
-                  selectedInvoiceForPreview.status === 'partially_paid' ? 'badge-confirmed' :
-                  selectedInvoiceForPreview.status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
-                }`} style={{ marginTop: '4px', display: 'inline-block' }}>
-                  {selectedInvoiceForPreview.status === 'paid' ? 'Paid' :
-                   selectedInvoiceForPreview.status === 'partially_paid' ? 'Partial' :
-                   selectedInvoiceForPreview.status === 'cancelled' ? 'Cancelled' : 'Unpaid'}
-                </span>
+                {(() => {
+                  const effStatus = getInvoiceEffectiveStatus(selectedInvoiceForPreview);
+                  return (
+                    <span className={`badge ${
+                      effStatus === 'paid' ? 'badge-completed' :
+                      effStatus === 'partially_paid' ? 'badge-confirmed' :
+                      effStatus === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
+                    }`} style={{ marginTop: '4px', display: 'inline-block' }}>
+                      {effStatus === 'paid' ? 'Paid' :
+                       effStatus === 'partially_paid' ? 'Partial' :
+                       effStatus === 'cancelled' ? 'Cancelled' : 'Unpaid'}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
@@ -4045,8 +4295,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
             <div className="recep-modal-body" style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', padding: '20px 0' }}>
               {/* Left Side: Demographic Card */}
-              <div className="patient-demographics-sidebar" style={{ borderRight: '1px solid var(--border)', paddingRight: '20px' }}>
-                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div className="patient-demographics-sidebar" style={{ borderRight: '1px solid var(--border)', paddingRight: '20px', overflowY: 'auto' }}>
+                <div style={{ textAlign: 'center', marginBottom: '15px' }}>
                   <div style={{
                     width: '70px',
                     height: '70px',
@@ -4062,44 +4312,263 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   }}>
                     {selectedPatientForHistory?.user?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'PT'}
                   </div>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>{selectedPatientForHistory?.user?.full_name || 'N/A'}</h4>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>{selectedPatientForHistory?.user?.full_name || selectedPatientForHistory?.name || 'N/A'}</h4>
                   <span style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
                     {selectedPatientForHistory?.patient_code}
                   </span>
+
+                  {!isEditingPatientProfile && (
+                    <button 
+                      className="recep-btn-secondary full-width" 
+                      onClick={() => handleStartEditPatient()}
+                      style={{ marginTop: '12px', padding: '6px 12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <Edit2 size={14} /> Edit Profile Details
+                    </button>
+                  )}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
-                  <div>
-                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Phone</strong>
-                    <span>{selectedPatientForHistory?.user?.phone || '—'}</span>
+                {isEditingPatientProfile ? (
+                  <form onSubmit={handleSavePatientProfile} style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
+                    <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '6px', fontWeight: 600, color: 'var(--primary)' }}>
+                      Edit Patient Profile
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Full Name *</label>
+                      <input 
+                        type="text" 
+                        required 
+                        className="recep-input-field" 
+                        style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                        value={editPatientForm.full_name} 
+                        onChange={(e) => setEditPatientForm({ ...editPatientForm, full_name: e.target.value })}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Phone *</label>
+                        <input 
+                          type="text" 
+                          required 
+                          className="recep-input-field" 
+                          style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                          value={editPatientForm.phone} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, phone: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Gender</label>
+                        <select 
+                          className="recep-select-field" 
+                          style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                          value={editPatientForm.gender} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, gender: e.target.value })}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>DOB</label>
+                        <input 
+                          type="date" 
+                          className="recep-input-field" 
+                          style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                          value={editPatientForm.date_of_birth} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, date_of_birth: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Blood Group</label>
+                        <select 
+                          className="recep-select-field" 
+                          style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                          value={editPatientForm.blood_group} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, blood_group: e.target.value })}
+                        >
+                          <option value="">Select</option>
+                          <option value="A+">A+</option>
+                          <option value="A-">A-</option>
+                          <option value="B+">B+</option>
+                          <option value="B-">B-</option>
+                          <option value="O+">O+</option>
+                          <option value="O-">O-</option>
+                          <option value="AB+">AB+</option>
+                          <option value="AB-">AB-</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Address</label>
+                      <textarea 
+                        rows={2} 
+                        className="recep-input-field" 
+                        style={{ padding: '5px 8px', fontSize: '0.82rem', resize: 'vertical' }}
+                        value={editPatientForm.address} 
+                        onChange={(e) => setEditPatientForm({ ...editPatientForm, address: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Known Allergies</label>
+                      <input 
+                        type="text" 
+                        className="recep-input-field" 
+                        style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                        placeholder="e.g. Penicillin, Sulfa"
+                        value={editPatientForm.allergies} 
+                        onChange={(e) => setEditPatientForm({ ...editPatientForm, allergies: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>Chronic Conditions</label>
+                      <input 
+                        type="text" 
+                        className="recep-input-field" 
+                        style={{ padding: '5px 8px', fontSize: '0.82rem' }}
+                        placeholder="e.g. Diabetes, Hypertension"
+                        value={editPatientForm.chronic_conditions} 
+                        onChange={(e) => setEditPatientForm({ ...editPatientForm, chronic_conditions: e.target.value })}
+                      />
+                    </div>
+
+                    <div style={{ background: 'var(--surface-2)', padding: '8px', borderRadius: '6px', marginTop: '4px' }}>
+                      <strong style={{ fontSize: '0.78rem', display: 'block', marginBottom: '6px', color: 'var(--primary-dark)' }}>Emergency Contact</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="recep-input-field" 
+                          style={{ padding: '4px 6px', fontSize: '0.8rem' }}
+                          placeholder="Contact Name"
+                          value={editPatientForm.emergency_contact_name} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, emergency_contact_name: e.target.value })}
+                        />
+                        <input 
+                          type="text" 
+                          className="recep-input-field" 
+                          style={{ padding: '4px 6px', fontSize: '0.8rem' }}
+                          placeholder="Relation (e.g. Spouse)"
+                          value={editPatientForm.emergency_contact_relation} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, emergency_contact_relation: e.target.value })}
+                        />
+                        <input 
+                          type="text" 
+                          className="recep-input-field" 
+                          style={{ padding: '4px 6px', fontSize: '0.8rem' }}
+                          placeholder="Emergency Phone"
+                          value={editPatientForm.emergency_contact_phone} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, emergency_contact_phone: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'var(--surface-2)', padding: '8px', borderRadius: '6px' }}>
+                      <strong style={{ fontSize: '0.78rem', display: 'block', marginBottom: '6px', color: 'var(--primary-dark)' }}>Insurance Information</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="recep-input-field" 
+                          style={{ padding: '4px 6px', fontSize: '0.8rem' }}
+                          placeholder="Insurance Provider"
+                          value={editPatientForm.insurance_provider} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, insurance_provider: e.target.value })}
+                        />
+                        <input 
+                          type="text" 
+                          className="recep-input-field" 
+                          style={{ padding: '4px 6px', fontSize: '0.8rem' }}
+                          placeholder="Policy Number"
+                          value={editPatientForm.insurance_policy_no} 
+                          onChange={(e) => setEditPatientForm({ ...editPatientForm, insurance_policy_no: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button 
+                        type="submit" 
+                        className="recep-btn-primary" 
+                        disabled={savingPatientProfile}
+                        style={{ flex: 1, padding: '6px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        {savingPatientProfile ? <Loader2 size={14} className="spin-icon" /> : 'Save Profile'}
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn-cancel" 
+                        onClick={() => setIsEditingPatientProfile(false)}
+                        style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
+                    <div>
+                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Phone</strong>
+                      <span>{selectedPatientForHistory?.user?.phone || '—'}</span>
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Email</strong>
+                      <span>{selectedPatientForHistory?.user?.email || '—'}</span>
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Gender / Age</strong>
+                      <span>
+                        {selectedPatientForHistory?.gender || '—'} / {selectedPatientForHistory?.date_of_birth ? `${new Date().getFullYear() - new Date(selectedPatientForHistory.date_of_birth).getFullYear()} Yrs` : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Blood Group</strong>
+                      <span>{selectedPatientForHistory?.blood_group || '—'}</span>
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Address</strong>
+                      <span style={{ display: 'block', lineHeight: 1.3 }}>{selectedPatientForHistory?.address || '—'}</span>
+                    </div>
+
+                    {selectedPatientForHistory?.allergies && (
+                      <div>
+                        <strong style={{ color: 'var(--danger)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Known Allergies</strong>
+                        <span>{formatClinicalDisplay(selectedPatientForHistory.allergies)}</span>
+                      </div>
+                    )}
+
+                    {selectedPatientForHistory?.chronic_conditions && (
+                      <div>
+                        <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Chronic Conditions</strong>
+                        <span>{formatClinicalDisplay(selectedPatientForHistory.chronic_conditions)}</span>
+                      </div>
+                    )}
+
+                    {selectedPatientForHistory?.emergency_contact_name && (
+                      <div style={{ marginTop: '4px', padding: '8px 10px', background: 'var(--surface-2)', borderRadius: '6px' }}>
+                        <strong style={{ color: 'var(--primary-dark)', display: 'block', fontSize: '0.78rem', marginBottom: '2px' }}>Emergency Contact</strong>
+                        <span style={{ display: 'block', fontSize: '0.8rem' }}>
+                          {selectedPatientForHistory.emergency_contact_name} ({selectedPatientForHistory.emergency_contact_relation || 'Relative'}) &middot; {selectedPatientForHistory.emergency_contact_phone || '—'}
+                        </span>
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: '4px', padding: '10px', background: 'var(--surface-2)', borderRadius: '8px' }}>
+                      <strong style={{ color: 'var(--primary-dark)', display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Insurance Details</strong>
+                      <span style={{ display: 'block', fontSize: '0.8rem' }}>
+                        {selectedPatientForHistory?.insurance_provider 
+                          ? `${selectedPatientForHistory.insurance_provider} (Policy: ${selectedPatientForHistory.insurance_policy_no || '—'})` 
+                          : 'No active insurance policy'}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Email</strong>
-                    <span>{selectedPatientForHistory?.user?.email || '—'}</span>
-                  </div>
-                  <div>
-                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Gender / Age</strong>
-                    <span>
-                      {selectedPatientForHistory?.gender || '—'} / {selectedPatientForHistory?.date_of_birth ? `${new Date().getFullYear() - new Date(selectedPatientForHistory.date_of_birth).getFullYear()} Yrs` : '—'}
-                    </span>
-                  </div>
-                  <div>
-                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Blood Group</strong>
-                    <span>{selectedPatientForHistory?.blood_group || '—'}</span>
-                  </div>
-                  <div>
-                    <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Address</strong>
-                    <span style={{ display: 'block', lineHeight: 1.3 }}>{selectedPatientForHistory?.address || '—'}</span>
-                  </div>
-                  <div style={{ marginTop: '10px', padding: '10px', background: 'var(--surface-2)', borderRadius: '8px' }}>
-                    <strong style={{ color: 'var(--primary-dark)', display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Insurance Details</strong>
-                    <span style={{ display: 'block', fontSize: '0.8rem' }}>
-                      {selectedPatientForHistory?.insurance_provider 
-                        ? `${selectedPatientForHistory.insurance_provider} (Policy: ${selectedPatientForHistory.insurance_policy_no || '—'})` 
-                        : 'No active insurance policy'}
-                    </span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Right Side: EMR Timeline & Tabs */}
@@ -4236,7 +4705,25 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
                       {historyModalTab === 'bills' && (
                         <div>
-                          <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary-dark)' }}>Billing Invoices</h4>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <h4 style={{ margin: 0, color: 'var(--primary-dark)' }}>Billing Invoices</h4>
+                            <button
+                              className="recep-btn-secondary"
+                              style={{ fontSize: '0.8rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              onClick={() => {
+                                setShowPatientHistoryModal(false);
+                                setBillingForm({
+                                  patient_id: selectedPatientForHistory.id,
+                                  total_amount: 0,
+                                  discount_amount: 0,
+                                  tax_amount: 0,
+                                });
+                                setActiveTab('billing');
+                              }}
+                            >
+                              <Plus size={14} /> Create Bill for Patient
+                            </button>
+                          </div>
                           {!patientHistoryData?.bills?.length ? (
                             <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No billing invoices found.</p>
                           ) : (

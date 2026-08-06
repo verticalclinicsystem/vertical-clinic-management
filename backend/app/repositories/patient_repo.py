@@ -49,9 +49,15 @@ class PatientRepository(BaseRepository[Patient]):
         Create a blank patient profile linked to the given user.
         Generates the next sequential patient code automatically.
         """
+        from app.models.user import User
+        user_res = await self.db.execute(select(User).where(User.id == user_id))
+        user_obj = user_res.scalar_one_or_none()
+        name = user_obj.full_name if user_obj else None
+
         patient_code = await self.generate_patient_code()
         return await self.create({
             "user_id": user_id,
+            "name": name,
             "patient_code": patient_code,
         })
 

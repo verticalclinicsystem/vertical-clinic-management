@@ -48,9 +48,15 @@ class ReceptionistRepository(BaseRepository[Receptionist]):
         bio: str | None = None
     ) -> Receptionist:
         """Create receptionist profile linked to a user."""
+        from app.models.user import User
+        user_res = await self.db.execute(select(User).where(User.id == user_id))
+        user_obj = user_res.scalar_one_or_none()
+        name = user_obj.full_name if user_obj else None
+
         employee_id = await self.generate_employee_id()
         return await self.create({
             "user_id": user_id,
+            "name": name,
             "employee_id": employee_id,
             "branch_id": branch_id,
             "shift_start": shift_start,
