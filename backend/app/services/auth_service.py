@@ -66,7 +66,7 @@ from app.schemas.auth import (
     PharmacistCreateRequest,
     AdminCreateRequest,
 )
-from app.utils.email import send_otp_email
+from app.utils.email import send_otp_email, send_welcome_email
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +83,9 @@ def _build_token_payload(user: User) -> dict:
         user_id=str(user.id),
         role=user.role,
         branch_id=str(user.branch_id) if user.branch_id else None,
+        extra_claims={"token_version": getattr(user, "token_version", 1)},
     )
-    refresh_token = create_refresh_token(user_id=str(user.id))
+    refresh_token = create_refresh_token(user_id=str(user.id), token_version=getattr(user, "token_version", 1))
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -147,6 +148,13 @@ class AuthService:
         # — Activate via repo —
         await self.user_repo.activate(user)
 
+        # — Send Welcome Email —
+        try:
+            await send_welcome_email(to=user.email, full_name=user.full_name)
+            logger.info(f"Welcome email sent successfully to: {user.email}")
+        except Exception as welcome_err:
+            logger.error(f"Failed to send welcome email to {user.email}: {welcome_err}")
+
         logger.info(f"Account verified: {user.email}")
         return {"email": user.email}
 
@@ -183,6 +191,17 @@ class AuthService:
 
         if not user.is_active:
             raise AuthenticationError("Your account has been deactivated. Contact admin.")
+        
+        # Check suspension
+        from datetime import datetime, timezone, timedelta
+        if user.suspended_until and user.suspended_until > datetime.now(timezone.utc):
+            ist_tz = timezone(timedelta(hours=5, minutes=30))
+            suspended_until_ist = user.suspended_until.astimezone(ist_tz)
+            formatted_time = suspended_until_ist.strftime("%d %b %Y, %I:%M %p")
+            raise AuthenticationError(
+                f"Your account is suspended until {formatted_time} (IST)."
+            )
+
         if not user.is_verified:
             raise AuthenticationError(
                 "Email not verified. Please verify your account before logging in."
@@ -205,10 +224,26 @@ class AuthService:
         if not user or not user.is_active:
             raise AuthenticationError("User not found or deactivated.")
 
+        # Check for token version/session revocation
+        token_version = payload.get("token_version")
+        if token_version != user.token_version:
+            raise AuthenticationError("Session expired or revoked.")
+
+        # Check suspension
+        from datetime import datetime, timezone, timedelta
+        if user.suspended_until and user.suspended_until > datetime.now(timezone.utc):
+            ist_tz = timezone(timedelta(hours=5, minutes=30))
+            suspended_until_ist = user.suspended_until.astimezone(ist_tz)
+            formatted_time = suspended_until_ist.strftime("%d %b %Y, %I:%M %p")
+            raise AuthenticationError(
+                f"Your account is suspended until {formatted_time} (IST)."
+            )
+
         new_access = create_access_token(
             user_id=str(user.id),
             role=user.role,
             branch_id=str(user.branch_id) if user.branch_id else None,
+            extra_claims={"token_version": getattr(user, "token_version", 1)},
         )
         return {
             "access_token": new_access,

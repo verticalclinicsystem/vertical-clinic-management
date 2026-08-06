@@ -205,16 +205,16 @@ async def _seed_users_and_profiles(
 
     if test_mode:
         doctors_to_seed = [
-            ("Dr. Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "Orthodontist", "BDS, MDS (Orthodontics)", 12, 900.0, "Specialist in braces, aligners, and bite correction."),
-            ("Dr. Aarav Patel", "doctor2_sat@verticalclinic.com", "+919820011112", "SAT", "Pediatric Dentist", "BDS, MDS (Pedodontics)", 8, 700.0, "Specialist in pediatric dentistry and preventative care."),
-            ("Dr. Vikram Shah", "doctor1_bop@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma."),
-            ("Dr. Sneha Rao", "doctor2_bop@verticalclinic.com", "+919820022222", "BOP", "Periodontist", "BDS, MDS (Periodontics)", 9, 750.0, "Specializes in gum health, implants, and laser gum therapy."),
-            ("Dr. Rajesh Nair", "doctor1_nav@verticalclinic.com", "+919820033331", "NAV", "General Dentist", "BDS", 6, 500.0, "Comprehensive dental care, cleanings, fillings, and extractions."),
-            ("Dr. Anjali Desai", "doctor2_nav@verticalclinic.com", "+919820033332", "NAV", "Prosthodontist", "BDS, MDS (Prosthodontics)", 11, 850.0, "Specialist in crowns, bridges, dentures, and cosmetic restorations.")
+            ("Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "Orthodontist", "BDS, MDS (Orthodontics)", 12, 900.0, "Specialist in braces, aligners, and bite correction."),
+            ("Aarav Patel", "doctor2_sat@verticalclinic.com", "+919820011112", "SAT", "Pediatric Dentist", "BDS, MDS (Pedodontics)", 8, 700.0, "Specialist in pediatric dentistry and preventative care."),
+            ("Vikram Shah", "doctor1_bop@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma."),
+            ("Sneha Rao", "doctor2_bop@verticalclinic.com", "+919820022222", "BOP", "Periodontist", "BDS, MDS (Periodontics)", 9, 750.0, "Specializes in gum health, implants, and laser gum therapy."),
+            ("Rajesh Nair", "doctor1_nav@verticalclinic.com", "+919820033331", "NAV", "General Dentist", "BDS", 6, 500.0, "Comprehensive dental care, cleanings, fillings, and extractions."),
+            ("Anjali Desai", "doctor2_nav@verticalclinic.com", "+919820033332", "NAV", "Prosthodontist", "BDS, MDS (Prosthodontics)", 11, 850.0, "Specialist in crowns, bridges, dentures, and cosmetic restorations.")
         ]
     else:
         doctors_to_seed = [
-            ("Dr. Vikram Shah", "doctor1_bopal@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma.")
+            ("Vikram Shah", "doctor1_bopal@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma.")
         ]
 
     doctor_ids: dict[str, uuid.UUID] = {}

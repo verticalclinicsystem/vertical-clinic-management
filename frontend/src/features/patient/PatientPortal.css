@@ -623,6 +623,15 @@
   color: #7c3aed;
 }
 
+.status-pill.no_show,
+.status-pill.no-show,
+.status-pill.not-show,
+.status-pill.not_show {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+
 /* Table Style */
 .table-container {
   overflow-x: auto;

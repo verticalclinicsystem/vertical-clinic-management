@@ -24,9 +24,12 @@ class InvoiceCreate(InvoiceBase):
 
 
 class InvoiceUpdate(BaseModel):
+    total_amount: float | None = Field(None, ge=0.0)
     discount_amount: float | None = Field(None, ge=0.0)
     tax_amount: float | None = Field(None, ge=0.0)
     status: str | None = Field(None, max_length=30)
+    consultation_id: uuid.UUID | None = None
+    treatment_plan_id: uuid.UUID | None = None
 
 
 class InvoicePrescriptionItem(BaseModel):

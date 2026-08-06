@@ -60,13 +60,19 @@ class ClinicManagerService:
             raise EmailAlreadyExistsError()
 
         # 2. Hash password & create User record
+        cleaned_name = full_name
+        if cleaned_name.lower().startswith("dr. "):
+            cleaned_name = cleaned_name[4:].strip()
+        elif cleaned_name.lower().startswith("dr.  "):
+            cleaned_name = cleaned_name[5:].strip()
+
         hashed_pwd = hash_password(password)
         user = User(
             id=uuid.uuid4(),
             email=email,
             phone=phone,
             hashed_password=hashed_pwd,
-            full_name=full_name,
+            full_name=cleaned_name,
             role=UserRole.DOCTOR,
             branch_id=branch_id,
             is_active=True,
@@ -87,6 +93,7 @@ class ClinicManagerService:
         doctor = Doctor(
             id=uuid.uuid4(),
             user_id=user.id,
+            name=user.full_name,
             branch_id=branch_id,
             specialization=specialization,
             qualification=qualification,
@@ -171,6 +178,7 @@ class ClinicManagerService:
         receptionist = Receptionist(
             id=uuid.uuid4(),
             user_id=user.id,
+            name=user.full_name,
             branch_id=branch_id,
             employee_code=code,
             shift_timing=shift_timing,

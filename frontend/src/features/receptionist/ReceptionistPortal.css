@@ -528,6 +528,7 @@
 .badge-consultation-active { background-color: var(--info-bg); color: var(--info); }
 .badge-completed { background-color: var(--success-bg); color: var(--success); }
 .badge-cancelled { background-color: var(--danger-bg); color: var(--danger); }
+.badge-no_show, .badge-no-show { background-color: #f1f5f9; color: #475569; }
 .badge-unpaid { background-color: var(--danger-bg); color: var(--danger); }
 .badge-partially_paid { background-color: var(--warning-bg); color: var(--warning); }
 .badge-paid { background-color: var(--success-bg); color: var(--success); }
@@ -797,7 +798,7 @@
   gap: 6px;
 }
 
-.btn-action-book, .btn-action-bill, .btn-pay, .btn-download {
+.btn-action-book, .btn-action-bill, .btn-action-history, .btn-pay, .btn-download, .btn-edit {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -814,8 +815,14 @@
 .btn-action-bill { background-color: var(--accent-light); color: #0d9488; }
 .btn-action-bill:hover { background-color: rgba(20, 184, 166, 0.2); }
 
+.btn-action-history { background-color: #f1f5f9; color: #475569; border: 1px solid var(--border); }
+.btn-action-history:hover { background-color: #e2e8f0; }
+
 .btn-pay { background-color: var(--success-bg); color: var(--success); }
 .btn-pay:hover { background-color: rgba(26, 158, 92, 0.2); }
+
+.btn-edit { background-color: var(--warning-bg); color: var(--warning); }
+.btn-edit:hover { background-color: rgba(217, 119, 6, 0.2); }
 
 .btn-download { background-color: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border); }
 .btn-download:hover { background-color: var(--border); }
@@ -897,9 +904,24 @@
   border-radius: 14px;
   width: 600px;
   max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: var(--shadow-xl);
   padding: 28px;
   animation: scaleIn 0.2s ease-out;
+}
+
+.recep-checkbox {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 .recep-modal-header {
@@ -1323,27 +1345,34 @@
 }
 
 .calendar-appt-pill.confirmed {
-  background-color: var(--info-bg);
-  color: var(--info);
-  border: 1px solid rgba(53, 99, 201, 0.2);
-}
-
-.calendar-appt-pill.checked_in {
-  background-color: rgba(20, 184, 166, 0.08);
-  color: #0d9488;
-  border: 1px solid rgba(20, 184, 166, 0.2);
-}
-
-.calendar-appt-pill.completed {
   background-color: var(--success-bg);
   color: var(--success);
   border: 1px solid rgba(26, 158, 92, 0.2);
+}
+
+.calendar-appt-pill.checked_in {
+  background-color: var(--warning-bg);
+  color: #d97706;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+}
+
+.calendar-appt-pill.completed {
+  background-color: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .calendar-appt-pill.cancelled {
   background-color: var(--danger-bg);
   color: var(--danger);
   border: 1px solid rgba(210, 64, 47, 0.2);
+}
+
+.calendar-appt-pill.no_show, .calendar-appt-pill.expired {
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+  text-decoration: line-through;
 }
 
 .calendar-appt-pill.selected {
@@ -2099,4 +2128,32 @@
 .profile-dropdown-menu button.logout-item:hover {
   background-color: #fef2f2;
   color: #b91c1c;
+}
+
+/* ── Back Navigation Button ── */
+.recep-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.recep-back-btn:hover {
+  background-color: var(--primary-light);
+  border-color: var(--primary);
+  transform: translateX(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.recep-back-btn:active {
+  transform: scale(0.95) translateX(-2px);
 }

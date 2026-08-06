@@ -1,10 +1,9 @@
-"""
-Admin dashboard API — all metrics sourced from the database.
-"""
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends
+from typing import Annotated
+from uuid import UUID
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,37 +33,60 @@ def _require_admin(current_user: User) -> None:
 # ── GET /admin/dashboard ─────────────────────────────────────────────────────
 @router.get("/dashboard")
 async def get_admin_dashboard(
+    branch_id: Annotated[UUID | None, Query(description="Filter metrics by specific branch ID")] = None,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """
     Full admin dashboard: KPI cards, appointment status today,
-    medicine stock health, branch list, staff list, patient visits trend.
+    medicine stock health, branch list, staff list, patient visits trend,
+    branch-filtered metrics, growth percentages, and live activity log.
     """
     _require_admin(current_user)
 
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
+    yesterday_start = today_start - timedelta(days=1)
 
     # ── KPI: Total patients ────────────────────────────────────────────────
-    total_patients_res = await db.execute(select(func.count(Patient.id)))
+    patient_query = select(func.count(Patient.id))
+    if branch_id:
+        patient_query = patient_query.where(Patient.preferred_branch_id == branch_id)
+    total_patients_res = await db.execute(patient_query)
     total_patients = total_patients_res.scalar_one()
 
     # ── KPI: Active doctors ───────────────────────────────────────────────
-    total_doctors_res = await db.execute(
-        select(func.count(Doctor.id)).where(Doctor.is_available == True)
-    )
+    doc_query = select(func.count(Doctor.id)).where(Doctor.is_available == True)
+    if branch_id:
+        doc_query = doc_query.where(Doctor.branch_id == branch_id)
+    total_doctors_res = await db.execute(doc_query)
     total_doctors = total_doctors_res.scalar_one()
 
-    # ── KPI: Appointments today ───────────────────────────────────────────
-    appts_today_res = await db.execute(
-        select(func.count(Appointment.id)).where(
-            Appointment.appointment_datetime >= today_start,
-            Appointment.appointment_datetime < today_end,
-        )
+    # ── KPI: Appointments today & yesterday (for growth calc) ─────────────
+    appts_today_query = select(func.count(Appointment.id)).where(
+        Appointment.appointment_datetime >= today_start,
+        Appointment.appointment_datetime < today_end,
     )
+    if branch_id:
+        appts_today_query = appts_today_query.where(Appointment.branch_id == branch_id)
+    appts_today_res = await db.execute(appts_today_query)
     appts_today = appts_today_res.scalar_one()
+
+    appts_yesterday_query = select(func.count(Appointment.id)).where(
+        Appointment.appointment_datetime >= yesterday_start,
+        Appointment.appointment_datetime < today_start,
+    )
+    if branch_id:
+        appts_yesterday_query = appts_yesterday_query.where(Appointment.branch_id == branch_id)
+    appts_yesterday_res = await db.execute(appts_yesterday_query)
+    appts_yesterday = appts_yesterday_res.scalar_one()
+
+    appts_growth_pct = 0.0
+    if appts_yesterday > 0:
+        appts_growth_pct = round(((appts_today - appts_yesterday) / appts_yesterday) * 100, 1)
+    elif appts_today > 0:
+        appts_growth_pct = 100.0
 
     # ── KPI: Inventory SKUs + low-stock count ────────────────────────────
     total_skus_res = await db.execute(select(func.count(Medicine.id)).where(Medicine.is_active == True))
@@ -84,24 +106,44 @@ async def get_admin_dashboard(
     )
     total_branches = total_branches_res.scalar_one()
 
-    # ── KPI: MTD Revenue ─────────────────────────────────────────────────
+    # ── KPI: MTD Revenue & Last Month Revenue ────────────────────────────
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    mtd_revenue_res = await db.execute(
-        select(func.coalesce(func.sum(Invoice.grand_total), 0)).where(
-            Invoice.created_at >= month_start
-        )
-    )
+    last_month_end = month_start
+    last_month_start = (month_start - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    rev_query = select(func.coalesce(func.sum(Invoice.grand_total), 0))
+    if branch_id:
+        rev_query = rev_query.join(Consultation, Consultation.id == Invoice.consultation_id).where(Consultation.branch_id == branch_id)
+    rev_query = rev_query.where(Invoice.created_at >= month_start)
+    mtd_revenue_res = await db.execute(rev_query)
     mtd_revenue = float(mtd_revenue_res.scalar_one())
 
+    last_rev_query = select(func.coalesce(func.sum(Invoice.grand_total), 0))
+    if branch_id:
+        last_rev_query = last_rev_query.join(Consultation, Consultation.id == Invoice.consultation_id).where(Consultation.branch_id == branch_id)
+    last_rev_query = last_rev_query.where(Invoice.created_at >= last_month_start, Invoice.created_at < last_month_end)
+    last_mtd_revenue_res = await db.execute(last_rev_query)
+    last_mtd_revenue = float(last_mtd_revenue_res.scalar_one())
+
+    revenue_growth_pct = 0.0
+    if last_mtd_revenue > 0:
+        revenue_growth_pct = round(((mtd_revenue - last_mtd_revenue) / last_mtd_revenue) * 100, 1)
+    elif mtd_revenue > 0:
+        revenue_growth_pct = 100.0
+
     # ── Appointment status breakdown (today) ────────────────────────────
-    appt_status_res = await db.execute(
+    status_query = (
         select(Appointment.status, func.count(Appointment.id))
         .where(
             Appointment.appointment_datetime >= today_start,
             Appointment.appointment_datetime < today_end,
         )
-        .group_by(Appointment.status)
     )
+    if branch_id:
+        status_query = status_query.where(Appointment.branch_id == branch_id)
+    status_query = status_query.group_by(Appointment.status)
+    
+    appt_status_res = await db.execute(status_query)
     appt_status_raw = appt_status_res.all()
     appt_status = {row[0]: row[1] for row in appt_status_raw}
 
@@ -125,13 +167,16 @@ async def get_admin_dashboard(
         else:
             next_mo = (mo_start + timedelta(days=32)).replace(day=1)
             mo_end = next_mo
-        count_res = await db.execute(
-            select(func.count(Appointment.id)).where(
-                Appointment.appointment_datetime >= mo_start,
-                Appointment.appointment_datetime < mo_end,
-                Appointment.status.in_(["completed", "checked_in"]),
-            )
+        
+        visit_q = select(func.count(Appointment.id)).where(
+            Appointment.appointment_datetime >= mo_start,
+            Appointment.appointment_datetime < mo_end,
+            Appointment.status.in_(["completed", "checked_in"]),
         )
+        if branch_id:
+            visit_q = visit_q.where(Appointment.branch_id == branch_id)
+
+        count_res = await db.execute(visit_q)
         visits_by_month.append({
             "month": mo_start.strftime("%b"),
             "count": count_res.scalar_one(),
@@ -175,24 +220,28 @@ async def get_admin_dashboard(
         })
 
     # ── Staff list ───────────────────────────────────────────────────────
-    staff_res = await db.execute(
-        select(User).where(
-            User.role.in_([UserRole.ADMIN, UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.RECEPTIONIST, UserRole.CLINIC_MANAGER])
-        ).order_by(User.full_name)
+    staff_q = select(User).where(
+        User.role.in_([UserRole.ADMIN, UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.RECEPTIONIST, UserRole.CLINIC_MANAGER])
     )
+    if branch_id:
+        staff_q = staff_q.where(User.branch_id == branch_id)
+    staff_res = await db.execute(staff_q.order_by(User.full_name))
     staff_members = staff_res.scalars().all()
-    staff_list = [
-        {
+    staff_list = []
+    for u in staff_members:
+        is_suspended = u.suspended_until and u.suspended_until > now
+        status_str = "suspended" if is_suspended else ("active" if u.is_active else "inactive")
+        staff_list.append({
             "id": str(u.id),
             "name": u.full_name,
             "role": str(u.role),
             "email": u.email,
             "phone": u.phone or "—",
             "branch_id": str(u.branch_id) if u.branch_id else None,
-            "status": "active" if u.is_active else "inactive",
-        }
-        for u in staff_members
-    ]
+            "status": status_str,
+            "suspension_reason": u.suspension_reason,
+            "suspended_until": u.suspended_until.isoformat() if u.suspended_until else None,
+        })
 
     # ── Inventory list ────────────────────────────────────────────────────
     inv_res = await db.execute(
@@ -216,15 +265,16 @@ async def get_admin_dashboard(
     ]
 
     # ── Workflow: today's appointments as kanban cards ───────────────────
-    workflow_res = await db.execute(
-        select(Appointment).where(
-            Appointment.appointment_datetime >= today_start,
-            Appointment.appointment_datetime < today_end,
-        ).order_by(Appointment.appointment_datetime)
+    wf_q = select(Appointment).where(
+        Appointment.appointment_datetime >= today_start,
+        Appointment.appointment_datetime < today_end,
     )
+    if branch_id:
+        wf_q = wf_q.where(Appointment.branch_id == branch_id)
+    
+    workflow_res = await db.execute(wf_q.order_by(Appointment.appointment_datetime))
     today_appts = workflow_res.scalars().all()
 
-    # Eager-load patient & doctor names for workflow
     workflow_cards: dict = {"reception": [], "consultation": [], "billing": [], "dispensary": []}
     for appt in today_appts:
         patient_res = await db.execute(
@@ -250,12 +300,37 @@ async def get_admin_dashboard(
         else:
             workflow_cards["dispensary"].append(card)
 
+    # ── Live Activity Audit Feed ──────────────────────────────────────────
+    activity_q = select(Appointment).order_by(Appointment.created_at.desc()).limit(6)
+    if branch_id:
+        activity_q = activity_q.where(Appointment.branch_id == branch_id)
+    recent_appts_res = await db.execute(activity_q)
+    recent_appts = recent_appts_res.scalars().all()
+
+    recent_activities = []
+    for ra in recent_appts:
+        patient_res = await db.execute(
+            select(User).join(Patient, Patient.user_id == User.id).where(Patient.id == ra.patient_id)
+        )
+        p_user = patient_res.scalar_one_or_none()
+        p_name = p_user.full_name if p_user else "Patient"
+        recent_activities.append({
+            "id": str(ra.id),
+            "type": "appointment",
+            "title": f"Appointment {ra.status.replace('_', ' ').title()}",
+            "detail": f"{p_name} — {ra.treatment_type or 'Consultation'}",
+            "time": ra.appointment_datetime.strftime("%d %b, %I:%M %p"),
+            "status": ra.status
+        })
+
     return ApiResponse.success(data={
             "kpis": {
                 "total_revenue_mtd": mtd_revenue,
+                "revenue_growth_pct": revenue_growth_pct,
                 "total_patients": total_patients,
                 "active_doctors": total_doctors,
                 "appointments_today": appts_today,
+                "appointments_growth_pct": appts_growth_pct,
                 "total_skus": total_skus,
                 "low_stock_count": low_stock_count,
                 "active_branches": total_branches,
@@ -278,5 +353,160 @@ async def get_admin_dashboard(
             "staff": staff_list,
             "inventory": inventory_list,
             "workflow": workflow_cards,
+            "recent_activities": recent_activities,
+            "selected_branch_id": str(branch_id) if branch_id else None,
         }
     )
+
+
+# ── GET /admin/reports ───────────────────────────────────────────────────────
+@router.get("/reports")
+async def get_admin_reports(
+    report_type: Annotated[str, Query(description="Type of report: financial, clinical, or inventory")] = "financial",
+    start_date: Annotated[str | None, Query(description="Start date (YYYY-MM-DD)")] = None,
+    end_date: Annotated[str | None, Query(description="End date (YYYY-MM-DD)")] = None,
+    branch_id: Annotated[UUID | None, Query(description="Filter by specific branch ID")] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """
+    Generate dynamic clinical, financial, or inventory reports with custom date ranges.
+    Handles invalid/swapped dates, empty results, and branch filtering cleanly.
+    """
+    _require_admin(current_user)
+
+    now = datetime.now(timezone.utc)
+    # Parse dates safely with fallbacks
+    dt_start = None
+    dt_end = None
+
+    if start_date and start_date.strip():
+        try:
+            dt_start = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
+        except Exception:
+            dt_start = None
+
+    if end_date and end_date.strip():
+        try:
+            dt_end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        except Exception:
+            dt_end = None
+
+    # Edge case: If both dates exist and start_date > end_date, swap them gracefully!
+    if dt_start and dt_end and dt_start > dt_end:
+        dt_start, dt_end = dt_end.replace(hour=0, minute=0, second=0), dt_start.replace(hour=23, minute=59, second=59)
+
+    report_data: dict = {
+        "report_type": report_type,
+        "start_date": dt_start.strftime("%Y-%m-%d") if dt_start else "All Time",
+        "end_date": dt_end.strftime("%Y-%m-%d") if dt_end else "All Time",
+        "summary": {},
+        "rows": []
+    }
+
+    if report_type == "financial":
+        inv_q = select(Invoice)
+        if dt_start:
+            inv_q = inv_q.where(Invoice.created_at >= dt_start)
+        if dt_end:
+            inv_q = inv_q.where(Invoice.created_at <= dt_end)
+        if branch_id:
+            inv_q = inv_q.join(Consultation, Consultation.id == Invoice.consultation_id).where(Consultation.branch_id == branch_id)
+        
+        inv_res = await db.execute(inv_q.order_by(Invoice.created_at.desc()))
+        invoices = inv_res.scalars().all()
+
+        total_rev = sum(float(inv.grand_total) for inv in invoices)
+        paid_count = sum(1 for inv in invoices if inv.status == "paid")
+
+        report_data["summary"] = {
+            "total_revenue": total_rev,
+            "total_invoices": len(invoices),
+            "paid_invoices": paid_count,
+            "avg_invoice_value": round(total_rev / len(invoices), 2) if len(invoices) > 0 else 0.0,
+        }
+        report_rows = []
+        for inv in invoices:
+            p_name = "Patient Record"
+            if getattr(inv, 'patient', None) and getattr(inv.patient, 'user', None):
+                p_name = inv.patient.user.full_name
+            
+            pay_mode = "UPI / Cash"
+            if getattr(inv, 'payments', None) and len(inv.payments) > 0:
+                pay_mode = getattr(inv.payments[0], 'payment_method', 'UPI / Cash')
+
+            report_rows.append({
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number or f"INV-{str(inv.id)[:8]}",
+                "date": inv.created_at.strftime("%Y-%m-%d %H:%M"),
+                "patient_name": p_name,
+                "amount": float(inv.grand_total),
+                "payment_mode": pay_mode,
+                "status": inv.status or "paid"
+            })
+        report_data["rows"] = report_rows
+
+    elif report_type == "clinical":
+        appt_q = select(Appointment)
+        if dt_start:
+            appt_q = appt_q.where(Appointment.appointment_datetime >= dt_start)
+        if dt_end:
+            appt_q = appt_q.where(Appointment.appointment_datetime <= dt_end)
+        if branch_id:
+            appt_q = appt_q.where(Appointment.branch_id == branch_id)
+
+        appts_res = await db.execute(appt_q.order_by(Appointment.appointment_datetime.desc()))
+        appts = appts_res.scalars().all()
+
+        completed = sum(1 for a in appts if a.status == "completed")
+        cancelled = sum(1 for a in appts if a.status == "cancelled")
+        teleconsult = sum(1 for a in appts if a.consultation_type == "teleconsultation")
+
+        report_data["summary"] = {
+            "total_appointments": len(appts),
+            "completed": completed,
+            "cancelled": cancelled,
+            "teleconsultations": teleconsult,
+            "completion_rate": round((completed / len(appts)) * 100, 1) if len(appts) > 0 else 0.0,
+        }
+        report_data["rows"] = [
+            {
+                "id": str(a.id),
+                "date": a.appointment_datetime.strftime("%Y-%m-%d %I:%M %p"),
+                "patient_id": str(a.patient_id),
+                "treatment": a.treatment_type or "General Consultation",
+                "type": a.consultation_type or "in_person",
+                "status": a.status
+            }
+            for a in appts
+        ]
+
+    else:  # inventory report
+        med_res = await db.execute(select(Medicine).where(Medicine.is_active == True).order_by(Medicine.name))
+        medicines = med_res.scalars().all()
+
+        total_valuation = sum(m.stock_qty * float(m.unit_price) for m in medicines)
+        low_stock_count = sum(1 for m in medicines if m.stock_qty <= m.reorder_level)
+
+        report_data["summary"] = {
+            "total_skus": len(medicines),
+            "low_stock_skus": low_stock_count,
+            "total_valuation": round(total_valuation, 2),
+        }
+        report_data["rows"] = [
+            {
+                "id": str(m.id),
+                "name": m.name,
+                "category": m.category,
+                "stock": m.stock_qty,
+                "reorder_level": m.reorder_level,
+                "unit_price": float(m.unit_price),
+                "valuation": round(m.stock_qty * float(m.unit_price), 2),
+                "status": "Low Stock" if m.stock_qty <= m.reorder_level else "In Stock"
+            }
+            for m in medicines
+        ]
+
+    return ApiResponse.success(data=report_data)
+
+

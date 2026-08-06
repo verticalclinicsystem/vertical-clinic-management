@@ -29,6 +29,7 @@ class Patient(Base):
         index=True,
     )
 
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Patient-specific identity
     patient_code: Mapped[str] = mapped_column(
         String(20), unique=True, nullable=False, index=True

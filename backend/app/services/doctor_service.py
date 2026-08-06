@@ -154,6 +154,7 @@ class DoctorService:
                 "branch_id": str(appt.branch_id) if appt.branch_id else None,
                 "branch_name": appt.branch.name if appt.branch else None,
                 "tele_link": appt.teleconsultation.meeting_url if appt.teleconsultation else None,
+                "tele_status": appt.teleconsultation.status if appt.teleconsultation else None,
             })
 
         # 8. Patient Queue (Checked-in or In Consultation today)
@@ -206,4 +207,88 @@ class DoctorService:
             "patient_queue": patient_queue,
             "recent_consultations": recent_consultations,
         }
+
+    async def get_doctor_followups(self, user_id: uuid.UUID) -> dict[str, Any]:
+        """Retrieve lists of advised follow-ups (pending booking) and booked follow-ups for a doctor."""
+        doctor = await self.get_doctor_by_user_id(user_id)
+        doctor_id = doctor.id
+
+        from sqlalchemy import select
+        from sqlalchemy.orm import joinedload
+        from app.models.consultation import Consultation
+        from app.models.patient import Patient
+        from app.models.appointment import Appointment
+        from datetime import datetime, timezone, timedelta
+
+        # We load patient, patient's user, and branch
+        stmt = (
+            select(Consultation)
+            .options(
+                joinedload(Consultation.patient).joinedload(Patient.user),
+                joinedload(Consultation.branch)
+            )
+            .where(
+                Consultation.doctor_id == doctor_id,
+                Consultation.followup_advised == True
+            )
+            .order_by(Consultation.consultation_datetime.desc())
+        )
+        result = await self.db.execute(stmt)
+        consultations = list(result.scalars().all())
+
+        # Get future appointments with the same doctor to check if they have booked a follow-up
+        now = datetime.now(timezone.utc)
+        appt_stmt = (
+            select(Appointment)
+            .options(
+                joinedload(Appointment.patient).joinedload(Patient.user),
+                joinedload(Appointment.branch)
+            )
+            .where(
+                Appointment.doctor_id == doctor_id,
+                Appointment.appointment_datetime > now,
+                Appointment.status != "cancelled"
+            )
+        )
+        appt_result = await self.db.execute(appt_stmt)
+        future_appointments = list(appt_result.scalars().all())
+
+        # Map them to pending vs booked followups
+        pending_followups = []
+        booked_followups = []
+
+        for c in consultations:
+            days = c.followup_after_days or 14
+            recommended_date = c.consultation_datetime + timedelta(days=days)
+
+            # Check if patient has any future booking with this doctor
+            matching_future_appt = next(
+                (appt for appt in future_appointments if appt.patient_id == c.patient_id),
+                None
+            )
+
+            followup_info = {
+                "consultation_id": str(c.id),
+                "patient_name": c.patient.user.full_name if c.patient and c.patient.user else "Patient",
+                "patient_code": c.patient.patient_code if c.patient else "PT-00000",
+                "patient_id": str(c.patient_id),
+                "consultation_date": c.consultation_datetime.isoformat(),
+                "recommended_date": recommended_date.isoformat(),
+                "treatment_type": f"Follow-up for {c.diagnosis}" if c.diagnosis else "Routine Follow-up",
+                "notes": c.notes,
+            }
+
+            if matching_future_appt:
+                followup_info["appointment_id"] = str(matching_future_appt.id)
+                followup_info["appointment_datetime"] = matching_future_appt.appointment_datetime.isoformat()
+                followup_info["appointment_status"] = matching_future_appt.status
+                booked_followups.append(followup_info)
+            else:
+                pending_followups.append(followup_info)
+
+        return {
+            "pending": pending_followups,
+            "booked": booked_followups
+        }
+
 

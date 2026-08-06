@@ -1,16 +1,15 @@
 """notifications router — endpoints for patient, doctor, and staff in-app notifications."""
 from typing import Annotated
 import uuid
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.models.notification import Notification
 from app.schemas.notification import NotificationOut
+from app.services.notification_service import NotificationService
 
 router = APIRouter()
 
@@ -24,13 +23,8 @@ async def list_notifications(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Retrieve all notifications for the current user, ordered by newest first."""
-    stmt = (
-        select(Notification)
-        .where(Notification.user_id == current_user.id)
-        .order_by(desc(Notification.created_at))
-    )
-    res = await db.execute(stmt)
-    notifications = res.scalars().all()
+    service = NotificationService(db)
+    notifications = await service.get_user_notifications(current_user.id)
 
     data = [NotificationOut.model_validate(n).model_dump() for n in notifications]
     return JSONResponse(
@@ -52,15 +46,8 @@ async def mark_all_notifications_as_read(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Mark all unread notifications of the logged-in user as read."""
-    from sqlalchemy import update
-
-    stmt = (
-        update(Notification)
-        .where((Notification.user_id == current_user.id) & (Notification.is_read == False))
-        .values(is_read=True)
-    )
-    await db.execute(stmt)
-    await db.commit()
+    service = NotificationService(db)
+    await service.mark_all_read(current_user.id)
 
     return JSONResponse(
         status_code=200,
@@ -82,20 +69,11 @@ async def mark_notification_as_read(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Mark a notification as read if it belongs to the logged-in user."""
-    stmt = select(Notification).where(
-        (Notification.id == notification_id) & (Notification.user_id == current_user.id)
-    )
-    res = await db.execute(stmt)
-    notification = res.scalar_one_or_none()
+    service = NotificationService(db)
+    notification = await service.mark_read(notification_id, current_user.id)
 
     if not notification:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Notification not found.")
-
-    notification.is_read = True
-    db.add(notification)
-    await db.commit()
-    await db.refresh(notification)
 
     return JSONResponse(
         status_code=200,
@@ -116,11 +94,8 @@ async def clear_all_notifications(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Delete all notifications of the logged-in user from the database."""
-    from sqlalchemy import delete
-
-    stmt = delete(Notification).where(Notification.user_id == current_user.id)
-    await db.execute(stmt)
-    await db.commit()
+    service = NotificationService(db)
+    await service.clear_all(current_user.id)
 
     return JSONResponse(
         status_code=200,
@@ -142,13 +117,11 @@ async def delete_notification(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Delete a specific notification if it belongs to the logged-in user."""
-    from sqlalchemy import delete
+    service = NotificationService(db)
+    deleted = await service.delete_notification(notification_id, current_user.id)
 
-    stmt = delete(Notification).where(
-        (Notification.id == notification_id) & (Notification.user_id == current_user.id)
-    )
-    await db.execute(stmt)
-    await db.commit()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Notification not found.")
 
     return JSONResponse(
         status_code=200,
@@ -158,6 +131,3 @@ async def delete_notification(
             "data": {},
         }),
     )
-
-
-

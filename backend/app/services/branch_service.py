@@ -137,9 +137,30 @@ class BranchService:
         low_stock_stmt = select(func.count(Medicine.id)).where(Medicine.stock_qty <= Medicine.reorder_level)
         low_stock_items = (await self.db.execute(low_stock_stmt)).scalar_one() or 0
 
-        # 6. Today's Appointments & Revenue (Placeholder/0 for now since models are empty files)
-        today_appointments = 0
-        today_revenue = 0.0
+        # 6. Today's Appointments & Revenue
+        from datetime import time as dt_time
+        today_start = datetime.combine(date.today(), dt_time.min).replace(tzinfo=timezone.utc)
+        today_end = datetime.combine(date.today(), dt_time.max).replace(tzinfo=timezone.utc)
+        
+        from app.models.appointment import Appointment
+        from app.models.invoice import Invoice
+        from app.models.consultation import Consultation
+
+        today_appts_stmt = select(func.count(Appointment.id)).where(
+            Appointment.branch_id == branch_id,
+            Appointment.appointment_datetime >= today_start,
+            Appointment.appointment_datetime <= today_end
+        )
+        today_appointments = (await self.db.execute(today_appts_stmt)).scalar_one() or 0
+
+        today_revenue_stmt = select(func.coalesce(func.sum(Invoice.grand_total), 0)).join(
+            Consultation, Consultation.id == Invoice.consultation_id
+        ).where(
+            Consultation.branch_id == branch_id,
+            Invoice.created_at >= today_start,
+            Invoice.created_at <= today_end
+        )
+        today_revenue = float((await self.db.execute(today_revenue_stmt)).scalar_one() or 0.0)
 
         return {
             "branch": branch.name,
@@ -180,8 +201,10 @@ class BranchService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_branch_appointments(self, branch_id: uuid.UUID) -> list[Any]:
-        """Fetch all appointments for this branch (returns empty list for now)."""
+    async def get_branch_appointments(self, branch_id: uuid.UUID) -> list[Appointment]:
+        """Fetch all appointments for this branch."""
         await self.get_branch(branch_id)
-        # Placeholder until Appointment model is defined in Phase 2
-        return []
+        from app.models.appointment import Appointment
+        stmt = select(Appointment).where(Appointment.branch_id == branch_id)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())

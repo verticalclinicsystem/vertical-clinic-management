@@ -1,6 +1,7 @@
 import pytest
 import uuid
 from httpx import AsyncClient
+from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -212,4 +213,73 @@ async def test_automated_notifications_triggers(client: AsyncClient, db_session:
     )
     noti_res = await db_session.execute(stmt)
     assert noti_res.scalars().first() is not None
+
+
+@pytest.mark.asyncio
+async def test_doctor_delay_broadcast(client: AsyncClient, db_session: AsyncSession):
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "receptionist@verticalclinic.com", "password": "Receptionist@123"},
+    )
+    token = login_res.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Get a doctor
+    from app.models.doctor import Doctor
+    doc_res = await db_session.execute(select(Doctor))
+    doctor = doc_res.scalars().first()
+    assert doctor is not None
+
+    # 3. Call delay broadcast endpoint
+    delay_res = await client.post(
+        f"/api/v1/appointments/doctor/{doctor.id}/delay",
+        json={"delay_minutes": 45},
+        headers=headers
+    )
+    assert delay_res.status_code == 200
+    res_data = delay_res.json()
+    assert res_data["success"] is True
+    assert "notified_count" in res_data["data"]
+
+
+@pytest.mark.asyncio
+async def test_queue_token_assignment(client: AsyncClient, db_session: AsyncSession):
+    # 1. Login as patient
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token = login_res.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Get a doctor and branch
+    docs_res = await client.get("/api/v1/doctors/")
+    doctor = docs_res.json()["data"]["items"][0]
+    doctor_id = doctor["id"]
+    branch_id = doctor["branch_id"]
+
+    # Clear slots for doctor to bypass slot constraints
+    from tests.test_appointments import clear_doctor_slots, get_next_weekday_slot
+    await clear_doctor_slots(client, doctor)
+
+    # 3. Create appointment
+    booking_time = get_next_weekday_slot(hour_offset=8)
+    booking_res = await client.post(
+        "/api/v1/appointments/",
+        json={
+            "doctor_id": doctor_id,
+            "branch_id": branch_id,
+            "appointment_datetime": booking_time.isoformat(),
+            "treatment_type": "Checkup",
+            "consultation_type": "in_person",
+            "notes": "Regular dental cleaning"
+        },
+        headers=headers
+    )
+    assert booking_res.status_code == 201
+    booking_json = booking_res.json()
+    assert booking_json["success"] is True
+    assert booking_json["data"]["token_number"] is not None
+    assert booking_json["data"]["token_number"] >= 1
+
 

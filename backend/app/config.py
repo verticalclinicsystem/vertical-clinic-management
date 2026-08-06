@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     FROM_EMAIL: str
     FROM_NAME: str
+    MAILGUN_API_KEY: str = ""
+    MAILGUN_DOMAIN: str = ""
 
     # ── SMS ──────────────────────────────────────────────────────────────────
     SMS_PROVIDER: Literal["twilio", "fast2sms"]
