@@ -164,7 +164,7 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
     for data in branches_data:
         branch = Branch(**data)
         db.add(branch)
-        branch_ids[data["code"]] = data["id"]
+        branch_ids[str(data["code"])] = data["id"]
 
     await db.flush()
     logger.info(f"  ✅ {len(branches_data)} branches created")

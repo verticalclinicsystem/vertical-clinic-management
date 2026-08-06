@@ -366,40 +366,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    setIsUploadingAvatar(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('report_type', 'Profile Picture');
-      
-      const res = await api.post('/medical-reports/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      
-      const fileUrl = res.data?.data?.file_url || res.data?.file_url || '';
-      if (fileUrl) {
-        // Save immediately to user profile
-        await api.patch('/auth/profile', {
-          avatar_url: fileUrl
-        });
-        
-        setProfileForm((prev: any) => ({ ...prev, avatar_url: fileUrl }));
-        showToast('Profile picture updated successfully!', 'success');
-        fetchDashboard();
-      } else {
-        showToast('Failed to get file URL from upload response.', 'error');
-      }
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to upload profile picture.', 'error');
-    } finally {
-      setIsUploadingAvatar(false);
-    }
-  };
 
   const parseMedicalAlerts = (patientDetails: any) => {
     let chronicDiseases = 'None';
@@ -598,6 +565,53 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       showToast(err.response?.data?.message || 'Error submitting request.', 'error');
     } finally {
       setSubmittingRequest(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setIsUploadingAvatar(true);
+      showToast('Uploading profile picture...', 'info');
+      const res = await api.post('/users/me/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data?.success) {
+        const newAvatarUrl = res.data?.data?.avatar_url;
+        showToast('Profile picture uploaded successfully!', 'success');
+        if (newAvatarUrl) {
+          setProfileForm((prev: any) => ({ ...prev, avatar_url: newAvatarUrl }));
+        }
+        fetchDashboard();
+      }
+    } catch (err: any) {
+      console.error("Avatar upload failed", err);
+      showToast(err.response?.data?.message || 'Failed to upload photo.', 'error');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      setIsUploadingAvatar(true);
+      showToast('Removing profile picture...', 'info');
+      const res = await api.delete('/users/me/avatar');
+      if (res.data?.success) {
+        showToast('Profile picture removed.', 'success');
+        setProfileForm((prev: any) => ({ ...prev, avatar_url: '' }));
+        fetchDashboard();
+      }
+    } catch (err: any) {
+      console.error("Failed to remove avatar", err);
+      showToast(err.response?.data?.message || 'Failed to remove photo.', 'error');
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -932,9 +946,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         notes: p.notes
       }));
 
+      // Auto-determine overall plan status based on procedures completion
+      const allCompleted = updatedProcedures.length > 0 && updatedProcedures.every((p: any) => p.status === 'completed');
+      const newPlanStatus = allCompleted ? 'completed' : 'active';
+
       const payload = {
         title: activePlan.title,
-        status: activePlan.status,
+        status: newPlanStatus,
         total_cost: activePlan.total_cost,
         notes: activePlan.notes,
         procedures: updatedProcedures
@@ -943,7 +961,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       const res = await api.put(`/treatment-plans/${activePlan.id}`, payload);
       if (res.data && res.data.success) {
         setActivePlan(res.data.data);
-        showToast('Procedure status updated.');
+        showToast(allCompleted ? 'Treatment plan completed 100%! Status updated to COMPLETED 🎉' : 'Procedure status updated.');
       }
     } catch (err) {
       console.error('Error updating procedure status:', err);
@@ -2549,7 +2567,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         )}
                       </div>
 
-                      <div style={{ width: '100%' }}>
+                      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <label
                           htmlFor="doctor-avatar-upload"
                           style={{
@@ -2569,8 +2587,34 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             transition: 'all 0.2s'
                           }}
                         >
-                          <Camera size={14} /> Upload Photo
+                          <Camera size={14} /> {profileForm.avatar_url ? 'Change Photo' : 'Upload Photo'}
                         </label>
+
+                        {profileForm.avatar_url && (
+                          <button
+                            type="button"
+                            onClick={handleRemoveAvatar}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              width: '100%',
+                              padding: '7px 12px',
+                              backgroundColor: '#fff1f2',
+                              border: '1px solid #fecdd3',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              color: '#e11d48',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <Trash2 size={13} /> Remove Photo
+                          </button>
+                        )}
+
                         <input
                           type="file"
                           id="doctor-avatar-upload"
@@ -2578,7 +2622,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           onChange={handleAvatarUpload}
                           style={{ display: 'none' }}
                         />
-                        <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: 'var(--doc-text-muted)' }}>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.72rem', color: 'var(--doc-text-muted)' }}>
                           Supports JPG, PNG (Max 5MB)
                         </p>
                       </div>
@@ -3033,7 +3077,20 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                           <div>
                             <h3 style={{ fontSize: '1.1rem', fontWeight: '800', margin: 0, color: 'var(--doc-primary)' }}>{activePlan.title}</h3>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)' }}>Status: <strong style={{ color: '#0d9488' }}>{activePlan.status.toUpperCase()}</strong></span>
+                             <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                               Status: 
+                               <strong style={{ 
+                                 color: activePlan.status?.toLowerCase() === 'completed' ? '#047857' : activePlan.status?.toLowerCase() === 'cancelled' ? '#b91c1c' : '#0d9488',
+                                 backgroundColor: activePlan.status?.toLowerCase() === 'completed' ? '#d1fae5' : activePlan.status?.toLowerCase() === 'cancelled' ? '#fee2e2' : '#ccfbf1',
+                                 padding: '2px 8px',
+                                 borderRadius: '4px',
+                                 fontSize: '0.75rem',
+                                 fontWeight: 800,
+                                 letterSpacing: '0.5px'
+                               }}>
+                                 {activePlan.status?.toLowerCase() === 'completed' ? '✓ COMPLETED' : activePlan.status?.toUpperCase()}
+                               </strong>
+                             </span>
                           </div>
                           <div style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--doc-text-dark)' }}>
                             Total: ₹{activePlan.total_cost}
@@ -5144,7 +5201,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           position: 'fixed',
           bottom: '24px',
           right: '24px',
-          backgroundColor: toast.type === 'success' ? '#0f766e' : '#ef4444',
+          backgroundColor: toast.type === 'success' ? '#0f766e' : toast.type === 'info' ? '#0284c7' : '#ef4444',
           color: '#ffffff',
           padding: '12px 24px',
           borderRadius: '8px',
@@ -5156,7 +5213,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           fontWeight: 600,
           fontSize: '0.9rem'
         }}>
-          {toast.type === 'success' ? <CheckCircle size={18} /> : <CheckCircle size={18} />}
+          {toast.type === 'success' ? <CheckCircle size={18} /> : toast.type === 'info' ? <Sparkles size={18} /> : <AlertTriangle size={18} />}
           {toast.message}
         </div>
       )}

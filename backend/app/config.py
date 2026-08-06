@@ -63,9 +63,13 @@ class Settings(BaseSettings):
     STRIPE_CURRENCY: str
 
     # ── File Storage ─────────────────────────────────────────────────────────
-    STORAGE_BACKEND: Literal["local", "s3"]
+    STORAGE_BACKEND: Literal["local", "s3", "cloudinary"]
     UPLOAD_DIR: str
     MAX_UPLOAD_SIZE_MB: int
+
+    CLOUDINARY_CLOUD_NAME: str = "ohlztt2b"
+    CLOUDINARY_API_KEY: str = "822696216758164"
+    CLOUDINARY_API_SECRET: str = "7Q1IvXRvLDFBsYOkzJ_U_UxeRKU"
 
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
