@@ -690,8 +690,16 @@ async def get_active_sessions(
     """List active staff login sessions with last active time and token status."""
     _require_admin(current_user)
 
+    now = datetime.now(timezone.utc)
+    twenty_four_hours_ago = now - timedelta(hours=24)
+
     users_res = await db.execute(
-        select(User).where(User.role != UserRole.PATIENT).order_by(User.last_login_at.desc().nullslast())
+        select(User).where(
+            User.role != UserRole.PATIENT,
+            User.last_login_at.isnot(None),
+            User.last_login_at >= twenty_four_hours_ago,
+            User.is_active == True
+        ).order_by(User.last_login_at.desc())
     )
     users = users_res.scalars().all()
 
@@ -713,7 +721,7 @@ async def get_active_sessions(
             "last_login_at": u.last_login_at.strftime("%Y-%m-%d %I:%M %p") if u.last_login_at else "Never",
             "token_version": u.token_version,
             "is_active": u.is_active,
-            "status": "Active Session" if u.last_login_at else "Offline"
+            "status": "Active Session"
         })
 
     return ApiResponse.success(data=sessions)
@@ -735,6 +743,7 @@ async def revoke_user_session(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.token_version += 1
+    user.last_login_at = None
     await db.commit()
 
     return ApiResponse.success(message=f"Session revoked and user {user.full_name} forced logout successfully!")

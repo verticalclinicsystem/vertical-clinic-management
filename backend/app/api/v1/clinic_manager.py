@@ -62,7 +62,17 @@ async def get_dashboard_overview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Return operational stats (appointments today, active doctors, waiting queue)."""
+    """
+    **Operational Dashboard Metrics Endpoint**
+
+    * **🔐 Allowed Roles:** `CLINIC_MANAGER`, `ADMIN`
+    * **📥 Parameters:** `branch_id` (Optional UUID) — Filter metrics for a specific clinic branch. Defaults to logged-in user's assigned branch.
+    * **📤 Return Response Data:**
+      - `appointments_today`: Count of total scheduled visits for today.
+      - `active_doctors`: Count of doctors currently on duty.
+      - `patient_queue`: List of patients in Waiting / In-Consultation queue.
+      - `pending_approvals`: Count of pending schedule and billing approval requests.
+    """
     target_branch = branch_id or current_user.branch_id
     service = ClinicManagerService(db)
     return await service.get_operational_dashboard(branch_id=target_branch)
@@ -79,7 +89,16 @@ async def onboard_doctor(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Create a new Doctor user, profile, and default schedule slots."""
+    """
+    **Doctor Onboarding Endpoint**
+
+    * **🔐 Allowed Roles:** `CLINIC_MANAGER`, `ADMIN`
+    * **📤 Return Response Data:**
+      - `doctor_id`: Generated UUID of the newly created doctor.
+      - `email`: Registered doctor email.
+      - `full_name`: Full name of doctor.
+      - `status`: Account status (`active`).
+    """
     branch = req.branch_id or current_user.branch_id
     service = ClinicManagerService(db)
     return await service.onboard_doctor(
@@ -111,7 +130,12 @@ async def onboard_receptionist(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Create a new Receptionist user & profile."""
+    """
+    **Receptionist Onboarding Endpoint**
+
+    * **🔐 Allowed Roles:** `CLINIC_MANAGER`, `ADMIN`
+    * **📤 Return Response Data:** Created user profile details.
+    """
     branch = req.branch_id or current_user.branch_id
     service = ClinicManagerService(db)
     return await service.onboard_receptionist(
@@ -135,7 +159,12 @@ async def get_branch_staff(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """List branch staff."""
+    """
+    **Branch Staff Listing Endpoint**
+
+    * **🔐 Allowed Roles:** `CLINIC_MANAGER`, `ADMIN`
+    * **📤 Return Response Data:** Lists of doctors, receptionists, and pharmacists registered under the specified branch.
+    """
     target_branch = branch_id or current_user.branch_id
     service = ClinicManagerService(db)
     return await service.get_branch_staff(branch_id=target_branch)
@@ -150,7 +179,12 @@ async def get_schedule_requests(
     status_filter: Optional[str] = Query(None, alias="status"),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """List schedule change requests."""
+    """
+    **Schedule Requests Endpoint**
+
+    * **🔐 Allowed Roles:** `CLINIC_MANAGER`, `ADMIN`
+    * **📤 Return Response Data:** Pending/Approved doctor leave and schedule modification requests.
+    """
     service = ClinicManagerService(db)
     return await service.get_schedule_requests(status=status_filter)
 

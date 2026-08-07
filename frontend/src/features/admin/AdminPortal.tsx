@@ -2327,45 +2327,53 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {sessionsData.map((s: any) => (
-                        <tr key={s.id}>
-                          <td style={{ fontWeight: 600 }}>
-                            {s.full_name}
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400 }}>{s.email}</div>
-                          </td>
-                          <td style={{ textTransform: 'capitalize' }}>
-                            <span style={{ padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', fontSize: '0.78rem', fontWeight: 600 }}>{s.role}</span>
-                          </td>
-                          <td>{s.branch_name}</td>
-                          <td>{s.last_login_at}</td>
-                          <td>v{s.token_version}</td>
-                          <td>
-                            <span className={`admin-status-badge ${s.is_active ? 'active' : 'suspended'}`}>
-                              {s.is_active ? 'Active' : 'Deactivated'}
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              onClick={() => handleForceLogout(s.id, s.full_name)}
-                              style={{
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                border: '1px solid #ef4444',
-                                background: '#fef2f2',
-                                color: '#dc2626',
-                                fontSize: '0.78rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              🔒 Force Logout
-                            </button>
+                      {sessionsData.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                            No active staff login sessions currently detected.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        sessionsData.map((s: any) => (
+                          <tr key={s.id}>
+                            <td style={{ fontWeight: 600 }}>
+                              {s.full_name}
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400 }}>{s.email}</div>
+                            </td>
+                            <td style={{ textTransform: 'capitalize' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', fontSize: '0.78rem', fontWeight: 600 }}>{s.role}</span>
+                            </td>
+                            <td>{s.branch_name}</td>
+                            <td>{s.last_login_at}</td>
+                            <td>v{s.token_version}</td>
+                            <td>
+                              <span className={`admin-status-badge ${s.is_active ? 'active' : 'suspended'}`}>
+                                {s.is_active ? 'Active' : 'Deactivated'}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => handleForceLogout(s.id, s.full_name)}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #ef4444',
+                                  background: '#fef2f2',
+                                  color: '#dc2626',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                🔒 Force Logout
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

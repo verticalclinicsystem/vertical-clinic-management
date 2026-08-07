@@ -50,6 +50,9 @@ class AppointmentService:
         # Fetch doctor to check availability metadata (leaves, lunch breaks, teleconsultation windows)
         doctor = await self.doctor_repo.get_by_id(doctor_id)
         
+        if doctor and not doctor.is_available:
+            return [] # Doctor is off duty, no slots available
+
         lunch_start = None
         lunch_end = None
         tele_start = None
