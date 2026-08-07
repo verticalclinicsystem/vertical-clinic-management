@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   LogOut,
-  User
+  User,
+  Edit3
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
@@ -637,6 +638,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [selectedPrescription, setSelectedPrescription] = useState<any>(null);
   const [prescriptionSearch, setPrescriptionSearch] = useState<string>('');
   const [loadingPrescriptions, setLoadingPrescriptions] = useState<boolean>(false);
+  const [isEditPrescriptionModalOpen, setIsEditPrescriptionModalOpen] = useState<boolean>(false);
+  const [editingPrescriptionId, setEditingPrescriptionId] = useState<string | null>(null);
+  const [editingPrescriptionNotes, setEditingPrescriptionNotes] = useState<string>('');
+  const [editingPrescriptionItems, setEditingPrescriptionItems] = useState<any[]>([]);
+  const [savingEditPrescription, setSavingEditPrescription] = useState<boolean>(false);
 
   // Treatment Plans Tab states
   const [allPatients, setAllPatients] = useState<any[]>([]);
@@ -1293,6 +1299,86 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     const updated = [...prescriptionItems];
     updated[index][field] = value;
     setPrescriptionItems(updated);
+  };
+
+  // Edit Existing Prescription Handlers
+  const handleOpenEditPrescription = (presc: any) => {
+    setEditingPrescriptionId(presc.id);
+    setEditingPrescriptionNotes(presc.notes || '');
+    setEditingPrescriptionItems(
+      (presc.items || []).map((item: any) => ({
+        medicine_name: item.medicine_name || '',
+        dosage: item.dosage || '1-0-1',
+        duration: item.duration || '5 days',
+        instructions: item.instructions || 'Take after food',
+        quantity: item.quantity || 10,
+      }))
+    );
+    setIsEditPrescriptionModalOpen(true);
+  };
+
+  const addEditPrescriptionItem = () => {
+    setEditingPrescriptionItems([
+      ...editingPrescriptionItems,
+      { medicine_name: '', dosage: '1-0-1', duration: '5 days', instructions: 'Take after food', quantity: 10 }
+    ]);
+  };
+
+  const removeEditPrescriptionItem = (index: number) => {
+    const updated = [...editingPrescriptionItems];
+    updated.splice(index, 1);
+    setEditingPrescriptionItems(updated);
+  };
+
+  const updateEditPrescriptionItem = (index: number, field: string, value: any) => {
+    const updated = [...editingPrescriptionItems];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditingPrescriptionItems(updated);
+  };
+
+  const handleSaveEditPrescription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPrescriptionId) return;
+
+    if (editingPrescriptionItems.length === 0) {
+      showToast('Prescription must contain at least one medicine item.', 'error');
+      return;
+    }
+
+    setSavingEditPrescription(true);
+    try {
+      const payload = {
+        notes: editingPrescriptionNotes,
+        items: editingPrescriptionItems.map((item) => ({
+          medicine_name: item.medicine_name,
+          dosage: item.dosage,
+          duration: item.duration,
+          instructions: item.instructions,
+          quantity: item.quantity ? parseInt(String(item.quantity), 10) : 10,
+        })),
+      };
+      const res = await api.put(`/prescriptions/${editingPrescriptionId}`, payload);
+      if (res.data && res.data.success) {
+        showToast('Prescription updated successfully!', 'success');
+        const updatedPresc = res.data.data;
+        
+        setSelectedPrescription((prev: any) => ({
+          ...prev,
+          ...updatedPresc,
+          items: updatedPresc.items || payload.items,
+          notes: updatedPresc.notes,
+        }));
+        setAllPrescriptions((prev: any[]) =>
+          prev.map((p) => (p.id === editingPrescriptionId ? { ...p, ...updatedPresc, patient_name: p.patient_name } : p))
+        );
+        setIsEditPrescriptionModalOpen(false);
+      }
+    } catch (err: any) {
+      console.error('Error updating prescription:', err);
+      showToast(err.response?.data?.message || 'Failed to update prescription.', 'error');
+    } finally {
+      setSavingEditPrescription(false);
+    }
   };
 
   // Save Consultation and Prescriptions
@@ -2969,6 +3055,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         </div>
 
                         <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+                          <button 
+                            onClick={() => handleOpenEditPrescription(selectedPrescription)} 
+                            className="doc-btn-secondary" 
+                            style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#f0fdf4', color: '#16a34a', borderColor: '#bbf7d0', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            <Edit3 size={14} /> Edit Prescription
+                          </button>
                           <button onClick={() => downloadPdf(selectedPrescription.id)} className="doc-btn-primary" style={{ flex: 1, padding: '8px', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
                             <FileText size={14} /> Download PDF
                           </button>
@@ -5135,6 +5228,147 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 Close EMR File
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT PRESCRIPTION MODAL ── */}
+      {isEditPrescriptionModalOpen && (
+        <div className="doc-modal-overlay" style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px'
+        }}>
+          <div className="doc-modal-container" style={{
+            backgroundColor: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '750px',
+            maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#e6fcf5', color: '#0d9488', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Edit Prescription Sheet</h3>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>Modify prescribed medications, dosage, and doctor instructions</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsEditPrescriptionModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#64748b' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPrescription} style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Medications List</label>
+                  <button
+                    type="button"
+                    onClick={addEditPrescriptionItem}
+                    className="doc-btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Plus size={14} /> Add Medicine
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {editingPrescriptionItems.map((item, idx) => (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 2fr 36px', gap: '10px', alignItems: 'center', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Medicine Name</label>
+                        <input
+                          type="text"
+                          className="doc-input"
+                          style={{ fontSize: '0.8rem', height: '34px', margin: 0 }}
+                          placeholder="e.g. Paracetamol 500mg"
+                          value={item.medicine_name}
+                          onChange={(e) => updateEditPrescriptionItem(idx, 'medicine_name', e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Dosage</label>
+                        <input
+                          type="text"
+                          className="doc-input"
+                          style={{ fontSize: '0.8rem', height: '34px', margin: 0 }}
+                          placeholder="1-0-1"
+                          value={item.dosage}
+                          onChange={(e) => updateEditPrescriptionItem(idx, 'dosage', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Duration</label>
+                        <input
+                          type="text"
+                          className="doc-input"
+                          style={{ fontSize: '0.8rem', height: '34px', margin: 0 }}
+                          placeholder="5 days"
+                          value={item.duration}
+                          onChange={(e) => updateEditPrescriptionItem(idx, 'duration', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Instructions</label>
+                        <input
+                          type="text"
+                          className="doc-input"
+                          style={{ fontSize: '0.8rem', height: '34px', margin: 0 }}
+                          placeholder="After food"
+                          value={item.instructions}
+                          onChange={(e) => updateEditPrescriptionItem(idx, 'instructions', e.target.value)}
+                        />
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => removeEditPrescriptionItem(idx)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginTop: '16px' }}
+                          title="Remove medicine"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>Doctor's Advice / Notes</label>
+                <textarea
+                  className="doc-input"
+                  rows={3}
+                  style={{ width: '100%', fontSize: '0.85rem', padding: '10px' }}
+                  placeholder="Add general advice or instructions..."
+                  value={editingPrescriptionNotes}
+                  onChange={(e) => setEditingPrescriptionNotes(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  className="doc-btn-secondary"
+                  onClick={() => setIsEditPrescriptionModalOpen(false)}
+                  style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="doc-btn-primary"
+                  disabled={savingEditPrescription}
+                  style={{ padding: '8px 20px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {savingEditPrescription ? 'Saving Changes...' : 'Save Prescription'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

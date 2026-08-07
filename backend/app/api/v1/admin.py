@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.models.patient import Patient
@@ -18,6 +19,8 @@ from app.models.inventory import Medicine
 from app.models.branch import Branch
 from app.models.consultation import Consultation
 from app.models.invoice import Invoice
+from app.models.system_setting import SystemSetting
+from app.models.attendance import Attendance
 from app.api.deps import get_current_active_user
 from app.utils.response import ApiResponse
 
@@ -481,6 +484,96 @@ async def get_admin_reports(
             for a in appts
         ]
 
+    elif report_type == "doctor_revenue":
+        doc_q = select(User).where(User.role == "doctor")
+        doc_res = await db.execute(doc_q)
+        doctors = doc_res.scalars().all()
+
+        total_rev = 0.0
+        rows = []
+        for d in doctors:
+            doc_profile_res = await db.execute(select(Doctor).where(Doctor.user_id == d.id))
+            doc_prof = doc_profile_res.scalar_one_or_none()
+            if not doc_prof:
+                continue
+
+            appts_res = await db.execute(
+                select(Appointment).where(Appointment.doctor_id == doc_prof.id, Appointment.status == "completed")
+            )
+            completed_appts = appts_res.scalars().all()
+            doc_rev = len(completed_appts) * float(doc_prof.consultation_fee or 500.0)
+            total_rev += doc_rev
+
+            rows.append({
+                "id": str(d.id),
+                "doctor_name": d.full_name,
+                "specialization": doc_prof.specialization or "General Dentist",
+                "completed_consultations": len(completed_appts),
+                "consultation_fee": float(doc_prof.consultation_fee or 500.0),
+                "total_revenue": doc_rev,
+                "status": "Active" if d.is_active else "Inactive"
+            })
+
+        report_data["summary"] = {
+            "total_doctors": len(doctors),
+            "total_revenue": round(total_rev, 2),
+            "avg_revenue_per_doctor": round(total_rev / len(doctors), 2) if len(doctors) > 0 else 0.0,
+        }
+        report_data["rows"] = rows
+
+    elif report_type == "staff_performance":
+        staff_res = await db.execute(select(User).where(User.role.in_(["doctor", "receptionist", "pharmacist", "clinic_manager"])))
+        staff_members = staff_res.scalars().all()
+        rows = []
+        for s in staff_members:
+            br_name = "Global / Central"
+            if s.branch_id:
+                br_res = await db.execute(select(Branch).where(Branch.id == s.branch_id))
+                br = br_res.scalar_one_or_none()
+                if br:
+                    br_name = br.name
+
+            rows.append({
+                "id": str(s.id),
+                "staff_name": s.full_name,
+                "role": s.role,
+                "branch_name": br_name,
+                "last_login": s.last_login_at.strftime("%Y-%m-%d %I:%M %p") if s.last_login_at else "Never",
+                "status": "Active" if s.is_active else "Suspended"
+            })
+
+        report_data["summary"] = {
+            "total_staff": len(staff_members),
+            "active_staff": sum(1 for s in staff_members if s.is_active)
+        }
+        report_data["rows"] = rows
+
+    elif report_type == "pharmacy_branch":
+        br_res = await db.execute(select(Branch))
+        branches_list = br_res.scalars().all()
+
+        med_res = await db.execute(select(Medicine).where(Medicine.is_active == True))
+        medicines = med_res.scalars().all()
+        total_valuation = sum(m.stock_qty * float(m.unit_price) for m in medicines)
+
+        rows = []
+        for br in branches_list:
+            br_val = round(total_valuation / (len(branches_list) or 1), 2)
+            rows.append({
+                "id": str(br.id),
+                "branch_name": br.name,
+                "city": br.city,
+                "skus_available": len(medicines),
+                "stock_valuation": br_val,
+                "status": "Active" if br.is_active else "Inactive"
+            })
+
+        report_data["summary"] = {
+            "total_branches": len(branches_list),
+            "total_valuation": round(total_valuation, 2)
+        }
+        report_data["rows"] = rows
+
     else:  # inventory report
         med_res = await db.execute(select(Medicine).where(Medicine.is_active == True).order_by(Medicine.name))
         medicines = med_res.scalars().all()
@@ -509,4 +602,217 @@ async def get_admin_reports(
 
     return ApiResponse.success(data=report_data)
 
+
+# ── GET & PUT /admin/settings ──────────────────────────────────────────────────
+
+class SettingsUpdateRequest(BaseModel):
+    gst_rate: float | None = None
+    default_teleconsultation_fee: float | None = None
+    currency_symbol: str | None = "₹"
+    clinic_name: str | None = "Vertical Clinic"
+
+
+@router.get("/settings", summary="Get system settings")
+async def get_system_settings(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Fetch system settings with fallback defaults."""
+    _require_admin(current_user)
+
+    settings_res = await db.execute(select(SystemSetting))
+    settings_items = settings_res.scalars().all()
+
+    settings_dict = {
+        "gst_rate": 18.0,
+        "default_teleconsultation_fee": 500.0,
+        "currency_symbol": "₹",
+        "clinic_name": "Vertical Clinic",
+    }
+
+    for item in settings_items:
+        if item.key == "gst_rate":
+            try:
+                settings_dict["gst_rate"] = float(item.value)
+            except ValueError:
+                pass
+        elif item.key == "default_teleconsultation_fee":
+            try:
+                settings_dict["default_teleconsultation_fee"] = float(item.value)
+            except ValueError:
+                pass
+        else:
+            settings_dict[item.key] = item.value
+
+    return ApiResponse.success(data=settings_dict)
+
+
+@router.put("/settings", summary="Update system settings")
+async def update_system_settings(
+    req: SettingsUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Update system settings in the database."""
+    _require_admin(current_user)
+
+    updates: dict[str, str] = {}
+    if req.gst_rate is not None:
+        updates["gst_rate"] = str(req.gst_rate)
+    if req.default_teleconsultation_fee is not None:
+        updates["default_teleconsultation_fee"] = str(req.default_teleconsultation_fee)
+    if req.currency_symbol is not None:
+        updates["currency_symbol"] = req.currency_symbol
+    if req.clinic_name is not None:
+        updates["clinic_name"] = req.clinic_name
+
+    for key, val in updates.items():
+        res = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+        setting = res.scalar_one_or_none()
+        if setting:
+            setting.value = val
+        else:
+            setting = SystemSetting(key=key, value=val)
+            db.add(setting)
+
+    await db.commit()
+
+    return ApiResponse.success(message="System settings updated successfully", data=updates)
+
+
+# ── GET & POST /admin/sessions ───────────────────────────────────────────────
+
+@router.get("/sessions", summary="Get active staff sessions & login history")
+async def get_active_sessions(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """List active staff login sessions with last active time and token status."""
+    _require_admin(current_user)
+
+    users_res = await db.execute(
+        select(User).where(User.role != UserRole.PATIENT).order_by(User.last_login_at.desc().nullslast())
+    )
+    users = users_res.scalars().all()
+
+    sessions = []
+    for u in users:
+        br_name = "Central / All Branches"
+        if u.branch_id:
+            b_res = await db.execute(select(Branch).where(Branch.id == u.branch_id))
+            b = b_res.scalar_one_or_none()
+            if b:
+                br_name = b.name
+
+        sessions.append({
+            "id": str(u.id),
+            "full_name": u.full_name,
+            "email": u.email,
+            "role": u.role,
+            "branch_name": br_name,
+            "last_login_at": u.last_login_at.strftime("%Y-%m-%d %I:%M %p") if u.last_login_at else "Never",
+            "token_version": u.token_version,
+            "is_active": u.is_active,
+            "status": "Active Session" if u.last_login_at else "Offline"
+        })
+
+    return ApiResponse.success(data=sessions)
+
+
+@router.post("/sessions/{user_id}/revoke", summary="Force logout / revoke session")
+async def revoke_user_session(
+    user_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Increment user token_version to force logout active JWT session."""
+    _require_admin(current_user)
+
+    user_res = await db.execute(select(User).where(User.id == user_id))
+    user = user_res.scalar_one_or_none()
+    if not user:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.token_version += 1
+    await db.commit()
+
+    return ApiResponse.success(message=f"Session revoked and user {user.full_name} forced logout successfully!")
+
+
+# ── GET /admin/attendance ───────────────────────────────────────────────────
+
+@router.get("/attendance", summary="Get staff attendance logs")
+async def get_staff_attendance(
+    attendance_date: Annotated[str | None, Query(description="Date (YYYY-MM-DD)")] = None,
+    branch_id: Annotated[UUID | None, Query(description="Branch ID filter")] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Fetch attendance list and summary stats for today or selected date."""
+    _require_admin(current_user)
+
+    from datetime import date as date_cls
+    target_date = date_cls.today()
+    if attendance_date and attendance_date.strip():
+        try:
+            target_date = datetime.strptime(attendance_date, "%Y-%m-%d").date()
+        except Exception:
+            pass
+
+    att_q = select(Attendance).where(Attendance.date == target_date)
+    if branch_id:
+        att_q = att_q.where(Attendance.branch_id == branch_id)
+
+    att_res = await db.execute(att_q.order_by(Attendance.punch_in.desc()))
+    records = att_res.scalars().all()
+
+    staff_q = select(User).where(User.role.in_(["doctor", "receptionist", "pharmacist", "clinic_manager"]))
+    if branch_id:
+        staff_q = staff_q.where(User.branch_id == branch_id)
+    all_staff_res = await db.execute(staff_q)
+    all_staff = all_staff_res.scalars().all()
+
+    present_count = sum(1 for r in records if r.status in ("present", "late"))
+    late_count = sum(1 for r in records if r.status == "late")
+    leave_count = sum(1 for r in records if r.status == "on_leave")
+    absent_count = max(0, len(all_staff) - present_count - leave_count)
+
+    detail_rows = []
+    for r in records:
+        u_res = await db.execute(select(User).where(User.id == r.user_id))
+        u = u_res.scalar_one_or_none()
+        u_name = u.full_name if u else "Staff Member"
+        u_role = u.role if u else "staff"
+
+        br_name = "Central Branch"
+        if r.branch_id:
+            b_res = await db.execute(select(Branch).where(Branch.id == r.branch_id))
+            b = b_res.scalar_one_or_none()
+            if b:
+                br_name = b.name
+
+        detail_rows.append({
+            "id": str(r.id),
+            "staff_name": u_name,
+            "role": u_role,
+            "branch_name": br_name,
+            "date": r.date.strftime("%Y-%m-%d"),
+            "punch_in": r.punch_in.strftime("%I:%M %p") if r.punch_in else "—",
+            "punch_out": r.punch_out.strftime("%I:%M %p") if r.punch_out else "Active Shift",
+            "status": r.status.upper(),
+            "notes": r.notes or "Punched in via Portal"
+        })
+
+    return ApiResponse.success(data={
+        "summary": {
+            "date": target_date.strftime("%Y-%m-%d"),
+            "total_staff": len(all_staff),
+            "present": present_count,
+            "late": late_count,
+            "on_leave": leave_count,
+            "absent": absent_count
+        },
+        "records": detail_rows
+    })
 

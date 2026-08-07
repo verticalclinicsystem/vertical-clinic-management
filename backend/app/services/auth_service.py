@@ -210,6 +210,35 @@ class AuthService:
         # — Record last login (repo call) —
         await self.user_repo.update_last_login(user)
 
+        # — Record automated daily attendance punch-in for staff —
+        if user.role in ("doctor", "receptionist", "pharmacist", "clinic_manager", "admin"):
+            try:
+                from datetime import date, datetime, timezone, timedelta
+                today_date = date.today()
+                now_dt = datetime.now(timezone.utc)
+
+                from app.models.attendance import Attendance
+                from sqlalchemy import select
+                att_res = await self.db.execute(
+                    select(Attendance).where(Attendance.user_id == user.id, Attendance.date == today_date)
+                )
+                att_record = att_res.scalar_one_or_none()
+                if not att_record:
+                    ist_now = now_dt.astimezone(timezone(timedelta(hours=5, minutes=30)))
+                    status_str = "late" if (ist_now.hour > 9 or (ist_now.hour == 9 and ist_now.minute > 30)) else "present"
+
+                    new_att = Attendance(
+                        user_id=user.id,
+                        branch_id=user.branch_id,
+                        date=today_date,
+                        punch_in=now_dt,
+                        status=status_str
+                    )
+                    self.db.add(new_att)
+                    await self.db.commit()
+            except Exception as att_err:
+                logger.error(f"Failed to record attendance punch-in: {att_err}")
+
         logger.info(f"User logged in: {user.email} [{user.role}]")
         return _build_token_payload(user)
 
