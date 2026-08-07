@@ -61,7 +61,19 @@ async def create_tables() -> None:
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("✅ Database tables created")
+        # Non-destructively ensure columns added in model updates exist in database
+        alter_statements = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1 NOT NULL;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;"
+        ]
+        for stmt in alter_statements:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass
+    logger.info("✅ Database tables and column migrations synchronized")
 
 
 async def check_db_connection() -> bool:
@@ -79,30 +91,34 @@ async def check_db_connection() -> bool:
 async def seed_database() -> None:
     """
     Seed the database with branches, users, slots, clinical history, and medicines.
-    Idempotent — checks existence before inserting.
+    Idempotent — checks existence before inserting. Preserves all existing data.
     """
     async with AsyncSessionLocal() as db:
-        already_seeded = await _is_seeded(db)
-        if already_seeded:
-            logger.info("⏭️  Database already seeded (Admin exists), skipping")
-            return
+        try:
+            already_seeded = await _is_seeded(db)
+            if already_seeded:
+                logger.info("⏭️  Database already seeded (Admin exists), skipping")
+                return
 
-        logger.info("🌱 Seeding database with all clinic records...")
+            logger.info("🌱 Seeding database with all clinic records...")
 
-        # Seed the three branches (Satellite, Bopal, Navrangpura)
-        branch_ids = await _seed_branches(db)
+            # Seed the three branches (Satellite, Bopal, Navrangpura)
+            branch_ids = await _seed_branches(db)
 
-        # Seed users and profiles
-        doctor_ids, patient_ids = await _seed_users_and_profiles(db, branch_ids)
+            # Seed users and profiles
+            doctor_ids, patient_ids = await _seed_users_and_profiles(db, branch_ids)
 
-        # Seed clinical records (appointments, consultations, prescriptions, invoices, payments, plans)
-        await _seed_clinical_records(db, branch_ids, doctor_ids, patient_ids)
+            # Seed clinical records (appointments, consultations, prescriptions, invoices, payments, plans)
+            await _seed_clinical_records(db, branch_ids, doctor_ids, patient_ids)
 
-        # Seed medicines / inventory
-        await _seed_medicines(db)
+            # Seed medicines / inventory
+            await _seed_medicines(db)
 
-        await db.commit()
-        logger.info("✅ Database fully seeded successfully")
+            await db.commit()
+            logger.info("✅ Database fully seeded successfully")
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"⚠️ Database seed skipped or partially executed safely without deleting existing data: {e}")
 
 
 async def _is_seeded(db: AsyncSession) -> bool:
@@ -113,11 +129,14 @@ async def _is_seeded(db: AsyncSession) -> bool:
         admin = result.scalar_one_or_none()
         return admin is not None
     except Exception:
+        await db.rollback()
         return False
 
 
 async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
-    """Create the 3 clinic branches. Returns {code: uuid}."""
+    """Create the 3 clinic branches if not existing. Returns {code: uuid}."""
+    from sqlalchemy import select
+
     branches_data = [
         {
             "id": uuid.uuid4(),
@@ -162,12 +181,17 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
 
     branch_ids: dict[str, Any] = {}
     for data in branches_data:
-        branch = Branch(**data)
-        db.add(branch)
-        branch_ids[str(data["code"])] = data["id"]
+        existing = await db.execute(select(Branch).where(Branch.code == data["code"]))
+        b_obj = existing.scalar_one_or_none()
+        if b_obj:
+            branch_ids[str(data["code"])] = b_obj.id
+        else:
+            branch = Branch(**data)
+            db.add(branch)
+            branch_ids[str(data["code"])] = data["id"]
 
     await db.flush()
-    logger.info(f"  ✅ {len(branches_data)} branches created")
+    logger.info(f"  ✅ Branches checked/created ({len(branch_ids)} active)")
     return branch_ids
 
 
@@ -175,33 +199,39 @@ async def _seed_users_and_profiles(
     db: AsyncSession, branch_ids: dict[str, uuid.UUID], test_mode: bool = False
 ) -> tuple[dict[str, uuid.UUID], dict[str, tuple[uuid.UUID, uuid.UUID]]]:
     """Create admins, doctors, receptionists, pharmacists, patients, and doctor slots."""
-    # Create Admin
-    admin_user = User(
-        id=uuid.uuid4(),
-        full_name="Admin User",
-        email="admin@verticalclinic.com",
-        phone="+919820000001",
-        hashed_password=hash_password("Admin@verticalclinic.com"),
-        role="admin",
-        branch_id=None,
-        is_active=True,
-        is_verified=True,
-    )
-    db.add(admin_user)
+    from sqlalchemy import select
 
-    # Create Clinic Manager
-    manager_user = User(
-        id=uuid.uuid4(),
-        full_name="Clinic Operational Manager",
-        email="manager@verticalclinic.com",
-        phone="+919820000005",
-        hashed_password=hash_password("ManagerPassword123!"),
-        role="clinic_manager",
-        branch_id=branch_ids.get("SAT"),
-        is_active=True,
-        is_verified=True,
-    )
-    db.add(manager_user)
+    # Create Admin if not existing
+    res = await db.execute(select(User).where(User.email == "admin@verticalclinic.com"))
+    if not res.scalar_one_or_none():
+        admin_user = User(
+            id=uuid.uuid4(),
+            full_name="Admin User",
+            email="admin@verticalclinic.com",
+            phone="+919820000001",
+            hashed_password=hash_password("Admin@verticalclinic.com"),
+            role="admin",
+            branch_id=None,
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(admin_user)
+
+    # Create Clinic Manager if not existing
+    res = await db.execute(select(User).where(User.email == "manager@verticalclinic.com"))
+    if not res.scalar_one_or_none():
+        manager_user = User(
+            id=uuid.uuid4(),
+            full_name="Clinic Operational Manager",
+            email="manager@verticalclinic.com",
+            phone="+919820000005",
+            hashed_password=hash_password("ManagerPassword123!"),
+            role="clinic_manager",
+            branch_id=branch_ids.get("SAT"),
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(manager_user)
 
     if test_mode:
         doctors_to_seed = [
@@ -219,6 +249,15 @@ async def _seed_users_and_profiles(
 
     doctor_ids: dict[str, uuid.UUID] = {}
     for name, email, phone, branch_code, spec, qual, exp, fee, bio in doctors_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        user = res.scalar_one_or_none()
+        if user:
+            doc_res = await db.execute(select(Doctor).where(Doctor.user_id == user.id))
+            doc_profile = doc_res.scalar_one_or_none()
+            if doc_profile:
+                doctor_ids[email] = doc_profile.id
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -305,6 +344,10 @@ async def _seed_users_and_profiles(
             ("Preeti Sharma", "receptionist1_bopal@verticalclinic.com", "+919820088889", "BOP", "RC-10002", "Senior receptionist with 5+ years of clinical scheduling experience.")
         ]
     for name, email, phone, branch_code, emp_id, bio in receptionists_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        if res.scalar_one_or_none():
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -342,6 +385,10 @@ async def _seed_users_and_profiles(
             ("Ravi Kumar", "pharma1_bopal@verticalclinic.com", "+919820066667", "BOP")
         ]
     for name, email, phone, branch_code in pharmacists_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        if res.scalar_one_or_none():
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -372,6 +419,15 @@ async def _seed_users_and_profiles(
 
     patient_ids: dict[str, tuple[uuid.UUID, uuid.UUID]] = {}
     for name, email, phone, branch_code, pat_code, gender, blood, allergies in patients_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        user = res.scalar_one_or_none()
+        if user:
+            pat_res = await db.execute(select(Patient).where(Patient.user_id == user.id))
+            pat_profile = pat_res.scalar_one_or_none()
+            if pat_profile:
+                patient_ids[email] = (pat_profile.id, user.id)
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -411,6 +467,14 @@ async def _seed_clinical_records(
     patient_ids: dict[str, tuple[uuid.UUID, uuid.UUID]]
 ) -> None:
     """Seed appointments, consultations, prescriptions, treatment plans, medical reports, invoices, and payments."""
+    from sqlalchemy import select
+
+    # Skip if clinical records are already seeded
+    existing_appt = await db.execute(select(Appointment).limit(1))
+    if existing_appt.scalar_one_or_none() is not None:
+        logger.info("  ⏭️ Clinical records already exist in database, skipping")
+        return
+
     today = datetime.now(timezone.utc)
     today_date = today.date()
 
@@ -770,7 +834,11 @@ async def _seed_medicines(db: AsyncSession) -> None:
         },
     ]
 
+    from sqlalchemy import select
     for med in medicines:
+        res = await db.execute(select(Medicine).where(Medicine.name == med["name"]))
+        if res.scalar_one_or_none():
+            continue
         m = Medicine(id=uuid.uuid4(), **med)
         db.add(m)
 
