@@ -151,6 +151,31 @@ class PrescriptionService:
                 # If we have stock, reduce it; handle negative limits
                 medicine.stock_qty = max(0, medicine.stock_qty - qty_to_dispense)
                 
+                # Check for low stock notification trigger
+                if medicine.stock_qty <= medicine.reorder_level:
+                    try:
+                        from app.services.notification_service import NotificationService
+                        from app.models.user import User, UserRole
+                        noti_service = NotificationService(self.db)
+
+                        # Broadcast notification to Admins, Clinic Managers, and Pharmacists
+                        users_res = await self.db.execute(
+                            select(User).where(
+                                User.role.in_([UserRole.ADMIN, UserRole.CLINIC_MANAGER, UserRole.PHARMACIST]),
+                                User.is_active == True
+                            )
+                        )
+                        target_users = users_res.scalars().all()
+                        for target_user in target_users:
+                            await noti_service.create_notification(
+                                user_id=target_user.id,
+                                title=f"Low Stock Alert: {medicine.name}",
+                                message=f"Stock for '{medicine.name}' has dropped to {medicine.stock_qty} {medicine.unit} (reorder level: {medicine.reorder_level}). Please initiate reorder.",
+                                type="inventory_alert"
+                            )
+                    except Exception as noti_err:
+                        logger.error(f"Failed to create low stock notification: {noti_err}")
+
                 # Log stock transaction audit trail
                 txn = StockTransaction(
                     medicine_id=medicine.id,
