@@ -157,11 +157,13 @@ async def refresh_token(
 )
 async def logout(
     current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """
-    Stateless logout — the client must discard both tokens.
-    For full token revocation, a Redis blocklist can be added here.
+    Logout user — clear last_login_at and discard session.
     """
+    current_user.last_login_at = None
+    await db.commit()
     return ApiResponse.success(message="Logged out successfully.")
 
 

@@ -3,7 +3,7 @@ import {
   Home, BarChart2, Package, Users, Layers,
   Settings, ArrowLeft, LogOut, Search, Bell, Plus,
   RefreshCw, Edit, X, Calendar, Check, AlertCircle,
-  Eye, EyeOff, Building
+  Eye, EyeOff, Building, Shield, Clock
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './AdminPortal.css';
@@ -163,7 +163,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   }, []);
 
   // ── Reports Analytics System State & Handlers ──
-  const [reportType, setReportType] = useState<'financial' | 'clinical' | 'inventory'>('financial');
+  const [reportType, setReportType] = useState<'financial' | 'doctor_revenue' | 'staff_performance' | 'pharmacy_branch' | 'clinical' | 'inventory'>('financial');
   const [activePreset, setActivePreset] = useState<'today' | '7days' | 'month' | 'all'>('month');
   const [reportStartDate, setReportStartDate] = useState<string>(() => {
     const d = new Date();
@@ -274,7 +274,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       return;
     }
 
-    const titleText = reportType === 'financial' ? 'Financial & Revenue Analytics Report' : reportType === 'clinical' ? 'Patient Visits & Clinical Report' : 'Pharmacy & Inventory Stock Report';
+    const titleText = 
+      reportType === 'financial' ? 'Financial & Revenue Analytics Report' : 
+      reportType === 'doctor_revenue' ? 'Doctor-wise Revenue & Performance Report' :
+      reportType === 'staff_performance' ? 'Staff Performance Analytics Report' :
+      reportType === 'pharmacy_branch' ? 'Pharmacy Sales by Clinic Branch Report' :
+      reportType === 'clinical' ? 'Patient Visits & Clinical Report' : 
+      'Pharmacy & Inventory Stock Report';
+
     const dateRangeText = `${reportStartDate || 'All Time'} to ${reportEndDate || 'All Time'}`;
 
     let summaryCardsHtml = '';
@@ -291,6 +298,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
         <div class="summary-card">
           <div class="card-label">Average Invoice Value</div>
           <div class="card-val purple">₹${(reportData.summary?.avg_invoice_value || 0).toLocaleString()}</div>
+        </div>
+      `;
+    } else if (reportType === 'doctor_revenue') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Doctors</div>
+          <div class="card-val blue">${reportData.summary?.total_doctors || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Doctor Generated Revenue</div>
+          <div class="card-val green">₹${(reportData.summary?.total_revenue || 0).toLocaleString()}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Average Revenue / Doctor</div>
+          <div class="card-val purple">₹${(reportData.summary?.avg_revenue_per_doctor || 0).toLocaleString()}</div>
+        </div>
+      `;
+    } else if (reportType === 'staff_performance') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Staff Members</div>
+          <div class="card-val blue">${reportData.summary?.total_staff || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Active Personnel</div>
+          <div class="card-val green">${reportData.summary?.active_staff || 0}</div>
+        </div>
+      `;
+    } else if (reportType === 'pharmacy_branch') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Operating Branches</div>
+          <div class="card-val blue">${reportData.summary?.total_branches || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Branch Pharmacy Valuation</div>
+          <div class="card-val green">₹${(reportData.summary?.total_valuation || 0).toLocaleString()}</div>
         </div>
       `;
     } else if (reportType === 'clinical') {
@@ -340,9 +384,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           <td style="text-align:right; font-weight:700; color:#059669">₹${r.amount?.toLocaleString()}</td>
         </tr>
       `).join('');
+    } else if (reportType === 'doctor_revenue') {
+      tableHeadersHtml = '<th>Doctor Name</th><th>Specialization</th><th>Completed Consultations</th><th>Consultation Fee</th><th style="text-align:right">Total Revenue</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.doctor_name}</strong></td>
+          <td>${r.specialization}</td>
+          <td>${r.completed_consultations}</td>
+          <td>₹${r.consultation_fee?.toLocaleString()}</td>
+          <td style="text-align:right; font-weight:700; color:#059669">₹${r.total_revenue?.toLocaleString()}</td>
+        </tr>
+      `).join('');
+    } else if (reportType === 'staff_performance') {
+      tableHeadersHtml = '<th>Staff Member</th><th>Role</th><th>Assigned Branch</th><th>Last Login</th><th>Status</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.staff_name}</strong></td>
+          <td style="text-transform:capitalize">${r.role}</td>
+          <td>${r.branch_name}</td>
+          <td>${r.last_login}</td>
+          <td><span class="badge active">${r.status}</span></td>
+        </tr>
+      `).join('');
+    } else if (reportType === 'pharmacy_branch') {
+      tableHeadersHtml = '<th>Branch Location</th><th>City</th><th>SKUs Available</th><th style="text-align:right">Allocated Valuation</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.branch_name}</strong></td>
+          <td>${r.city || '-'}</td>
+          <td>${r.skus_available}</td>
+          <td style="text-align:right; font-weight:700; color:#2563eb">₹${r.stock_valuation?.toLocaleString()}</td>
+        </tr>
+      `).join('');
     } else if (reportType === 'clinical') {
       tableHeadersHtml = '<th>Appointment Date</th><th>Treatment</th><th>Consultation Type</th><th>Status</th>';
-      tableRowsHtml = reportData.rows.map((r: any) => `
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
         <tr>
           <td><strong>${r.date}</strong></td>
           <td>${r.treatment}</td>
@@ -352,7 +428,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       `).join('');
     } else {
       tableHeadersHtml = '<th>Medicine Name</th><th>Category</th><th>Current Stock</th><th>Reorder Level</th><th>Unit Price</th><th style="text-align:right">Total Valuation</th>';
-      tableRowsHtml = reportData.rows.map((r: any) => `
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
         <tr>
           <td><strong>${r.name}</strong></td>
           <td>${r.category}</td>
@@ -507,11 +583,114 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const [systemSettings, setSystemSettings] = useState({
+    gst_rate: 18,
+    default_teleconsultation_fee: 500,
+    currency_symbol: '₹',
+    clinic_name: 'Vertical Clinic'
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const fetchSystemSettings = async () => {
+    try {
+      const res = await api.get('/admin/settings');
+      if (res.data?.success && res.data.data) {
+        setSystemSettings({
+          gst_rate: res.data.data.gst_rate ?? 18,
+          default_teleconsultation_fee: res.data.data.default_teleconsultation_fee ?? 500,
+          currency_symbol: res.data.data.currency_symbol || '₹',
+          clinic_name: res.data.data.clinic_name || 'Vertical Clinic'
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching settings:', err);
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await api.put('/admin/settings', systemSettings);
+      if (res.data?.success) {
+        alert('System settings updated successfully!');
+      } else {
+        alert(res.data?.message || 'Failed to update settings');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error saving system settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const [sessionsData, setSessionsData] = useState<any[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  const fetchActiveSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const res = await api.get('/admin/sessions');
+      if (res.data?.success) {
+        setSessionsData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching active sessions:', err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  const handleForceLogout = async (userId: string, userName: string) => {
+    if (!window.confirm(`Are you sure you want to force logout ${userName}? This will invalidate their current active session immediately.`)) {
+      return;
+    }
+    try {
+      const res = await api.post(`/admin/sessions/${userId}/revoke`);
+      if (res.data?.success) {
+        alert(res.data.message || `Revoked session for ${userName}`);
+        fetchActiveSessions();
+      } else {
+        alert(res.data?.message || 'Failed to revoke session');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error revoking session');
+    }
+  };
+
+  const [attendanceData, setAttendanceData] = useState<any>({ summary: null, records: [] });
+  const [attendanceDateFilter, setAttendanceDateFilter] = useState('');
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  const fetchStaffAttendance = async (dateStr?: string) => {
+    setLoadingAttendance(true);
+    try {
+      const url = dateStr ? `/admin/attendance?attendance_date=${dateStr}` : '/admin/attendance';
+      const res = await api.get(url);
+      if (res.data?.success) {
+        setAttendanceData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching attendance:', err);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'availability-requests') {
       fetchAvailabilityRequests();
     }
-  }, [activeTab]);
+    if (activeTab === 'settings') {
+      fetchSystemSettings();
+    }
+    if (activeTab === 'active-sessions') {
+      fetchActiveSessions();
+    }
+    if (activeTab === 'attendance') {
+      fetchStaffAttendance(attendanceDateFilter);
+    }
+  }, [activeTab, attendanceDateFilter]);
 
   const handleEditBranchClick = (br: any) => {
     setEditingBranch(br);
@@ -739,7 +918,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const workflow = data?.workflow || { reception: [], consultation: [], billing: [], dispensary: [] };
   const recentActivities = data?.recent_activities || [];
 
-  const fmtCurrency = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  const fmtCurrency = (n?: number | null) => `₹${(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
   const initials = currentUser?.full_name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'AD';
 
   const revGrowth = kpis.revenue_growth_pct;
@@ -820,8 +999,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           <div className="admin-nav-group-label">Manage</div>
           {[
             { id: 'staff', icon: <Users size={18} />, label: 'Staff Management' },
+            { id: 'attendance', icon: <Clock size={18} />, label: 'Staff Attendance' },
             { id: 'branches', icon: <Layers size={18} />, label: 'Branch Management' },
             { id: 'availability-requests', icon: <Calendar size={18} />, label: 'Availability Requests' },
+            { id: 'active-sessions', icon: <Shield size={18} />, label: 'Active Sessions & Security' },
             { id: 'settings', icon: <Settings size={18} />, label: 'Settings' },
           ].map(tab => (
             <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => handleRootTabChange(tab.id)}>
@@ -854,8 +1035,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 {activeTab === 'reports' && 'Reports'}
                 {activeTab === 'inventory' && 'Inventory Reports'}
                 {activeTab === 'staff' && 'Staff Management'}
+                {activeTab === 'attendance' && 'Staff Attendance Dashboard'}
                 {activeTab === 'branches' && 'Branch Management'}
                 {activeTab === 'availability-requests' && 'Availability Change Requests'}
+                {activeTab === 'active-sessions' && 'Active Sessions & Security Controls'}
                 {activeTab === 'settings' && 'Settings'}
               </h1>
               <p className="admin-page-subtitle" style={{ marginTop: '2px', margin: 0 }}>Admin Portal · Vertical Clinic</p>
@@ -1269,12 +1452,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Report Category:</label>
                     <select
                       value={reportType}
-                      onChange={(e: any) => setReportType(e.target.value)}
+                      onChange={(e: any) => {
+                        setReportData(null);
+                        setReportType(e.target.value);
+                      }}
                       style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, color: '#0f172a', background: '#fff' }}
                     >
                       <option value="financial">💵 Financial & Revenue Report</option>
+                      <option value="doctor_revenue">👨‍⚕️ Doctor-wise Revenue & Performance</option>
+                      <option value="staff_performance">👥 Staff Performance Analytics</option>
+                      <option value="pharmacy_branch">💊 Pharmacy Sales by Clinic Branch</option>
                       <option value="clinical">🩺 Patient Visits & Clinical Report</option>
-                      <option value="inventory">💊 Pharmacy & Inventory Stock Report</option>
+                      <option value="inventory">📦 Pharmacy & Inventory Stock Report</option>
                     </select>
                   </div>
 
@@ -1449,6 +1638,49 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       </div>
                     </>
                   )}
+
+                  {reportType === 'doctor_revenue' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Doctors</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_doctors || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Doctor Generated Revenue</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(reportData.summary.total_revenue || 0)}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Average Revenue / Doctor</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(reportData.summary.avg_revenue_per_doctor || 0)}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {reportType === 'staff_performance' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Staff Members</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_staff || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Active Personnel</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{reportData.summary.active_staff || 0}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {reportType === 'pharmacy_branch' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Operating Branches</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_branches || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Branch Pharmacy Valuation</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(reportData.summary.total_valuation || 0)}</div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1510,6 +1742,58 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                                 <td>₹{row.unit_price}</td>
                                 <td style={{ fontWeight: 700 }}>₹{row.valuation}</td>
                                 <td><span className={`admin-status-badge ${row.status === 'Low Stock' ? 'low' : 'active'}`}>{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'doctor_revenue' && (
+                        <>
+                          <thead><tr><th>Doctor Name</th><th>Specialization</th><th>Completed Consultations</th><th>Consultation Fee</th><th>Total Revenue</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {reportData?.rows?.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.doctor_name}</td>
+                                <td>{row.specialization}</td>
+                                <td>{row.completed_consultations}</td>
+                                <td>₹{row.consultation_fee}</td>
+                                <td style={{ fontWeight: 700, color: '#10b981' }}>{fmtCurrency(row.total_revenue)}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'staff_performance' && (
+                        <>
+                          <thead><tr><th>Staff Member</th><th>Role</th><th>Assigned Branch</th><th>Last Login</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {reportData?.rows?.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.staff_name}</td>
+                                <td style={{ textTransform: 'capitalize' }}>{row.role}</td>
+                                <td>{row.branch_name}</td>
+                                <td>{row.last_login}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'pharmacy_branch' && (
+                        <>
+                          <thead><tr><th>Branch Location</th><th>City</th><th>SKUs Available</th><th>Allocated Valuation</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {reportData?.rows?.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.branch_name}</td>
+                                <td>{row.city}</td>
+                                <td>{row.skus_available}</td>
+                                <td style={{ fontWeight: 700, color: '#2563eb' }}>{fmtCurrency(row.stock_valuation)}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
                               </tr>
                             ))}
                           </tbody>
@@ -1727,19 +2011,91 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
           {/* ── SETTINGS ── */}
           {activeTab === 'settings' && (
-            <div className="admin-card" style={{ gap: '20px' }}>
-              <h2 className="admin-card-title">System Settings</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                <div style={{ border: '1px solid var(--admin-border)', padding: '20px', borderRadius: '8px' }}>
-                  <h3 style={{ fontSize: '0.92rem', marginBottom: '12px' }}>Financial Settings</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>GST Rate (%)</label>
-                    <input type="number" defaultValue="18" style={{ padding: '8px', border: '1px solid var(--admin-border)', borderRadius: '6px' }} />
-                    <label style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>Default Teleconsultation Fee (₹)</label>
-                    <input type="number" defaultValue="500" style={{ padding: '8px', border: '1px solid var(--admin-border)', borderRadius: '6px' }} />
-                  </div>
+            <div className="admin-card" style={{ gap: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>System Settings & Operations Configuration</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Configure global tax rates, default consultation fees, and clinic branding preferences.</p>
                 </div>
               </div>
+
+              <form onSubmit={handleSaveSettings}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+                  
+                  {/* Financial & Tax Settings */}
+                  <div style={{ border: '1px solid var(--admin-border)', padding: '20px', borderRadius: '12px', background: '#fff' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 16px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      💵 Financial & Tax Settings
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>GST Rate (%)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          required
+                          value={systemSettings.gst_rate}
+                          onChange={e => setSystemSettings({ ...systemSettings, gst_rate: Number(e.target.value) })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>Default Teleconsultation Fee (₹)</label>
+                        <input
+                          type="number"
+                          required
+                          value={systemSettings.default_teleconsultation_fee}
+                          onChange={e => setSystemSettings({ ...systemSettings, default_teleconsultation_fee: Number(e.target.value) })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* General Clinic Information */}
+                  <div style={{ border: '1px solid var(--admin-border)', padding: '20px', borderRadius: '12px', background: '#fff' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 16px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      🏥 General Branding & Currency
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>Clinic Organization Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={systemSettings.clinic_name}
+                          onChange={e => setSystemSettings({ ...systemSettings, clinic_name: e.target.value })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>Currency Symbol</label>
+                        <input
+                          type="text"
+                          required
+                          value={systemSettings.currency_symbol}
+                          onChange={e => setSystemSettings({ ...systemSettings, currency_symbol: e.target.value })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    className="admin-btn-primary"
+                    disabled={savingSettings}
+                    style={{ padding: '10px 24px', fontSize: '0.9rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    💾 {savingSettings ? 'Saving Settings...' : 'Save Settings'}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
@@ -1938,6 +2294,180 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 })()}
               </div>
 
+            </div>
+          )}
+
+          {/* ── ACTIVE SESSIONS & SECURITY ── */}
+          {activeTab === 'active-sessions' && (
+            <div className="admin-card" style={{ gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>Active Login Sessions & Security Control</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Monitor logged-in clinic staff and immediately revoke sessions if unauthorized activity is detected.</p>
+                </div>
+                <button className="admin-btn-secondary" onClick={() => fetchActiveSessions()}>
+                  <RefreshCw size={14} className={loadingSessions ? 'spin' : ''} /> Refresh Sessions
+                </button>
+              </div>
+
+              {loadingSessions ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading active sessions…</div>
+              ) : (
+                <div className="admin-table-container">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th>Assigned Branch</th>
+                        <th>Last Active / Login</th>
+                        <th>Token Ver</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessionsData.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                            No active staff login sessions currently detected.
+                          </td>
+                        </tr>
+                      ) : (
+                        sessionsData.map((s: any) => (
+                          <tr key={s.id}>
+                            <td style={{ fontWeight: 600 }}>
+                              {s.full_name}
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400 }}>{s.email}</div>
+                            </td>
+                            <td style={{ textTransform: 'capitalize' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', fontSize: '0.78rem', fontWeight: 600 }}>{s.role}</span>
+                            </td>
+                            <td>{s.branch_name}</td>
+                            <td>{s.last_login_at}</td>
+                            <td>v{s.token_version}</td>
+                            <td>
+                              <span className={`admin-status-badge ${s.is_active ? 'active' : 'suspended'}`}>
+                                {s.is_active ? 'Active' : 'Deactivated'}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => handleForceLogout(s.id, s.full_name)}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #ef4444',
+                                  background: '#fef2f2',
+                                  color: '#dc2626',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                🔒 Force Logout
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STAFF ATTENDANCE ── */}
+          {activeTab === 'attendance' && (
+            <div className="admin-card" style={{ gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>Staff Daily Attendance Sheet</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Track automated daily punch-in times, late arrivals, and absence records across all clinic branches.</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <input
+                    type="date"
+                    value={attendanceDateFilter}
+                    onChange={e => setAttendanceDateFilter(e.target.value)}
+                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  />
+                  <button className="admin-btn-secondary" onClick={() => fetchStaffAttendance(attendanceDateFilter)}>
+                    <RefreshCw size={14} className={loadingAttendance ? 'spin' : ''} /> Filter Date
+                  </button>
+                </div>
+              </div>
+
+              {/* Attendance Summary Pill Cards */}
+              {attendanceData.summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>🟢 Present</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>{attendanceData.summary.present}</div>
+                  </div>
+                  <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#854d0e', fontWeight: 600 }}>🟡 Late Arrivals</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#a16207', marginTop: '4px' }}>{attendanceData.summary.late}</div>
+                  </div>
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#1e40af', fontWeight: 600 }}>🔵 On Leave</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1d4ed8', marginTop: '4px' }}>{attendanceData.summary.on_leave}</div>
+                  </div>
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 600 }}>🔴 Absent</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#b91c1c', marginTop: '4px' }}>{attendanceData.summary.absent}</div>
+                  </div>
+                </div>
+              )}
+
+              {loadingAttendance ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading attendance records…</div>
+              ) : (
+                <div className="admin-table-container">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th>Branch</th>
+                        <th>Date</th>
+                        <th>Punch-In Time</th>
+                        <th>Punch-Out Time</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendanceData.records?.map((r: any) => (
+                        <tr key={r.id}>
+                          <td style={{ fontWeight: 600 }}>{r.staff_name}</td>
+                          <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
+                          <td>{r.branch_name}</td>
+                          <td>{r.date}</td>
+                          <td style={{ fontWeight: 600, color: '#0f172a' }}>{r.punch_in}</td>
+                          <td>{r.punch_out}</td>
+                          <td>
+                            <span className={`admin-status-badge ${
+                              r.status === 'PRESENT' ? 'active' : r.status === 'LATE' ? 'low' : 'suspended'
+                            }`}>
+                              {r.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {(!attendanceData.records || attendanceData.records.length === 0) && (
+                    <div style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '0.86rem' }}>
+                      No staff punch-in records logged for {attendanceData.summary?.date || 'today'}.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
