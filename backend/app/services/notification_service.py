@@ -108,7 +108,7 @@ class NotificationService:
 
         # 2. Email
         if email_enabled and user.email:
-            if type in ["patient_joined", "doctor_joined", "check_in", "reminder_10m", "reminder_1h"]:
+            if type in ["patient_joined", "doctor_joined", "check_in", "reminder_10m", "reminder_1h", "billing"]:
                 logger.info(f"[Email Notification Skip] Skipped email to {user.email} for realtime alert type: {type}")
             else:
                 logger.info(f"[Email Notification] To user {user.email}: Subject: {title} | Body: {message}")

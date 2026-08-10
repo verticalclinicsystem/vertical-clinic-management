@@ -21,6 +21,7 @@ from app.models.consultation import Consultation
 from app.models.invoice import Invoice
 from app.models.system_setting import SystemSetting
 from app.models.attendance import Attendance
+from app.models.availability_request import AvailabilityChangeRequest
 from app.api.deps import get_current_active_user
 from app.utils.response import ApiResponse
 
@@ -438,6 +439,10 @@ async def get_admin_reports(
             if getattr(inv, 'payments', None) and len(inv.payments) > 0:
                 pay_mode = getattr(inv.payments[0], 'payment_method', 'UPI / Cash')
 
+            b_name = "Central Branch"
+            if getattr(inv, 'consultation', None) and getattr(inv.consultation, 'branch', None):
+                b_name = inv.consultation.branch.name
+
             report_rows.append({
                 "id": str(inv.id),
                 "invoice_number": inv.invoice_number or f"INV-{str(inv.id)[:8]}",
@@ -445,7 +450,8 @@ async def get_admin_reports(
                 "patient_name": p_name,
                 "amount": float(inv.grand_total),
                 "payment_mode": pay_mode,
-                "status": inv.status or "paid"
+                "status": inv.status or "paid",
+                "branch_name": b_name
             })
         report_data["rows"] = report_rows
 
@@ -486,6 +492,8 @@ async def get_admin_reports(
 
     elif report_type == "doctor_revenue":
         doc_q = select(User).where(User.role == "doctor")
+        if branch_id:
+            doc_q = doc_q.where(User.branch_id == branch_id)
         doc_res = await db.execute(doc_q)
         doctors = doc_res.scalars().all()
 
@@ -497,9 +505,14 @@ async def get_admin_reports(
             if not doc_prof:
                 continue
 
-            appts_res = await db.execute(
-                select(Appointment).where(Appointment.doctor_id == doc_prof.id, Appointment.status == "completed")
-            )
+            appts_q = select(Appointment).where(Appointment.doctor_id == doc_prof.id, Appointment.status == "completed")
+            if dt_start:
+                appts_q = appts_q.where(Appointment.appointment_datetime >= dt_start)
+            if dt_end:
+                appts_q = appts_q.where(Appointment.appointment_datetime <= dt_end)
+            if branch_id:
+                appts_q = appts_q.where(Appointment.branch_id == branch_id)
+            appts_res = await db.execute(appts_q)
             completed_appts = appts_res.scalars().all()
             doc_rev = len(completed_appts) * float(doc_prof.consultation_fee or 500.0)
             total_rev += doc_rev
@@ -522,7 +535,10 @@ async def get_admin_reports(
         report_data["rows"] = rows
 
     elif report_type == "staff_performance":
-        staff_res = await db.execute(select(User).where(User.role.in_(["doctor", "receptionist", "pharmacist", "clinic_manager"])))
+        staff_q = select(User).where(User.role.in_(["doctor", "receptionist", "pharmacist", "clinic_manager"]))
+        if branch_id:
+            staff_q = staff_q.where(User.branch_id == branch_id)
+        staff_res = await db.execute(staff_q)
         staff_members = staff_res.scalars().all()
         rows = []
         for s in staff_members:
@@ -549,7 +565,10 @@ async def get_admin_reports(
         report_data["rows"] = rows
 
     elif report_type == "pharmacy_branch":
-        br_res = await db.execute(select(Branch))
+        br_q = select(Branch)
+        if branch_id:
+            br_q = br_q.where(Branch.id == branch_id)
+        br_res = await db.execute(br_q)
         branches_list = br_res.scalars().all()
 
         med_res = await db.execute(select(Medicine).where(Medicine.is_active == True))
@@ -570,7 +589,7 @@ async def get_admin_reports(
 
         report_data["summary"] = {
             "total_branches": len(branches_list),
-            "total_valuation": round(total_valuation, 2)
+            "total_valuation": round(sum(row["stock_valuation"] for row in rows), 2)
         }
         report_data["rows"] = rows
 
@@ -769,54 +788,125 @@ async def get_staff_attendance(
         except Exception:
             pass
 
+    # 1. Fetch all attendance records for target_date (optionally filtered by branch)
     att_q = select(Attendance).where(Attendance.date == target_date)
     if branch_id:
         att_q = att_q.where(Attendance.branch_id == branch_id)
+    att_res = await db.execute(att_q)
+    all_attendances = att_res.scalars().all()
+    attendance_map = {att.user_id: att for att in all_attendances}
 
-    att_res = await db.execute(att_q.order_by(Attendance.punch_in.desc()))
-    records = att_res.scalars().all()
-
-    staff_q = select(User).where(User.role.in_(["doctor", "receptionist", "pharmacist", "clinic_manager"]))
+    # 2. Fetch all staff members that should be monitored
+    staff_q = select(User).where(User.role.in_(["doctor", "receptionist", "pharmacist", "clinic_manager", "admin"]))
     if branch_id:
         staff_q = staff_q.where(User.branch_id == branch_id)
     all_staff_res = await db.execute(staff_q)
     all_staff = all_staff_res.scalars().all()
 
-    present_count = sum(1 for r in records if r.status in ("present", "late"))
-    late_count = sum(1 for r in records if r.status == "late")
-    leave_count = sum(1 for r in records if r.status == "on_leave")
-    absent_count = max(0, len(all_staff) - present_count - leave_count)
+    # Union of staff members and anyone who actually punched in
+    display_user_ids = set(u.id for u in all_staff).union(attendance_map.keys())
+    if not display_user_ids:
+        return ApiResponse.success(data={
+            "summary": {
+                "date": target_date.strftime("%Y-%m-%d"),
+                "total_staff": 0,
+                "present": 0,
+                "late": 0,
+                "on_leave": 0,
+                "absent": 0
+            },
+            "records": []
+        })
 
+    # Fetch users to display
+    display_users_res = await db.execute(
+        select(User).where(User.id.in_(display_user_ids)).order_by(User.full_name)
+    )
+    display_users = display_users_res.scalars().all()
+
+    # 3. Fetch approved leaves covering target_date
+    from app.models.doctor import Doctor
+    leave_q = select(
+        AvailabilityChangeRequest.user_id,
+        Doctor.user_id.label("doctor_user_id")
+    ).outerjoin(
+        Doctor, AvailabilityChangeRequest.doctor_id == Doctor.id
+    ).where(
+        AvailabilityChangeRequest.request_type == "leave",
+        AvailabilityChangeRequest.status == "approved",
+        AvailabilityChangeRequest.proposed_start_date <= target_date,
+        AvailabilityChangeRequest.proposed_end_date >= target_date
+    )
+    leave_res = await db.execute(leave_q)
+    leave_rows = leave_res.all()
+    
+    leave_user_ids = set()
+    for row in leave_rows:
+        if row.user_id:
+            leave_user_ids.add(row.user_id)
+        elif row.doctor_user_id:
+            leave_user_ids.add(row.doctor_user_id)
+
+    # 4. Fetch branch names for display mapping
+    branch_res = await db.execute(select(Branch))
+    branches = branch_res.scalars().all()
+    branch_map = {b.id: b.name for b in branches}
+
+    present_count = 0
+    late_count = 0
+    leave_count = 0
+    absent_count = 0
     detail_rows = []
-    for r in records:
-        u_res = await db.execute(select(User).where(User.id == r.user_id))
-        u = u_res.scalar_one_or_none()
-        u_name = u.full_name if u else "Staff Member"
-        u_role = u.role if u else "staff"
 
-        br_name = "Central Branch"
-        if r.branch_id:
-            b_res = await db.execute(select(Branch).where(Branch.id == r.branch_id))
-            b = b_res.scalar_one_or_none()
-            if b:
-                br_name = b.name
+    for u in display_users:
+        att = attendance_map.get(u.id)
+        is_on_leave = u.id in leave_user_ids or (att is not None and att.status.lower() in ("on_leave", "leave"))
+        
+        u_branch_id = u.branch_id
+        if att and att.branch_id:
+            u_branch_id = att.branch_id
+        branch_name = branch_map.get(u_branch_id, "Central Branch") if u_branch_id else "Central Branch"
+
+        if is_on_leave:
+            status = "LEAVE"
+            punch_in = "- -"
+            punch_out = "- -"
+            leave_count += 1
+        elif att is not None:
+            status = att.status.upper()
+            
+            IST = timezone(timedelta(hours=5, minutes=30))
+            p_in_ist = att.punch_in.astimezone(IST) if att.punch_in else None
+            p_out_ist = att.punch_out.astimezone(IST) if att.punch_out else None
+            
+            punch_in = p_in_ist.strftime("%I:%M %p") if p_in_ist else "- -"
+            punch_out = p_out_ist.strftime("%I:%M %p") if p_out_ist else "Active Shift"
+            
+            present_count += 1
+            if att.status.lower() == "late":
+                late_count += 1
+        else:
+            status = "ABSENT"
+            punch_in = "- -"
+            punch_out = "- -"
+            absent_count += 1
 
         detail_rows.append({
-            "id": str(r.id),
-            "staff_name": u_name,
-            "role": u_role,
-            "branch_name": br_name,
-            "date": r.date.strftime("%Y-%m-%d"),
-            "punch_in": r.punch_in.strftime("%I:%M %p") if r.punch_in else "—",
-            "punch_out": r.punch_out.strftime("%I:%M %p") if r.punch_out else "Active Shift",
-            "status": r.status.upper(),
-            "notes": r.notes or "Punched in via Portal"
+            "id": str(att.id) if att else f"temp-{u.id}",
+            "staff_name": u.full_name,
+            "role": u.role,
+            "branch_name": branch_name,
+            "date": target_date.strftime("%Y-%m-%d"),
+            "punch_in": punch_in,
+            "punch_out": punch_out,
+            "status": status,
+            "notes": att.notes if att else "Not Punched In"
         })
 
     return ApiResponse.success(data={
         "summary": {
             "date": target_date.strftime("%Y-%m-%d"),
-            "total_staff": len(all_staff),
+            "total_staff": len(display_users),
             "present": present_count,
             "late": late_count,
             "on_leave": leave_count,

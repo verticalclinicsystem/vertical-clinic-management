@@ -2019,9 +2019,17 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         className="doc-input" 
                         style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem', margin: 0 }}
                         placeholder="Search patient name..."
+                        list="doctor-queue-suggestions"
                         value={queueSearch}
                         onChange={(e) => setQueueSearch(e.target.value)}
                       />
+                      <datalist id="doctor-queue-suggestions">
+                        {Array.from(new Set(
+                          (dashboardData?.today_appointments || []).map((appt: any) => appt.patient_name).filter(Boolean)
+                        )).map((name: any) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
                     </div>
                   </div>
 
@@ -2822,9 +2830,17 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             className="doc-input" 
                             style={{ paddingLeft: '36px' }}
                             placeholder="Search patients by name, code, or phone number..."
+                            list="doctor-patients-suggestions"
                             value={patientSearch}
                             onChange={(e) => handleSearchPatients(e.target.value)}
                           />
+                          <datalist id="doctor-patients-suggestions">
+                            {Array.from(new Set(
+                              (patientsList || []).map((pat: any) => pat.user?.full_name || pat.name).filter(Boolean)
+                            )).map((name: any) => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
                         </div>
                       </div>
 
@@ -2961,9 +2977,17 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           className="doc-input" 
                           style={{ paddingLeft: '32px', height: '32px', fontSize: '0.8rem', marginBottom: 0 }}
                           placeholder="Search patient name..." 
+                          list="doctor-prescriptions-suggestions"
                           value={prescriptionSearch}
                           onChange={(e) => setPrescriptionSearch(e.target.value)}
                         />
+                        <datalist id="doctor-prescriptions-suggestions">
+                          {Array.from(new Set(
+                            (allPrescriptions || []).map((p: any) => p.patient_name || p.patient?.user?.full_name).filter(Boolean)
+                          )).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
                       </div>
                     </div>
 

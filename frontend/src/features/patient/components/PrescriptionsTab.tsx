@@ -45,6 +45,7 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
           <input
             type="text"
             placeholder="Search medicine, doctor, diagnosis..."
+            list="patient-prescriptions-search-suggestions"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
@@ -58,6 +59,19 @@ export const PrescriptionsTab: React.FC<PrescriptionsTabProps> = ({
               color: 'var(--text-main, #1e293b)'
             }}
           />
+          <datalist id="patient-prescriptions-search-suggestions">
+            {Array.from(new Set(
+              (dashboardData.prescriptions || []).flatMap((rx: any) => {
+                const docName = rx.doctor?.user?.full_name ? (rx.doctor.user.full_name.toLowerCase().startsWith('dr') ? rx.doctor.user.full_name : `Dr. ${rx.doctor.user.full_name}`) : '';
+                const rxItems = rx.items || rx.medications || [];
+                const medNames = rxItems.map((m: any) => m.medicine_name || m.name);
+                const diagnosis = rx.consultation?.diagnosis || '';
+                return [docName, diagnosis, ...medNames].filter(Boolean);
+              })
+            )).map((val: any) => (
+              <option key={val} value={val} />
+            ))}
+          </datalist>
         </div>
       </div>
       <div className="table-container">

@@ -191,110 +191,146 @@ def generate_invoice_pdf(invoice_data: dict) -> bytes:
             }
             body {
                 font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                color: #2D3748;
+                color: #1A202C;
                 line-height: 1.5;
                 font-size: 14px;
             }
-            .header {
-                border-bottom: 2px solid #48BB78;
-                padding-bottom: 15px;
-                margin-bottom: 30px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
+            .header-container {
+                width: 100%;
+                margin-bottom: 24px;
+            }
+            .header-table {
+                width: 100%;
+                border-collapse: collapse;
             }
             .clinic-logo {
                 font-size: 24px;
-                font-weight: bold;
-                color: #2F855A;
+                font-weight: 800;
+                color: #0E7490;
+                margin: 0;
             }
-            .invoice-details {
+            .clinic-subtitle {
+                font-size: 12px;
+                color: #64748B;
+                margin: 4px 0 0 0;
+                font-weight: 500;
+            }
+            .header-meta {
                 text-align: right;
                 font-size: 12px;
-                color: #718096;
+                color: #64748B;
+                line-height: 1.5;
+            }
+            .brand-divider {
+                border-bottom: 3px solid #0E7490;
+                margin-top: 16px;
+                width: 100%;
             }
             .details-grid {
                 display: table;
                 width: 100%;
+                margin-top: 24px;
                 margin-bottom: 30px;
             }
             .details-col {
                 display: table-cell;
                 width: 50%;
+                vertical-align: top;
+            }
+            .details-title {
+                font-size: 12px;
+                font-weight: bold;
+                color: #475569;
+                text-transform: uppercase;
+                margin-bottom: 8px;
             }
             .bill-table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 40px;
+                margin-bottom: 30px;
             }
             .bill-table th {
-                background-color: #F7FAFC;
-                color: #4A5568;
+                background-color: #F1F5F9;
+                color: #475569;
                 font-weight: bold;
                 text-align: left;
-                padding: 10px;
-                border-bottom: 2px solid #E2E8F0;
+                padding: 10px 12px;
+                border-bottom: 1px solid #E2E8F0;
+                font-size: 12px;
+                text-transform: uppercase;
             }
             .bill-table td {
-                padding: 12px 10px;
+                padding: 12px;
                 border-bottom: 1px solid #E2E8F0;
+                color: #334155;
             }
             .total-section {
-                width: 40%;
-                margin-left: 60%;
+                width: 45%;
+                margin-left: 55%;
                 border-collapse: collapse;
                 margin-bottom: 40px;
             }
             .total-section td {
                 padding: 6px 10px;
+                color: #334155;
             }
             .total-row {
                 font-weight: bold;
                 font-size: 16px;
-                border-top: 2px solid #E2E8F0;
-                color: #2F855A;
+                border-top: 1px solid #E2E8F0;
+                color: #0F172A;
             }
             .status-badge {
                 display: inline-block;
-                padding: 4px 8px;
+                padding: 3px 8px;
                 border-radius: 4px;
                 font-weight: bold;
-                font-size: 12px;
+                font-size: 11px;
                 text-transform: uppercase;
+                margin-top: 2px;
             }
-            .status-paid { background-color: #C6F6D5; color: #22543D; }
-            .status-unpaid { background-color: #FED7D7; color: #742A2A; }
-            .status-partial { background-color: #FEEBC8; color: #7B341E; }
+            .status-paid { background-color: #DCFCE7; color: #15803D; }
+            .status-unpaid { background-color: #FEE2E2; color: #B91C1C; }
+            .status-partial { background-color: #FEF3C7; color: #D97706; }
             .footer {
-                margin-top: 100px;
+                margin-top: 80px;
                 border-top: 1px solid #E2E8F0;
-                padding-top: 15px;
+                padding-top: 20px;
                 text-align: center;
-                font-size: 12px;
-                color: #A0AEC0;
+                font-size: 11px;
+                color: #94A3B8;
+                line-height: 1.5;
             }
         </style>
     </head>
     <body>
-        <div class="header">
-            <div class="clinic-logo">VERTICAL CLINIC SYSTEM</div>
-            <div class="invoice-details">
-                <strong>INVOICE:</strong> {{ invoice_number }}<br>
-                <strong>Date:</strong> {{ date }}<br>
-                <strong>Status:</strong> <span class="status-badge status-{{ status_class }}">{{ status }}</span>
-            </div>
+        <div class="header-container">
+            <table class="header-table">
+                <tr>
+                    <td>
+                        <div class="clinic-logo">🏥 VERTICAL CLINIC</div>
+                        <div class="clinic-subtitle">Smart Healthcare & Multi-Branch Clinic System</div>
+                    </td>
+                    <td class="header-meta">
+                        <strong>INVOICE:</strong> {{ invoice_number }}<br>
+                        <strong>Date:</strong> {{ date }}<br>
+                        <strong>Status:</strong> <span class="status-badge status-{{ status_class }}">{{ status }}</span>
+                    </td>
+                </tr>
+            </table>
+            <div class="brand-divider"></div>
         </div>
 
         <div class="details-grid">
             <div class="details-col">
-                <strong>PATIENT:</strong><br>
-                Name: {{ patient_name }}<br>
+                <div class="details-title">Patient Details</div>
+                <strong>{{ patient_name }}</strong><br>
                 Code: {{ patient_code }}<br>
                 Phone: {{ patient_phone }}
             </div>
             <div class="details-col" style="text-align: right;">
-                <strong>CLINIC BRANCH:</strong><br>
-                {{ branch_name }}<br>
+                <div class="details-title">Clinic Branch</div>
+                <strong>{{ branch_name }}</strong><br>
                 {{ branch_address }}<br>
                 Phone: {{ branch_phone }}
             </div>
@@ -304,7 +340,7 @@ def generate_invoice_pdf(invoice_data: dict) -> bytes:
             <thead>
                 <tr>
                     <th>Description</th>
-                    <th style="text-align: right;">Amount</th>
+                    <th style="text-align: right; width: 120px;">Amount</th>
                 </tr>
             </thead>
             <tbody>
@@ -312,13 +348,13 @@ def generate_invoice_pdf(invoice_data: dict) -> bytes:
                     {% for item in items %}
                     <tr>
                         <td>{{ item.description }}</td>
-                        <td style="text-align: right;">₹{{ "%.2f"|format(item.amount) }}</td>
+                        <td style="text-align: right; font-weight: 600;">₹{{ "%.2f"|format(item.amount) }}</td>
                     </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
                         <td>Dental Treatment / Procedure Charges</td>
-                        <td style="text-align: right;">₹{{ total_amount }}</td>
+                        <td style="text-align: right; font-weight: 600;">₹{{ "%.2f"|format(total_amount) }}</td>
                     </tr>
                 {% endif %}
             </tbody>
@@ -326,37 +362,38 @@ def generate_invoice_pdf(invoice_data: dict) -> bytes:
 
         <table class="total-section">
             <tr>
-                <td>Subtotal:</td>
-                <td style="text-align: right;">₹{{ total_amount }}</td>
+                <td>Total Amount:</td>
+                <td style="text-align: right;">₹{{ "%.2f"|format(total_amount) }}</td>
             </tr>
             {% if discount_amount > 0 %}
             <tr>
                 <td>Discount:</td>
-                <td style="text-align: right;">-₹{{ discount_amount }}</td>
+                <td style="text-align: right;">-₹{{ "%.2f"|format(discount_amount) }}</td>
             </tr>
             {% endif %}
             {% if tax_amount > 0 %}
             <tr>
                 <td>Tax:</td>
-                <td style="text-align: right;">₹{{ tax_amount }}</td>
+                <td style="text-align: right;">₹{{ "%.2f"|format(tax_amount) }}</td>
             </tr>
             {% endif %}
             <tr class="total-row">
-                <td>Grand Total:</td>
-                <td style="text-align: right;">₹{{ grand_total }}</td>
+                <td style="padding-top: 10px;">Grand Total:</td>
+                <td style="text-align: right; padding-top: 10px;">₹{{ "%.2f"|format(grand_total) }}</td>
             </tr>
-            <tr>
+            <tr style="color: #059669;">
                 <td>Amount Paid:</td>
-                <td style="text-align: right; color: #2F855A;">₹{{ amount_paid }}</td>
+                <td style="text-align: right;">-₹{{ "%.2f"|format(amount_paid) }}</td>
             </tr>
-            <tr style="font-weight: bold;">
+            <tr style="font-weight: bold; border-top: 1px double #E2E8F0;">
                 <td>Balance Due:</td>
-                <td style="text-align: right; color: #E53E3E;">₹{{ balance_due }}</td>
+                <td style="text-align: right; color: {% if balance_due > 0 %}#B91C1C{% else %}#15803D{% endif %};">₹{{ "%.2f"|format(balance_due) }}</td>
             </tr>
         </table>
 
         <div class="footer">
-            Thank you for choosing Vertical Clinic System. Wish you a healthy smile!
+            Report generated automatically from Vertical Clinic System<br>
+            Thank you for choosing Vertical Clinic. Wish you a healthy smile!
         </div>
     </body>
     </html>

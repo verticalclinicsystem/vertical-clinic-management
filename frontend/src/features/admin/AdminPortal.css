@@ -648,6 +648,16 @@
   color: #991b1b;
 }
 
+.admin-status-badge.leave {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.admin-status-badge.absent {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
 /* ── MODALS / ACTION BUTTONS ── */
 .admin-btn-primary {
   background-color: var(--admin-primary);
