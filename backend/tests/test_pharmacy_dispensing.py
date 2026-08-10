@@ -135,3 +135,34 @@ async def test_pharmacy_inventory_and_dispense_workflow(client: AsyncClient, db_
     assert tx is not None
     assert tx.change_qty == -10
     assert tx.transaction_type == "dispense"
+
+    # 8. Test listing and creating purchase orders
+    po_list_res = await client.get(
+        "/api/v1/inventory/purchase-orders",
+        headers={"Authorization": f"Bearer {token_pharma}"},
+    )
+    assert po_list_res.status_code == 200
+    assert po_list_res.json()["success"] is True
+
+    # Record a new purchase order
+    new_po_res = await client.post(
+        "/api/v1/inventory/purchase-orders",
+        json={
+            "medicine_id": str(db_med.id),
+            "change_qty": 50,
+            "notes": "Restocking Paracetamol"
+        },
+        headers={"Authorization": f"Bearer {token_pharma}"},
+    )
+    assert new_po_res.status_code == 201
+    assert new_po_res.json()["data"]["quantity"] == 50
+    assert new_po_res.json()["data"]["medicine_name"] == "Paracetamol 650mg"
+
+    # Verify that stock increased by 50 (from 310 to 360)
+    db_session.expire_all()
+    db_med_after = (
+        await db_session.execute(
+            select(Medicine).where(Medicine.name == "Paracetamol 650mg")
+        )
+    ).scalar_one()
+    assert db_med_after.stock_qty == 360

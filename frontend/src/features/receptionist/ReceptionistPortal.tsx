@@ -2512,10 +2512,16 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           type="text"
                           className="recep-search-input"
                           placeholder="Search patient by name, code, phone..."
+                          list="receptionist-patients-suggestions"
                           value={patientSearchQuery}
                           onChange={(e) => setPatientSearchQuery(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && searchPatients()}
                         />
+                        <datalist id="receptionist-patients-suggestions">
+                          {Array.from(new Set((patients || []).map((pat: any) => pat.user?.full_name || pat.name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
                         <button className="search-btn-action" onClick={searchPatients}>
                           Search
                         </button>
@@ -2893,9 +2899,21 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           type="text"
                           className="recep-search-input"
                           placeholder="Search invoices by patient, invoice #..."
+                          list="receptionist-invoices-suggestions"
                           value={billingSearchQuery}
                           onChange={(e) => setBillingSearchQuery(e.target.value)}
                         />
+                        <datalist id="receptionist-invoices-suggestions">
+                          {Array.from(new Set(
+                            (invoices || []).flatMap((inv: any) => {
+                              const name = inv.patient?.user?.full_name || '';
+                              const invoiceNum = inv.invoice_number || '';
+                              return [name, invoiceNum].filter(Boolean);
+                            })
+                          )).map((val: any) => (
+                            <option key={val} value={val} />
+                          ))}
+                        </datalist>
                       </div>
                       <button 
                         className="recep-btn-primary" 
@@ -3053,9 +3071,17 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           type="text"
                           className="recep-checkin-search-input"
                           placeholder="Search today's patients by name, code or phone..."
+                          list="receptionist-today-patients-suggestions"
                           value={checkInSearchQuery}
                           onChange={(e) => setCheckInSearchQuery(e.target.value)}
                         />
+                        <datalist id="receptionist-today-patients-suggestions">
+                          {Array.from(new Set(
+                            (appointments || []).filter((a: any) => getLocalApptDate(a.appointment_datetime) === today).map((a: any) => a.patient?.user?.full_name || '')
+                          )).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
                       </div>
 
                       <div className="recep-checkin-patient-list">

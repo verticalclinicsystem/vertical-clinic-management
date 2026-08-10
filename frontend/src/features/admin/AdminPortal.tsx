@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Home, BarChart2, Package, Users, Layers,
   Settings, ArrowLeft, LogOut, Search, Bell, Plus,
@@ -174,6 +174,170 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const [reportBranchId, setReportBranchId] = useState<string>('');
   const [reportData, setReportData] = useState<any>(null);
   const [reportLoading, setReportLoading] = useState(false);
+
+  const [doctorReportSearchQuery, setDoctorReportSearchQuery] = useState('');
+  const [doctorReportSpecFilter, setDoctorReportSpecFilter] = useState('');
+
+  const doctorSpecializations = useMemo(() => {
+    if (reportType !== 'doctor_revenue' || !reportData?.rows) return [];
+    const specs = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.specialization) {
+        specs.add(row.specialization);
+      }
+    });
+    return Array.from(specs).sort();
+  }, [reportType, reportData]);
+
+  const filteredDoctorRevenueRows = useMemo(() => {
+    if (reportType !== 'doctor_revenue' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      const matchesSearch = row.doctor_name.toLowerCase().includes(doctorReportSearchQuery.toLowerCase());
+      const matchesSpec = !doctorReportSpecFilter || row.specialization === doctorReportSpecFilter;
+      return matchesSearch && matchesSpec;
+    });
+  }, [reportType, reportData, doctorReportSearchQuery, doctorReportSpecFilter]);
+
+  const filteredDoctorRevenueSummary = useMemo(() => {
+    if (reportType !== 'doctor_revenue' || !reportData?.summary) return { total_doctors: 0, total_revenue: 0, avg_revenue_per_doctor: 0 };
+    if (!doctorReportSearchQuery && !doctorReportSpecFilter) {
+      return {
+        total_doctors: reportData.summary.total_doctors || 0,
+        total_revenue: reportData.summary.total_revenue || 0,
+        avg_revenue_per_doctor: reportData.summary.avg_revenue_per_doctor || 0
+      };
+    }
+    const total_doctors = filteredDoctorRevenueRows.length;
+    const total_revenue = filteredDoctorRevenueRows.reduce((acc: number, row: any) => acc + (Number(row.total_revenue) || 0), 0);
+    const avg_revenue_per_doctor = total_doctors > 0 ? total_revenue / total_doctors : 0;
+    return { total_doctors, total_revenue, avg_revenue_per_doctor };
+  }, [reportType, reportData, filteredDoctorRevenueRows, doctorReportSearchQuery, doctorReportSpecFilter]);
+
+  const [staffReportSearchQuery, setStaffReportSearchQuery] = useState('');
+  const [staffReportBranchFilter, setStaffReportBranchFilter] = useState('');
+  const [staffReportRoleFilter, setStaffReportRoleFilter] = useState('');
+
+  const staffReportBranchesList = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.rows) return [];
+    const branchesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.branch_name) {
+        branchesSet.add(row.branch_name);
+      }
+    });
+    return Array.from(branchesSet).sort();
+  }, [reportType, reportData]);
+
+  const staffReportRolesList = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.rows) return [];
+    const rolesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.role) {
+        rolesSet.add(row.role);
+      }
+    });
+    return Array.from(rolesSet).sort();
+  }, [reportType, reportData]);
+
+  const filteredStaffPerformanceRows = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      const matchesSearch = row.staff_name.toLowerCase().includes(staffReportSearchQuery.toLowerCase());
+      const matchesBranch = !staffReportBranchFilter || row.branch_name === staffReportBranchFilter;
+      const matchesRole = !staffReportRoleFilter || row.role === staffReportRoleFilter;
+      return matchesSearch && matchesBranch && matchesRole;
+    });
+  }, [reportType, reportData, staffReportSearchQuery, staffReportBranchFilter, staffReportRoleFilter]);
+
+  const filteredStaffPerformanceSummary = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.summary) return { total_staff: 0, active_staff: 0 };
+    if (!staffReportSearchQuery && !staffReportBranchFilter && !staffReportRoleFilter) {
+      return {
+        total_staff: reportData.summary.total_staff || 0,
+        active_staff: reportData.summary.active_staff || 0
+      };
+    }
+    const total_staff = filteredStaffPerformanceRows.length;
+    const active_staff = filteredStaffPerformanceRows.filter((row: any) => row.status.toLowerCase() === 'active').length;
+    return { total_staff, active_staff };
+  }, [reportType, reportData, filteredStaffPerformanceRows, staffReportSearchQuery, staffReportBranchFilter, staffReportRoleFilter]);
+
+  const [financialReportSearchQuery, setFinancialReportSearchQuery] = useState('');
+  const [financialReportBranchFilter, setFinancialReportBranchFilter] = useState('');
+  const [financialReportPaymentFilter, setFinancialReportPaymentFilter] = useState('');
+
+  const financialReportBranchesList = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.rows) return [];
+    const branchesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.branch_name) {
+        branchesSet.add(row.branch_name);
+      }
+    });
+    return Array.from(branchesSet).sort();
+  }, [reportType, reportData]);
+
+  const financialReportPaymentModesList = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.rows) return [];
+    const modesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.payment_mode) {
+        modesSet.add(row.payment_mode);
+      }
+    });
+    return Array.from(modesSet).sort();
+  }, [reportType, reportData]);
+
+  const filteredFinancialRows = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      const matchesSearch = 
+        row.invoice_number.toLowerCase().includes(financialReportSearchQuery.toLowerCase()) ||
+        row.patient_name.toLowerCase().includes(financialReportSearchQuery.toLowerCase());
+      const matchesBranch = !financialReportBranchFilter || row.branch_name === financialReportBranchFilter;
+      const matchesPayment = !financialReportPaymentFilter || row.payment_mode === financialReportPaymentFilter;
+      return matchesSearch && matchesBranch && matchesPayment;
+    });
+  }, [reportType, reportData, financialReportSearchQuery, financialReportBranchFilter, financialReportPaymentFilter]);
+
+  const filteredFinancialSummary = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.summary) return { total_revenue: 0, total_invoices: 0, avg_invoice_value: 0 };
+    if (!financialReportSearchQuery && !financialReportBranchFilter && !financialReportPaymentFilter) {
+      return {
+        total_revenue: reportData.summary.total_revenue || 0,
+        total_invoices: reportData.summary.total_invoices || 0,
+        avg_invoice_value: reportData.summary.avg_invoice_value || 0
+      };
+    }
+    const total_invoices = filteredFinancialRows.length;
+    const total_revenue = filteredFinancialRows.reduce((acc: number, row: any) => acc + (Number(row.amount) || 0), 0);
+    const avg_invoice_value = total_invoices > 0 ? total_revenue / total_invoices : 0;
+    return { total_revenue, total_invoices, avg_invoice_value };
+  }, [reportType, reportData, filteredFinancialRows, financialReportSearchQuery, financialReportBranchFilter, financialReportPaymentFilter]);
+
+  const [inventoryReportSearchQuery, setInventoryReportSearchQuery] = useState('');
+
+  const filteredInventoryRows = useMemo(() => {
+    if (reportType !== 'inventory' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      return row.name.toLowerCase().includes(inventoryReportSearchQuery.toLowerCase());
+    });
+  }, [reportType, reportData, inventoryReportSearchQuery]);
+
+  const filteredInventorySummary = useMemo(() => {
+    if (reportType !== 'inventory' || !reportData?.summary) return { total_valuation: 0, total_skus: 0, low_stock_skus: 0 };
+    if (!inventoryReportSearchQuery) {
+      return {
+        total_valuation: reportData.summary.total_valuation || 0,
+        total_skus: reportData.summary.total_skus || 0,
+        low_stock_skus: reportData.summary.low_stock_skus || 0
+      };
+    }
+    const total_skus = filteredInventoryRows.length;
+    const total_valuation = filteredInventoryRows.reduce((acc: number, row: any) => acc + (Number(row.valuation) || 0), 0);
+    const low_stock_skus = filteredInventoryRows.filter((row: any) => row.status.toLowerCase() === 'low stock').length;
+    return { total_valuation, total_skus, low_stock_skus };
+  }, [reportType, reportData, filteredInventoryRows, inventoryReportSearchQuery]);
 
   const fetchReports = async (startOverride?: string, endOverride?: string, typeOverride?: string, branchOverride?: string) => {
     setReportLoading(true);
@@ -504,7 +668,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
         </div>
 
         <script>
-          window.onload = function() { window.print(); }
+          window.onload = function() {
+            window.print();
+            setTimeout(function() {
+              window.close();
+            }, 100);
+          }
+          window.onafterprint = function() {
+            window.close();
+          }
         </script>
       </body>
       </html>
@@ -660,12 +832,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
   const [attendanceData, setAttendanceData] = useState<any>({ summary: null, records: [] });
   const [attendanceDateFilter, setAttendanceDateFilter] = useState('');
+  const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
+  const [attendanceBranchFilter, setAttendanceBranchFilter] = useState('');
+  const [attendanceRoleFilter, setAttendanceRoleFilter] = useState('');
   const [loadingAttendance, setLoadingAttendance] = useState(false);
 
-  const fetchStaffAttendance = async (dateStr?: string) => {
+  const fetchStaffAttendance = async (dateStr?: string, branchId?: string) => {
     setLoadingAttendance(true);
     try {
-      const url = dateStr ? `/admin/attendance?attendance_date=${dateStr}` : '/admin/attendance';
+      let url = '/admin/attendance';
+      const params = [];
+      if (dateStr) params.push(`attendance_date=${dateStr}`);
+      if (branchId) params.push(`branch_id=${branchId}`);
+      if (params.length > 0) {
+        url += `?${params.join('&')}`;
+      }
       const res = await api.get(url);
       if (res.data?.success) {
         setAttendanceData(res.data.data);
@@ -688,9 +869,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       fetchActiveSessions();
     }
     if (activeTab === 'attendance') {
-      fetchStaffAttendance(attendanceDateFilter);
+      fetchStaffAttendance(attendanceDateFilter, attendanceBranchFilter);
     }
-  }, [activeTab, attendanceDateFilter]);
+  }, [activeTab, attendanceDateFilter, attendanceBranchFilter]);
 
   const handleEditBranchClick = (br: any) => {
     setEditingBranch(br);
@@ -973,6 +1154,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredAttendanceRecords = (attendanceData.records || []).filter((r: any) => {
+    const matchesSearch = r.staff_name.toLowerCase().includes(attendanceSearchQuery.toLowerCase());
+    const matchesRole = !attendanceRoleFilter || r.role.toLowerCase() === attendanceRoleFilter.toLowerCase();
+    return matchesSearch && matchesRole;
+  });
 
   return (
     <div className="admin-layout">
@@ -1592,15 +1779,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Period Revenue</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(reportData.summary.total_revenue || 0)}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(filteredFinancialSummary.total_revenue || 0)}</div>
                       </div>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Invoices Generated</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_invoices || 0}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredFinancialSummary.total_invoices || 0}</div>
                       </div>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Average Invoice Value</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(reportData.summary.avg_invoice_value || 0)}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(filteredFinancialSummary.avg_invoice_value || 0)}</div>
                       </div>
                     </>
                   )}
@@ -1626,33 +1813,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Inventory Valuation</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(reportData.summary.total_valuation || 0)}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(filteredInventorySummary.total_valuation || 0)}</div>
                       </div>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Medicine SKUs</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_skus || 0}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredInventorySummary.total_skus || 0}</div>
                       </div>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Low Stock Warnings</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#ef4444', marginTop: '4px' }}>{reportData.summary.low_stock_skus || 0}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#ef4444', marginTop: '4px' }}>{filteredInventorySummary.low_stock_skus || 0}</div>
                       </div>
                     </>
                   )}
 
                   {reportType === 'doctor_revenue' && (
                     <>
-                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Doctors</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_doctors || 0}</div>
-                      </div>
-                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Doctor Generated Revenue</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(reportData.summary.total_revenue || 0)}</div>
-                      </div>
-                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Average Revenue / Doctor</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(reportData.summary.avg_revenue_per_doctor || 0)}</div>
-                      </div>
+                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Doctors</div>
+                         <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredDoctorRevenueSummary.total_doctors || 0}</div>
+                       </div>
+                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Doctor Generated Revenue</div>
+                         <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(filteredDoctorRevenueSummary.total_revenue || 0)}</div>
+                       </div>
+                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Average Revenue / Doctor</div>
+                         <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(filteredDoctorRevenueSummary.avg_revenue_per_doctor || 0)}</div>
+                       </div>
                     </>
                   )}
 
@@ -1660,11 +1847,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Staff Members</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_staff || 0}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredStaffPerformanceSummary.total_staff || 0}</div>
                       </div>
                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Active Personnel</div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{reportData.summary.active_staff || 0}</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{filteredStaffPerformanceSummary.active_staff || 0}</div>
                       </div>
                     </>
                   )}
@@ -1686,8 +1873,227 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
               {/* Detailed Data Table */}
               <div className="admin-card">
-                <div className="admin-card-header">
-                  <h2 className="admin-card-title">Report Detail Records ({reportData?.rows?.length || 0})</h2>
+                <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 className="admin-card-title">
+                    Report Detail Records ({
+                      reportType === 'doctor_revenue' ? filteredDoctorRevenueRows.length :
+                      reportType === 'staff_performance' ? filteredStaffPerformanceRows.length :
+                      reportType === 'financial' ? filteredFinancialRows.length :
+                      reportType === 'inventory' ? filteredInventoryRows.length :
+                      (reportData?.rows?.length || 0)
+                    })
+                  </h2>
+
+                  {reportType === 'inventory' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Medicine Name */}
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search medicine name..."
+                          list="reports-medicine-suggestions"
+                          value={inventoryReportSearchQuery}
+                          onChange={e => setInventoryReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-medicine-suggestions">
+                          {Array.from(new Set((reportData?.rows || []).map((row: any) => row.name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      {inventoryReportSearchQuery && (
+                        <button
+                          onClick={() => setInventoryReportSearchQuery('')}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {reportType === 'financial' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Invoice/Patient Name */}
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search patient or invoice..."
+                          list="reports-patient-suggestions"
+                          value={financialReportSearchQuery}
+                          onChange={e => setFinancialReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-patient-suggestions">
+                          {Array.from(new Set(
+                            (reportData?.rows || []).flatMap((row: any) => [row.patient_name, row.invoice_number].filter(Boolean))
+                          )).map((val: any) => (
+                            <option key={val} value={val} />
+                          ))}
+                        </datalist>
+                      </div>
+                      
+                      {/* Filter by Branch */}
+                      <div style={{ width: '180px' }}>
+                        <select
+                          value={financialReportBranchFilter}
+                          onChange={e => setFinancialReportBranchFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Branches</option>
+                          {financialReportBranchesList.map((branch: string) => (
+                            <option key={branch} value={branch}>{branch}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filter by Payment Method */}
+                      <div style={{ width: '180px' }}>
+                        <select
+                          value={financialReportPaymentFilter}
+                          onChange={e => setFinancialReportPaymentFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Payment Methods</option>
+                          {financialReportPaymentModesList.map((mode: string) => (
+                            <option key={mode} value={mode}>{mode}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(financialReportSearchQuery || financialReportBranchFilter || financialReportPaymentFilter) && (
+                        <button
+                          onClick={() => {
+                            setFinancialReportSearchQuery('');
+                            setFinancialReportBranchFilter('');
+                            setFinancialReportPaymentFilter('');
+                          }}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {reportType === 'doctor_revenue' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Doctor Name */}
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search doctor..."
+                          list="reports-doctor-suggestions"
+                          value={doctorReportSearchQuery}
+                          onChange={e => setDoctorReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-doctor-suggestions">
+                          {Array.from(new Set((reportData?.rows || []).map((row: any) => row.doctor_name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+                      
+                      {/* Filter by Specialization */}
+                      <div style={{ width: '180px' }}>
+                        <select
+                          value={doctorReportSpecFilter}
+                          onChange={e => setDoctorReportSpecFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Specializations</option>
+                          {doctorSpecializations.map((spec: string) => (
+                            <option key={spec} value={spec}>{spec}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(doctorReportSearchQuery || doctorReportSpecFilter) && (
+                        <button
+                          onClick={() => {
+                            setDoctorReportSearchQuery('');
+                            setDoctorReportSpecFilter('');
+                          }}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {reportType === 'staff_performance' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Staff Name */}
+                      <div style={{ position: 'relative', width: '200px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search staff..."
+                          list="reports-staff-suggestions"
+                          value={staffReportSearchQuery}
+                          onChange={e => setStaffReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-staff-suggestions">
+                          {Array.from(new Set((reportData?.rows || []).map((row: any) => row.staff_name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+                      
+                      {/* Filter by Branch */}
+                      <div style={{ width: '150px' }}>
+                        <select
+                          value={staffReportBranchFilter}
+                          onChange={e => setStaffReportBranchFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Branches</option>
+                          {staffReportBranchesList.map((branch: string) => (
+                            <option key={branch} value={branch}>{branch}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filter by Role */}
+                      <div style={{ width: '150px' }}>
+                        <select
+                          value={staffReportRoleFilter}
+                          onChange={e => setStaffReportRoleFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer', textTransform: 'capitalize' }}
+                        >
+                          <option value="">All Roles</option>
+                          {staffReportRolesList.map((role: string) => (
+                            <option key={role} value={role}>{role}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(staffReportSearchQuery || staffReportBranchFilter || staffReportRoleFilter) && (
+                        <button
+                          onClick={() => {
+                            setStaffReportSearchQuery('');
+                            setStaffReportBranchFilter('');
+                            setStaffReportRoleFilter('');
+                          }}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {reportLoading ? (
@@ -1697,13 +2103,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <table className="admin-table">
                       {reportType === 'financial' && (
                         <>
-                          <thead><tr><th>Invoice #</th><th>Date</th><th>Patient</th><th>Payment Method</th><th>Status</th><th>Amount</th></tr></thead>
+                          <thead><tr><th>Invoice #</th><th>Date</th><th>Patient</th><th>Branch</th><th>Payment Method</th><th>Status</th><th>Amount</th></tr></thead>
                           <tbody>
-                            {reportData?.rows?.map((row: any) => (
+                            {filteredFinancialRows.map((row: any) => (
                               <tr key={row.id}>
                                 <td style={{ fontWeight: 600 }}>{row.invoice_number}</td>
                                 <td>{row.date}</td>
                                 <td>{row.patient_name}</td>
+                                <td>{row.branch_name || "Central Branch"}</td>
                                 <td>{row.payment_mode}</td>
                                 <td><span className="admin-status-badge active">{row.status}</span></td>
                                 <td style={{ fontWeight: 700, color: '#10b981' }}>{fmtCurrency(row.amount)}</td>
@@ -1733,7 +2140,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                         <>
                           <thead><tr><th>Medicine Name</th><th>Category</th><th>Current Stock</th><th>Reorder Level</th><th>Unit Price</th><th>Valuation</th><th>Status</th></tr></thead>
                           <tbody>
-                            {reportData?.rows?.map((row: any) => (
+                            {filteredInventoryRows.map((row: any) => (
                               <tr key={row.id}>
                                 <td style={{ fontWeight: 600 }}>{row.name}</td>
                                 <td>{row.category}</td>
@@ -1752,7 +2159,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                         <>
                           <thead><tr><th>Doctor Name</th><th>Specialization</th><th>Completed Consultations</th><th>Consultation Fee</th><th>Total Revenue</th><th>Status</th></tr></thead>
                           <tbody>
-                            {reportData?.rows?.map((row: any) => (
+                            {filteredDoctorRevenueRows.map((row: any) => (
                               <tr key={row.id}>
                                 <td style={{ fontWeight: 600 }}>{row.doctor_name}</td>
                                 <td>{row.specialization}</td>
@@ -1770,7 +2177,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                         <>
                           <thead><tr><th>Staff Member</th><th>Role</th><th>Assigned Branch</th><th>Last Login</th><th>Status</th></tr></thead>
                           <tbody>
-                            {reportData?.rows?.map((row: any) => (
+                            {filteredStaffPerformanceRows.map((row: any) => (
                               <tr key={row.id}>
                                 <td style={{ fontWeight: 600 }}>{row.staff_name}</td>
                                 <td style={{ textTransform: 'capitalize' }}>{row.role}</td>
@@ -1819,7 +2226,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 <h2 className="admin-card-title">Pharmacy Medicine Stock</h2>
                 <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
                   <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
-                  <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search medicines..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search medicines..." list="management-medicine-suggestions" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  <datalist id="management-medicine-suggestions">
+                    {Array.from(new Set((inventory || []).map((item: any) => item.name))).map((name: any) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
@@ -1851,7 +2263,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
                     <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
-                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search staff..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search staff..." list="management-staff-suggestions" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                    <datalist id="management-staff-suggestions">
+                      {Array.from(new Set((staff || []).map((s: any) => s.name))).map((name: any) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
                   </div>
                   <button className="admin-btn-primary" onClick={() => { setIsAddingStaff(true); setShowPassword(false); }}>
                     <Plus size={16} /> Add Staff Member
@@ -1905,7 +2322,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
                     <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
-                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search branches..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search branches..." list="management-branch-suggestions" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                    <datalist id="management-branch-suggestions">
+                      {Array.from(new Set((branches || []).map((b: any) => b.name))).map((name: any) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
                   </div>
                   <button className="admin-btn-primary" onClick={() => setIsAddingBranch(true)}>
                     <Plus size={16} /> Add Branch
@@ -2396,9 +2818,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     onChange={e => setAttendanceDateFilter(e.target.value)}
                     style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                   />
-                  <button className="admin-btn-secondary" onClick={() => fetchStaffAttendance(attendanceDateFilter)}>
+                  <button className="admin-btn-secondary" onClick={() => fetchStaffAttendance(attendanceDateFilter, attendanceBranchFilter)}>
                     <RefreshCw size={14} className={loadingAttendance ? 'spin' : ''} /> Filter Date
                   </button>
+                </div>
+              </div>
+
+              {/* Filter controls row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                {/* Search Name */}
+                <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Search by staff name..."
+                    list="attendance-staff-suggestions"
+                    value={attendanceSearchQuery}
+                    onChange={e => setAttendanceSearchQuery(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px 8px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
+                  />
+                  <datalist id="attendance-staff-suggestions">
+                    {Array.from(new Set((attendanceData?.records || []).map((r: any) => r.staff_name))).map((name: any) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* Branch Filter */}
+                <div style={{ minWidth: '180px' }}>
+                  <select
+                    value={attendanceBranchFilter}
+                    onChange={e => setAttendanceBranchFilter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="">All Branches</option>
+                    {branches.map((b: any) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Role Filter */}
+                <div style={{ minWidth: '180px' }}>
+                  <select
+                    value={attendanceRoleFilter}
+                    onChange={e => setAttendanceRoleFilter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="doctor">Doctor</option>
+                    <option value="receptionist">Receptionist</option>
+                    <option value="pharmacist">Pharmacist</option>
+                    <option value="clinic_manager">Clinic Manager</option>
+                  </select>
                 </div>
               </div>
 
@@ -2441,7 +2914,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {attendanceData.records?.map((r: any) => (
+                      {filteredAttendanceRecords.map((r: any) => (
                         <tr key={r.id}>
                           <td style={{ fontWeight: 600 }}>{r.staff_name}</td>
                           <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
@@ -2451,7 +2924,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                           <td>{r.punch_out}</td>
                           <td>
                             <span className={`admin-status-badge ${
-                              r.status === 'PRESENT' ? 'active' : r.status === 'LATE' ? 'low' : 'suspended'
+                              r.status === 'PRESENT' ? 'active' :
+                              r.status === 'LATE' ? 'low' :
+                              r.status === 'LEAVE' ? 'leave' : 'absent'
                             }`}>
                               {r.status}
                             </span>
@@ -2461,9 +2936,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     </tbody>
                   </table>
 
-                  {(!attendanceData.records || attendanceData.records.length === 0) && (
+                  {filteredAttendanceRecords.length === 0 && (
                     <div style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '0.86rem' }}>
-                      No staff punch-in records logged for {attendanceData.summary?.date || 'today'}.
+                      No staff attendance records match the search or filter criteria.
                     </div>
                   )}
                 </div>

@@ -84,3 +84,66 @@ async def list_purchase_orders(
         data={"items": orders, "total": len(orders)},
         message="Purchase orders retrieved."
     )
+
+
+@router.post("/purchase-orders", response_class=JSONResponse, status_code=201)
+async def create_purchase_order(
+    request: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """
+    Record a new stock-in purchase transaction.
+    """
+    if current_user.role not in [UserRole.PHARMACIST, UserRole.ADMIN]:
+        raise PermissionDeniedError("Only pharmacists or admins can record purchase orders.")
+
+    from app.models.inventory import Medicine, StockTransaction
+    import uuid
+    from sqlalchemy import select
+
+    med_id = uuid.UUID(request["medicine_id"])
+    qty = int(request["change_qty"])
+    notes = request.get("notes", "")
+
+    stmt = select(Medicine).where(Medicine.id == med_id)
+    res = await db.execute(stmt)
+    med = res.scalar_one_or_none()
+    if not med:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "message": "Medicine not found."}
+        )
+
+    # Create transaction
+    txn = StockTransaction(
+        id=uuid.uuid4(),
+        medicine_id=med_id,
+        change_qty=qty,
+        transaction_type="purchase",
+        notes=notes,
+        performed_by_id=current_user.id
+    )
+    db.add(txn)
+
+    # Update stock_qty
+    med.stock_qty += qty
+    db.add(med)
+
+    await db.commit()
+
+    return ApiResponse.success(
+        data={
+            "id": str(txn.id),
+            "medicine_name": med.name,
+            "supplier": med.supplier or "Unknown",
+            "quantity": txn.change_qty,
+            "unit": med.unit,
+            "amount": round(txn.change_qty * med.unit_price, 2),
+            "status": "Received",
+            "date": txn.created_at.strftime("%d %b %Y"),
+            "notes": txn.notes or "",
+        },
+        message="Purchase order recorded successfully.",
+        status_code=201
+    )

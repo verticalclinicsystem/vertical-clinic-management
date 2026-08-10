@@ -38,6 +38,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <input
               type="text"
               placeholder="Search reports..."
+              list="patient-reports-search-suggestions"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -51,6 +52,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 color: 'var(--text-main, #1e293b)'
               }}
             />
+            <datalist id="patient-reports-search-suggestions">
+              {Array.from(new Set((dashboardData.reports || []).map((r: any) => r.title))).map((title: any) => (
+                <option key={title} value={title} />
+              ))}
+            </datalist>
           </div>
           <button onClick={() => setShowUploadModal(true)} className="btn-primary" style={{ padding: '8px 12px', fontSize: '0.8rem' }}>
             <Plus size={14} /> Upload Report
