@@ -33,6 +33,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
+import AdmitPatientModal from '../../components/AdmitPatientModal';
 import './ReceptionistPortal.css';
 
 interface ReceptionistPortalProps {
@@ -6009,244 +6010,24 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       )}
 
       {/* 1. ADMIT PATIENT MODAL */}
-      {isAdmitModalOpen && selectedBed && (() => {
-        const activeReq = activeAdmissionRequestId 
-          ? pendingAdmissionRequests.find((r: any) => r.id === activeAdmissionRequestId)
-          : null;
-
-        const categoriesMap: { [catId: string]: { id: string, name: string, beds: any[] } } = {};
-        bedsData.forEach((b: any) => {
-          const catId = b.category?.id || 'default';
-          const catName = b.category?.name || 'General Ward';
-          if (!categoriesMap[catId]) {
-            categoriesMap[catId] = { id: catId, name: catName, beds: [] };
-          }
-          if (b.status === 'available' || b.id === selectedBed.id) {
-            categoriesMap[catId].beds.push(b);
-          }
-        });
-        const categoriesList = Object.values(categoriesMap);
-        const currentCategory = categoriesList.find(c => c.id === selectedBed.category?.id) || categoriesList[0];
-
-        return (
-          <div className="recep-modal-overlay" onClick={() => { setIsAdmitModalOpen(false); setActiveAdmissionRequestId(null); }}>
-            <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '560px', maxWidth: '94vw', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', padding: 0 }}>
-              
-              {/* Header */}
-              <div style={{ background: 'linear-gradient(135deg, #064B62 0%, #073B55 100%)', color: '#ffffff', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#16B9D4', marginBottom: '4px' }}>
-                    IPD Hospitalization Admission
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Bed size={22} style={{ color: '#16B9D4' }} /> Admit Patient to Bed
-                  </h3>
-                </div>
-                <button className="close-btn" onClick={() => { setIsAdmitModalOpen(false); setActiveAdmissionRequestId(null); }} style={{ color: '#94a3b8', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', transition: 'all 0.2s' }}>
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleAdmitPatient} style={{ padding: '24px' }}>
-                {/* WARD & BED SELECTION CARD */}
-                <div style={{ background: '#F1F8FA', border: '1.5px solid #D6E7ED', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#102A43', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Bed size={14} style={{ color: '#0B7894' }} /> Ward & Bed Assignment
-                    </span>
-                    {activeReq?.category_name && (
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0B7894', background: '#E8F7FA', padding: '3px 9px', borderRadius: '12px', border: '1px solid #D6E7ED' }}>
-                        Advised Ward: {activeReq.category_name}
-                      </span>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                    <div>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                        Ward / Category
-                      </label>
-                      <select
-                        className="recep-select-field"
-                        value={selectedBed.category?.id || ''}
-                        onChange={(e) => {
-                          const catId = e.target.value;
-                          const cat = categoriesList.find(c => c.id === catId);
-                          if (cat && cat.beds.length > 0) {
-                            setSelectedBed(cat.beds[0]);
-                          }
-                        }}
-                        required
-                        style={{ background: '#ffffff', fontWeight: 600, width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #D6E7ED', fontSize: '0.88rem', color: '#102A43' }}
-                      >
-                        {categoriesList.map(cat => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name} ({cat.beds.length} Avail)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                        Assign Bed Number
-                      </label>
-                      <select
-                        className="recep-select-field"
-                        value={selectedBed.id}
-                        onChange={(e) => {
-                          const bed = bedsData.find((b: any) => b.id === e.target.value);
-                          if (bed) setSelectedBed(bed);
-                        }}
-                        required
-                        style={{ background: '#ffffff', fontWeight: 700, width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #0B8EAB', fontSize: '0.88rem', color: '#0B8EAB' }}
-                      >
-                        {currentCategory?.beds.map((b: any) => (
-                          <option key={b.id} value={b.id}>
-                            {b.bed_number} ({b.status === 'available' ? 'Available' : 'Selected'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* PATIENT DETAILS */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    Patient Name
-                  </label>
-                  {activeReq ? (
-                    <div style={{ background: '#E8F7FA', border: '1.5px solid #D6E7ED', padding: '12px 16px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#0B8EAB', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
-                          <User size={18} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#102A43' }}>
-                            {activeReq.patient_name}
-                          </div>
-                          <div style={{ fontSize: '0.78rem', color: '#58758A' }}>
-                            Code: <strong style={{ color: '#0B7894' }}>{activeReq.patient_code}</strong>
-                          </div>
-                        </div>
-                      </div>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0B7894', background: '#ffffff', border: '1px solid #D6E7ED', padding: '4px 10px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <CheckCircle size={12} style={{ color: '#18B981' }} /> Advised via Consultation
-                      </span>
-                    </div>
-                  ) : (
-                    <select
-                      className="recep-select-field"
-                      value={admitForm.patient_id}
-                      onChange={(e) => setAdmitForm({ ...admitForm, patient_id: e.target.value })}
-                      required
-                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px' }}
-                    >
-                      <option value="">-- Choose Patient --</option>
-                      {patients.map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.user?.full_name || p.name || 'Patient'} ({p.patient_code})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {/* ADMITTING DOCTOR */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    Admitting Doctor
-                  </label>
-                  {activeReq ? (
-                    <div style={{ background: '#F1F8FA', border: '1px solid #D6E7ED', padding: '10px 14px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#E8F7FA', color: '#0B7894', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Stethoscope size={16} />
-                        </div>
-                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#102A43' }}>
-                          Dr. {activeReq.doctor_name}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: '0.72rem', color: '#58758A', fontStyle: 'italic' }}>
-                        Recommending Physician
-                      </span>
-                    </div>
-                  ) : (
-                    <select
-                      className="recep-select-field"
-                      value={admitForm.admitting_doctor_id}
-                      onChange={(e) => setAdmitForm({ ...admitForm, admitting_doctor_id: e.target.value })}
-                      required
-                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px' }}
-                    >
-                      <option value="">-- Choose Doctor --</option>
-                      {doctors.map((d: any) => (
-                        <option key={d.id} value={d.id}>
-                          {formatDocName(d.user?.full_name || d.name)} ({d.specialization || 'General'})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {/* DIAGNOSIS / REASON */}
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    Diagnosis / Admission Clinical Notes
-                  </label>
-                  <textarea
-                    className="recep-input-field"
-                    rows={3}
-                    value={admitForm.diagnosis}
-                    onChange={(e) => setAdmitForm({ ...admitForm, diagnosis: e.target.value })}
-                    placeholder="e.g. Severe pneumonia observation, post-op care"
-                    required
-                    style={{ resize: 'vertical', width: '100%', borderRadius: '8px', padding: '10px', fontSize: '0.88rem' }}
-                  />
-                </div>
-
-                {/* INITIAL DEPOSIT */}
-                <div className="form-group" style={{ marginBottom: '24px' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    Initial Deposit Amount (₹)
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: '#58758A' }}>₹</span>
-                    <input
-                      type="number"
-                      className="recep-input-field"
-                      value={admitForm.initial_deposit}
-                      onChange={(e) => setAdmitForm({ ...admitForm, initial_deposit: Number(e.target.value) })}
-                      min="0"
-                      style={{ width: '100%', paddingLeft: '28px', borderRadius: '8px', fontWeight: 700, fontSize: '1rem', color: '#102A43' }}
-                    />
-                  </div>
-                </div>
-
-                {/* FOOTER */}
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid #D6E7ED', paddingTop: '18px' }}>
-                  <button
-                    type="button"
-                    className="btn-cancel"
-                    onClick={() => { setIsAdmitModalOpen(false); setActiveAdmissionRequestId(null); }}
-                    style={{ padding: '10px 18px', borderRadius: '8px', fontWeight: 600, color: '#58758A', background: '#EAF6FA', border: 'none', cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-submit"
-                    style={{ padding: '10px 22px', borderRadius: '8px', fontWeight: 700, color: '#ffffff', background: 'linear-gradient(135deg, #0B7894 0%, #0B8EAB 100%)', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(11, 142, 171, 0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    <Bed size={16} /> Confirm & Admit Patient
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        );
-      })()}
+      <AdmitPatientModal
+        isOpen={isAdmitModalOpen}
+        onClose={() => {
+          setIsAdmitModalOpen(false);
+          setActiveAdmissionRequestId(null);
+        }}
+        selectedBed={selectedBed}
+        setSelectedBed={setSelectedBed}
+        activeAdmissionRequestId={activeAdmissionRequestId}
+        setActiveAdmissionRequestId={setActiveAdmissionRequestId}
+        admitForm={admitForm}
+        setAdmitForm={setAdmitForm}
+        bedsData={bedsData}
+        patients={patients}
+        doctors={doctors}
+        pendingAdmissionRequests={pendingAdmissionRequests}
+        onSubmit={handleAdmitPatient}
+      />
 
       {/* 2. TRANSFER BED MODAL */}
       {isTransferModalOpen && selectedBed && (
