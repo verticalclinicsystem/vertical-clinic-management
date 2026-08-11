@@ -1,15 +1,14 @@
-/* ---------- Patient Portal Layout ---------- */
 .portal-container {
   display: flex;
   min-height: 100vh;
-  background-color: #f8fafc;
+  background-color: #EAF6FA;
   font-family: var(--font-sans);
 }
 
 /* Sidebar — matches prototype .sidebar */
 .portal-sidebar {
   width: 260px;
-  background: linear-gradient(180deg, var(--primary-dark), var(--primary) 70%);
+  background: linear-gradient(180deg, #064B62 0%, #073B55 100%);
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -18,7 +17,7 @@
   left: 0;
   bottom: 0;
   z-index: 40;
-  box-shadow: 4px 0 20px rgba(19, 36, 48, 0.18);
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 /* matches prototype .brand */
@@ -101,16 +100,15 @@
 }
 
 .portal-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(22, 185, 212, 0.15);
   color: var(--bg-white);
 }
 
-/* matches prototype .nav-item — uses white-16% active state */
 .portal-nav-item.active {
-  background: rgba(255, 255, 255, 0.16);
+  background: #0B8EAB;
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.14);
   font-weight: 600;
+  box-shadow: 0 4px 12px rgba(11, 142, 171, 0.3);
 }
 
 /* matches prototype .sidebar-foot */

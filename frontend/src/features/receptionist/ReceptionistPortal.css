@@ -11,7 +11,8 @@
 /* ── SIDEBAR ── */
 .recep-sidebar {
   width: 270px;
-  background-color: var(--primary-dark);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -21,7 +22,7 @@
   left: 0;
   z-index: 100;
   padding: 24px 0;
-  box-shadow: 4px 0 25px rgba(19, 36, 48, 0.09);
+  box-shadow: 4px 0 25px rgba(6, 75, 98, 0.15);
 }
 
 .recep-sidebar-header {
@@ -35,7 +36,7 @@
 .recep-logo-badge {
   width: 38px;
   height: 38px;
-  background-color: var(--accent);
+  background-color: var(--bright-cyan);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -43,6 +44,7 @@
   font-size: 1.2rem;
   font-weight: 800;
   color: white;
+  box-shadow: 0 4px 12px rgba(22, 185, 212, 0.3);
 }
 
 .recep-clinic-info {
@@ -67,9 +69,9 @@
 .recep-sidebar-pill {
   margin: 0 16px 24px 16px;
   padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(22, 185, 212, 0.25);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(22, 185, 212, 0.08);
   font-size: 0.8rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
@@ -82,8 +84,9 @@
   content: '';
   width: 6px;
   height: 6px;
-  background-color: var(--accent);
+  background-color: var(--bright-cyan);
   border-radius: 50%;
+  box-shadow: 0 0 8px var(--bright-cyan);
 }
 
 .recep-sidebar-nav {
@@ -109,21 +112,22 @@
   border-radius: 8px;
   font-size: 0.88rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.78);
   cursor: pointer;
   transition: var(--transition-all);
   margin-bottom: 4px;
 }
 
 .recep-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(22, 185, 212, 0.15);
   color: #ffffff;
 }
 
 .recep-nav-item.active {
-  background-color: var(--primary);
+  background-color: var(--active-nav);
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 4px 14px rgba(11, 142, 171, 0.35);
 }
 
 .recep-sidebar-footer {
@@ -2157,3 +2161,37 @@
 .recep-back-btn:active {
   transform: scale(0.95) translateX(-2px);
 }
+
+/* ── BED OCCUPANCY GRID & CARDS STYLING ── */
+.beds-workspace {
+  margin-top: 10px;
+}
+
+.bed-card-premium {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bed-card-premium:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Spin animation for refresh button */
+.spin-animation {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Invoice styled table inside checkout preview */
+.invoice-container-premium {
+  font-family: 'Inter', sans-serif;
+}
+
+.invoice-container-premium h4 {
+  letter-spacing: 0.05em;
+}
+

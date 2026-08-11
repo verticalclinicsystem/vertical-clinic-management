@@ -1,24 +1,24 @@
 /* AdminPortal.css — High-Fidelity Styling for Clinic OS Admin Dashboard */
 
 :root {
-  --admin-primary: var(--primary);
-  --admin-primary-dark: var(--primary-dark);
-  --admin-primary-light: var(--primary-light);
-  --admin-sidebar-bg: var(--primary-dark);
-  --admin-sidebar-hover: rgba(255, 255, 255, 0.1);
-  --admin-sidebar-active: var(--primary);
-  --admin-bg-light: #f8fafc;
-  --admin-text-dark: #0f172a;
-  --admin-text-muted: #64748b;
-  --admin-border: #e2e8f0;
+  --admin-primary: var(--primary-teal);
+  --admin-primary-dark: var(--dark-sidebar);
+  --admin-primary-light: var(--bright-cyan);
+  --admin-sidebar-bg: var(--dark-sidebar);
+  --admin-sidebar-hover: rgba(22, 185, 212, 0.15);
+  --admin-sidebar-active: var(--active-nav);
+  --admin-bg-light: #EAF6FA;
+  --admin-text-dark: #102A43;
+  --admin-text-muted: #58758A;
+  --admin-border: #D6E7ED;
   
   /* Color system matching cards */
-  --revenue-green: #10b981;
-  --patients-blue: #3b82f6;
-  --doctors-teal: #14b8a6;
-  --appt-orange: #f97316;
-  --inv-red: #ef4444;
-  --branch-indigo: #6366f1;
+  --revenue-green: #18B981;
+  --patients-blue: #3B82F6;
+  --doctors-teal: #16B9D4;
+  --appt-orange: #F59E0B;
+  --inv-red: #EF4444;
+  --branch-indigo: #0B7894;
 }
 
 .admin-layout {
@@ -32,7 +32,8 @@
 /* ── SIDEBAR ── */
 .admin-sidebar {
   width: 260px;
-  background-color: var(--admin-sidebar-bg);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -42,7 +43,7 @@
   left: 0;
   z-index: 100;
   padding: 24px 0;
-  box-shadow: 4px 0 20px rgba(14, 95, 118, 0.08);
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 .admin-sidebar-header {

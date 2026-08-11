@@ -28,7 +28,9 @@ import {
   Edit2,
   History,
   Eye,
-  Mail
+  Mail,
+  Bed,
+  RefreshCw
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import './ReceptionistPortal.css';
@@ -518,6 +520,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [loadingPendingCharges, setLoadingPendingCharges] = useState<boolean>(false);
   const [selectedConsultationId, setSelectedConsultationId] = useState<string | null>(null);
   const [selectedTreatmentPlanId, setSelectedTreatmentPlanId] = useState<string | null>(null);
+  const [selectedAdmissionIds, setSelectedAdmissionIds] = useState<string[]>([]);
   const [includeMedicines, setIncludeMedicines] = useState<boolean>(true);
   const [includeMaterials, setIncludeMaterials] = useState<boolean>(true);
   const [customMaterialsCost, setCustomMaterialsCost] = useState<number>(0);
@@ -528,6 +531,80 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     payment_method: 'cash', // cash | card | online_upi | bank_transfer
     transaction_reference: '',
   });
+
+  // Bed Management states
+  const [bedsData, setBedsData] = useState<any[]>([]);
+  const [isLoadingBeds, setIsLoadingBeds] = useState<boolean>(false);
+  const [bedsError, setBedsError] = useState<string | null>(null);
+
+  // Bed Management Sub-Tab & History States
+  const [bedSubTab, setBedSubTab] = useState<'grid' | 'history'>('grid');
+  const [pendingAdmissionRequests, setPendingAdmissionRequests] = useState<any[]>([]);
+  const [activeAdmissionRequestId, setActiveAdmissionRequestId] = useState<string | null>(null);
+  const [admissionHistory, setAdmissionHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+  
+  // History Detail Modal State
+  const [isHistoryDetailsModalOpen, setIsHistoryDetailsModalOpen] = useState<boolean>(false);
+  const [isLoadingHistoryDetails, setIsLoadingHistoryDetails] = useState<boolean>(false);
+  const [historyDetailsData, setHistoryDetailsData] = useState<any>(null);
+  
+  // Modal states for admissions/transfer/vitals/checkout/MAC
+  const [selectedBed, setSelectedBed] = useState<any>(null);
+  const [isAdmitModalOpen, setIsAdmitModalOpen] = useState<boolean>(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
+  const [isVitalsModalOpen, setIsVitalsModalOpen] = useState<boolean>(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+  const [isMacModalOpen, setIsMacModalOpen] = useState<boolean>(false);
+
+  // Lock body scroll when any modal is active
+  useEffect(() => {
+    const isAnyModalOpen = isAdmitModalOpen || isTransferModalOpen || isVitalsModalOpen || isCheckoutModalOpen || isMacModalOpen || isHistoryDetailsModalOpen;
+    if (isAnyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isAdmitModalOpen, isTransferModalOpen, isVitalsModalOpen, isCheckoutModalOpen, isMacModalOpen, isHistoryDetailsModalOpen]);
+  
+  // Form fields
+  const [admitForm, setAdmitForm] = useState({
+    patient_id: '',
+    admitting_doctor_id: '',
+    diagnosis: '',
+    initial_deposit: 0,
+  });
+  const [transferForm, setTransferForm] = useState({
+    to_bed_id: '',
+    reason: '',
+  });
+  const [vitalsForm, setVitalsForm] = useState({
+    temp: 98.6,
+    pulse: 72,
+    systolic_bp: 120,
+    diastolic_bp: 80,
+    spo2: 98,
+    respiratory_rate: 16,
+    nursing_notes: '',
+  });
+  const [macForm, setMacForm] = useState({
+    medicine_name: '',
+    dosage: '',
+    scheduled_time: '',
+  });
+  
+  // Checkout detail state
+  const [checkoutBill, setCheckoutBill] = useState<any>(null);
+  const [isLoadingCheckoutBill, setIsLoadingCheckoutBill] = useState<boolean>(false);
+  
+  // Vitals & MAC logs for the selected patient
+  const [vitalsHistory, setVitalsHistory] = useState<any[]>([]);
+  const [macHistory, setMacHistory] = useState<any[]>([]);
+  const [isLoadingClinical, setIsLoadingClinical] = useState<boolean>(false);
 
   // Action loading states
   const [submitLoading, setSubmitLoading] = useState<boolean>(false);
@@ -597,9 +674,236 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
   };
 
+  const fetchPendingAdmissionRequests = async () => {
+    try {
+      const res = await api.get('/ipd/admission-requests/pending');
+      if (res.data && res.data.success) {
+        setPendingAdmissionRequests(res.data.data || []);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch pending admission requests:', err);
+    }
+  };
+
+  const fetchBedsData = async () => {
+    setIsLoadingBeds(true);
+    setBedsError(null);
+    try {
+      const response = await api.get('/ipd/dashboard/beds');
+      if (response.data && response.data.success) {
+        setBedsData(response.data.data);
+      } else {
+        setBedsError('Failed to load beds.');
+      }
+      fetchPendingAdmissionRequests();
+    } catch (err: any) {
+      setBedsError(err.message || 'An error occurred while loading beds.');
+    } finally {
+      setIsLoadingBeds(false);
+    }
+  };
+
+  const fetchAdmissionHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const res = await api.get('/ipd/admissions/history');
+      if (res.data && res.data.data) {
+        setAdmissionHistory(res.data.data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch admission history:', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const fetchHistoryDetails = async (admissionId: string) => {
+    setIsHistoryDetailsModalOpen(true);
+    setIsLoadingHistoryDetails(true);
+    try {
+      const res = await api.get(`/ipd/admissions/${admissionId}/summary`);
+      if (res.data && res.data.data) {
+        setHistoryDetailsData(res.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching admission summary details", err);
+    } finally {
+      setIsLoadingHistoryDetails(false);
+    }
+  };
+
+  const fetchClinicalRecords = async (admissionId: string) => {
+    setIsLoadingClinical(true);
+    try {
+      const vitalsRes = await api.get(`/ipd/admissions/${admissionId}/vitals`);
+      if (vitalsRes.data && vitalsRes.data.success) {
+        setVitalsHistory(vitalsRes.data.data);
+      }
+      const macRes = await api.get(`/ipd/admissions/${admissionId}/mac`);
+      if (macRes.data && macRes.data.success) {
+        setMacHistory(macRes.data.data);
+      }
+    } catch (err) {
+      console.error("Error loading clinical records", err);
+    } finally {
+      setIsLoadingClinical(false);
+    }
+  };
+
+  const fetchCheckoutBill = async (admissionId: string) => {
+    setIsLoadingCheckoutBill(true);
+    try {
+      const response = await api.get(`/ipd/admissions/${admissionId}/bill-summary`);
+      if (response.data && response.data.success) {
+        setCheckoutBill(response.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching checkout bill", err);
+    } finally {
+      setIsLoadingCheckoutBill(false);
+    }
+  };
+
+  const handleAdmitPatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed) return;
+    try {
+      const res = await api.post('/ipd/admissions', {
+        patient_id: admitForm.patient_id,
+        bed_id: selectedBed.id,
+        admitting_doctor_id: admitForm.admitting_doctor_id,
+        diagnosis: admitForm.diagnosis,
+        initial_deposit: Number(admitForm.initial_deposit),
+      });
+      if (res.data && res.data.success) {
+        showToast('Patient admitted successfully!', 'success');
+        if (activeAdmissionRequestId) {
+          try {
+            await api.post(`/ipd/admission-requests/${activeAdmissionRequestId}/fulfill`);
+          } catch (reqErr) {
+            console.error('Failed to fulfill admission request:', reqErr);
+          }
+          setActiveAdmissionRequestId(null);
+        }
+        setIsAdmitModalOpen(false);
+        setAdmitForm({ patient_id: '', admitting_doctor_id: '', diagnosis: '', initial_deposit: 0 });
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to admit patient.', 'error');
+    }
+  };
+
+  const handleTransferPatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/transfer`, {
+        to_bed_id: transferForm.to_bed_id,
+        reason: transferForm.reason,
+      });
+      if (res.data && res.data.success) {
+        showToast('Patient transferred successfully!', 'success');
+        setIsTransferModalOpen(false);
+        setTransferForm({ to_bed_id: '', reason: '' });
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to transfer patient.', 'error');
+    }
+  };
+
+  const handleRecordVitals = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/vitals`, {
+        temp: Number(vitalsForm.temp),
+        pulse: Number(vitalsForm.pulse),
+        systolic_bp: Number(vitalsForm.systolic_bp),
+        diastolic_bp: Number(vitalsForm.diastolic_bp),
+        spo2: Number(vitalsForm.spo2),
+        respiratory_rate: Number(vitalsForm.respiratory_rate),
+        nursing_notes: vitalsForm.nursing_notes,
+      });
+      if (res.data && res.data.success) {
+        showToast('Rounding vitals logged successfully!', 'success');
+        setIsVitalsModalOpen(false);
+        setVitalsForm({ temp: 98.6, pulse: 72, systolic_bp: 120, diastolic_bp: 80, spo2: 98, respiratory_rate: 16, nursing_notes: '' });
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to log vitals.', 'error');
+    }
+  };
+
+  const handleScheduleMedication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/mac`, {
+        medicine_name: macForm.medicine_name,
+        dosage: macForm.dosage,
+        scheduled_time: new Date(macForm.scheduled_time).toISOString(),
+      });
+      if (res.data && res.data.success) {
+        showToast('Medication scheduled successfully!', 'success');
+        setMacForm({ medicine_name: '', dosage: '', scheduled_time: '' });
+        fetchClinicalRecords(selectedBed.active_admission.admission_id);
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to schedule medication.', 'error');
+    }
+  };
+
+  const handleAdministerMedication = async (itemId: string, status: string) => {
+    try {
+      const res = await api.patch(`/ipd/admissions/mac/${itemId}`, { status });
+      if (res.data && res.data.success) {
+        showToast(`Medication marked as ${status}!`, 'success');
+        if (selectedBed && selectedBed.active_admission) {
+          fetchClinicalRecords(selectedBed.active_admission.admission_id);
+        }
+      }
+    } catch (err: any) {
+      showToast('Failed to update medication administration.', 'error');
+    }
+  };
+
+  const handleFinalizeCheckout = async () => {
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/finalize-checkout`);
+      if (res.data && res.data.success) {
+        showToast('Patient checked out and discharged successfully!', 'success');
+        setIsCheckoutModalOpen(false);
+        setCheckoutBill(null);
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast('Failed to finalize checkout.', 'error');
+    }
+  };
+
+  const handleCleanBed = async (bedId: string) => {
+    try {
+      const res = await api.post(`/ipd/beds/${bedId}/clean`);
+      if (res.data && res.data.success) {
+        showToast('Bed marked as available and ready for use!', 'success');
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast('Failed to mark bed as clean.', 'error');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'availability') {
       fetchMyRequests();
+    }
+    if (activeTab === 'beds') {
+      fetchBedsData();
+      fetchAdmissionHistory();
     }
   }, [activeTab]);
 
@@ -968,7 +1272,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         const data = res.data.data;
         setPendingCharges(data);
         
-        // Auto-select latest consultation/treatment plan if available
+        // Auto-select latest consultation/treatment plan/admission if available
         if (data.consultations && data.consultations.length > 0) {
           setSelectedConsultationId(data.consultations[0].id);
         } else {
@@ -979,6 +1283,12 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
           setSelectedTreatmentPlanId(data.treatment_plans[0].id);
         } else {
           setSelectedTreatmentPlanId(null);
+        }
+
+        if (data.ipd_admissions && data.ipd_admissions.length > 0) {
+          setSelectedAdmissionIds([data.ipd_admissions[0].id]);
+        } else {
+          setSelectedAdmissionIds([]);
         }
         
         const materialsSum = data.standard_materials ? data.standard_materials.reduce((sum: number, item: any) => sum + item.cost, 0) : 0;
@@ -1002,6 +1312,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
   useEffect(() => {
     let subtotal = 0;
+    let autoDepositDeduction = 0;
     if (pendingCharges) {
       if (selectedConsultationId) {
         const selectedConsultation = pendingCharges.consultations.find(c => c.id === selectedConsultationId);
@@ -1027,6 +1338,21 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
           });
         }
       }
+
+      if (selectedAdmissionIds.length > 0 && (pendingCharges as any).ipd_admissions) {
+        selectedAdmissionIds.forEach((admId: string) => {
+          const selectedAdm = (pendingCharges as any).ipd_admissions.find((a: any) => a.id === admId);
+          if (selectedAdm) {
+            subtotal += selectedAdm.current_bed_rent || 0;
+            if (selectedAdm.past_items) {
+              selectedAdm.past_items.forEach((item: any) => {
+                subtotal += item.total_price || 0;
+              });
+            }
+            autoDepositDeduction += (selectedAdm.initial_deposit || 0) + (selectedAdm.insurance_approved_amount || 0);
+          }
+        });
+      }
       
       if (includeMaterials) {
         subtotal += Number(customMaterialsCost) || 0;
@@ -1034,9 +1360,10 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
     setBillingForm(prev => ({
       ...prev,
-      total_amount: Math.round(subtotal * 100) / 100
+      total_amount: Math.round(subtotal * 100) / 100,
+      discount_amount: autoDepositDeduction > 0 ? autoDepositDeduction : prev.discount_amount
     }));
-  }, [pendingCharges, selectedConsultationId, selectedTreatmentPlanId, includeMedicines, includeMaterials, customMaterialsCost]);
+  }, [pendingCharges, selectedConsultationId, selectedTreatmentPlanId, selectedAdmissionIds, includeMedicines, includeMaterials, customMaterialsCost]);
 
   const fetchEditPendingCharges = async (patientId: string, invoice: any) => {
     if (!patientId || !invoice) {
@@ -1157,6 +1484,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         tax_amount: Number(billingForm.tax_amount),
         consultation_id: selectedConsultationId || undefined,
         treatment_plan_id: selectedTreatmentPlanId || undefined,
+        admission_id: selectedAdmissionIds.length > 0 ? selectedAdmissionIds[0] : undefined,
+        admission_ids: selectedAdmissionIds,
         status: 'unpaid',
       });
 
@@ -1171,6 +1500,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         });
         setSelectedConsultationId(null);
         setSelectedTreatmentPlanId(null);
+        setSelectedAdmissionIds([]);
         setPendingCharges(null);
         await fetchPortalData();
       }
@@ -1441,6 +1771,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             { id: 'patients', icon: <Users size={18} />, label: 'Patient Intake' },
             { id: 'billing', icon: <IndianRupee size={18} />, label: 'Billing' },
             { id: 'invoices', icon: <FileText size={18} />, label: 'Invoices' },
+            { id: 'beds', icon: <Bed size={18} />, label: 'Bed Management' },
             { id: 'availability', icon: <Calendar size={18} />, label: 'Availability' },
           ].map(tab => (
             <div 
@@ -1483,6 +1814,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 {activeTab === 'patients' && 'Patient Directory & Intake'}
                 {activeTab === 'billing' && 'Create Clinic Bill'}
                 {activeTab === 'invoices' && 'Invoices & Payments'}
+                {activeTab === 'beds' && 'IPD Bed Management'}
                 {activeTab === 'availability' && 'Availability & Leave Settings'}
               </h2>
               <span className="recep-page-subtitle" style={{ marginTop: '2px', display: 'block' }}>
@@ -2698,7 +3030,79 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>No active/unbilled treatment plans found.</p>
                             )}
 
-                            {/* 4. Used Materials & Consumables */}
+                            {/* 4. IPD Bed Stay & Rent selection (Multi-Select Checkboxes) */}
+                            {(pendingCharges as any).ipd_admissions && (pendingCharges as any).ipd_admissions.length > 0 ? (
+                              <div className="form-group" style={{ marginBottom: '1rem', background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Bed size={16} /> Select IPD Bed Stay(s) to Bill
+                                  </label>
+                                  <button
+                                    type="button"
+                                    style={{ fontSize: '0.75rem', background: 'none', border: 'none', color: '#16a34a', cursor: 'pointer', fontWeight: 600 }}
+                                    onClick={() => {
+                                      if (selectedAdmissionIds.length === (pendingCharges as any).ipd_admissions.length) {
+                                        setSelectedAdmissionIds([]);
+                                      } else {
+                                        setSelectedAdmissionIds((pendingCharges as any).ipd_admissions.map((a: any) => a.id));
+                                      }
+                                    }}
+                                  >
+                                    {selectedAdmissionIds.length === (pendingCharges as any).ipd_admissions.length ? 'Deselect All' : 'Select All Beds'}
+                                  </button>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                                  {(pendingCharges as any).ipd_admissions.map((adm: any) => {
+                                    const isChecked = selectedAdmissionIds.includes(adm.id);
+                                    return (
+                                      <label
+                                        key={adm.id}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '10px',
+                                          padding: '8px 10px',
+                                          background: isChecked ? '#ffffff' : '#f8fafc',
+                                          border: isChecked ? '1px solid #22c55e' : '1px solid #e2e8f0',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          fontSize: '0.85rem'
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setSelectedAdmissionIds([...selectedAdmissionIds, adm.id]);
+                                            } else {
+                                              setSelectedAdmissionIds(selectedAdmissionIds.filter(id => id !== adm.id));
+                                            }
+                                          }}
+                                          style={{ width: '16px', height: '16px', accentColor: '#16a34a' }}
+                                        />
+                                        <div style={{ flex: 1 }}>
+                                          <span style={{ fontWeight: 600 }}>Bed {adm.bed_number}</span> ({adm.category_name}) &middot; {adm.hours_stayed}h stay
+                                        </div>
+                                        <div style={{ textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
+                                          ₹{adm.current_bed_rent}
+                                          {adm.initial_deposit > 0 && (
+                                            <span style={{ display: 'block', fontSize: '0.75rem', color: '#16a34a', fontWeight: 500 }}>
+                                              Deposit: -₹{adm.initial_deposit}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>No active IPD bed stay found.</p>
+                            )}
+
+                            {/* 5. Used Materials & Consumables */}
                             <div className="form-group" style={{ marginBottom: '0.5rem' }}>
                               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
                                 <input
@@ -2847,6 +3251,19 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           ));
                         })()}
 
+                        {selectedAdmissionIds.length > 0 && (() => {
+                          return selectedAdmissionIds.map((admId) => {
+                            const adm = (pendingCharges as any)?.ipd_admissions?.find((a: any) => a.id === admId);
+                            if (!adm) return null;
+                            return (
+                              <div key={adm.id} className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                                <span>IPD Bed Stay: Bed {adm.bed_number} ({adm.category_name}, {adm.hours_stayed}h)</span>
+                                <span>₹{(adm.current_bed_rent || 0).toFixed(2)}</span>
+                              </div>
+                            );
+                          });
+                        })()}
+
                         {includeMaterials && (
                           <div className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                             <span>Clinical Materials &amp; Sterile Consumables</span>
@@ -2854,7 +3271,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           </div>
                         )}
 
-                        {!selectedConsultationId && !selectedTreatmentPlanId && !includeMaterials && (
+                        {!selectedConsultationId && !selectedTreatmentPlanId && selectedAdmissionIds.length === 0 && !includeMaterials && (
                           <div className="receipt-row">
                             <span>Subtotal Cost</span>
                             <span>₹{(billingForm.total_amount || 0).toFixed(2)}</span>
@@ -3242,6 +3659,611 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   </div>
                 </div>
               )}
+
+              {/* IPD BED MANAGEMENT WORKSPACE */}
+              {activeTab === 'beds' && (
+                <div className="tab-fade-in beds-workspace" style={{ width: '100%' }}>
+                  <div className="beds-workspace-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div>
+                      <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a' }}>
+                        <Bed size={22} style={{ color: '#0d9488' }} /> Clinic Bed Occupancy Grid
+                      </h2>
+                      <p style={{ margin: 0, fontSize: '0.86rem', color: '#64748b' }}>
+                        Real-time monitoring of in-patient admissions, proration billing, vitals logs, and checkout history.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      {bedSubTab === 'history' && (
+                        <button
+                          type="button"
+                          className="recep-btn-secondary"
+                          onClick={fetchAdmissionHistory}
+                          disabled={isLoadingHistory}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <RefreshCw size={14} className={isLoadingHistory ? 'spin-animation' : ''} /> Refresh History
+                        </button>
+                      )}
+                      {bedSubTab === 'grid' && (
+                        <button
+                          type="button"
+                          className="recep-btn-secondary"
+                          onClick={fetchBedsData}
+                          disabled={isLoadingBeds}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <RefreshCw size={14} className={isLoadingBeds ? 'spin-animation' : ''} /> Refresh Grid
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sub-Tab Navigation Switcher */}
+                  <div style={{ display: 'flex', gap: '12px', borderBottom: '2px solid #e2e8f0', marginBottom: '24px', paddingBottom: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setBedSubTab('grid')}
+                      style={{
+                        padding: '10px 20px',
+                        fontWeight: 700,
+                        fontSize: '0.92rem',
+                        border: 'none',
+                        borderBottom: bedSubTab === 'grid' ? '3px solid #0d9488' : '3px solid transparent',
+                        background: 'none',
+                        color: bedSubTab === 'grid' ? '#0d9488' : '#64748b',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Bed size={18} /> Live Occupancy Grid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBedSubTab('history');
+                        fetchAdmissionHistory();
+                      }}
+                      style={{
+                        padding: '10px 20px',
+                        fontWeight: 700,
+                        fontSize: '0.92rem',
+                        border: 'none',
+                        borderBottom: bedSubTab === 'history' ? '3px solid #0d9488' : '3px solid transparent',
+                        background: 'none',
+                        color: bedSubTab === 'history' ? '#0d9488' : '#64748b',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <FileText size={18} /> Bed Booking History Logs
+                    </button>
+                  </div>
+
+                  {/* SUB-TAB 1: LIVE OCCUPANCY GRID */}
+                  {bedSubTab === 'grid' && (
+                    <>
+                      {/* 🏥 DOCTOR ADMISSION REQUESTS QUEUE */}
+                      {pendingAdmissionRequests.length > 0 && (
+                        <div style={{
+                          background: 'linear-gradient(135deg, #E8F7FA 0%, #EAF6FA 100%)',
+                          borderRadius: '12px',
+                          border: '1.5px solid #D6E7ED',
+                          padding: '16px 20px',
+                          marginBottom: '20px',
+                          boxShadow: '0 4px 12px rgba(11, 142, 171, 0.08)'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0B7894', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              🏥 Doctor Recommended Admissions Queue ({pendingAdmissionRequests.length})
+                            </h3>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ffffff', background: '#0B8EAB', padding: '3px 10px', borderRadius: '12px' }}>
+                              Action Needed
+                            </span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
+                            {pendingAdmissionRequests.map((req: any) => (
+                              <div key={req.id} style={{
+                                background: '#ffffff',
+                                border: '1px solid #D6E7ED',
+                                borderRadius: '10px',
+                                padding: '14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between',
+                                gap: '10px'
+                              }}>
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <strong style={{ fontSize: '0.95rem', color: '#102A43' }}>{req.patient_name}</strong>
+                                    <span style={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: 800,
+                                      padding: '2px 8px',
+                                      borderRadius: '10px',
+                                      background: req.urgency === 'emergency' ? '#FEE2E2' : req.urgency === 'urgent' ? '#FEF3C7' : '#EAF6FA',
+                                      color: req.urgency === 'emergency' ? '#EF4444' : req.urgency === 'urgent' ? '#F59E0B' : '#58758A'
+                                    }}>
+                                      {req.urgency ? req.urgency.toUpperCase() : 'ROUTINE'}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', color: '#58758A', marginTop: '2px' }}>
+                                    Code: <strong>{req.patient_code}</strong> | Dr. {req.doctor_name}
+                                  </div>
+                                  {req.category_name && (
+                                    <div style={{ fontSize: '0.78rem', color: '#0B7894', fontWeight: 600, marginTop: '4px' }}>
+                                      Advised Ward: <strong>{req.category_name}</strong>
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: '0.78rem', color: '#102A43', marginTop: '6px', fontStyle: 'italic', background: '#F1F8FA', padding: '6px 8px', borderRadius: '6px' }}>
+                                    "{req.reason}"
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="recep-btn-primary"
+                                  onClick={() => {
+                                    setActiveAdmissionRequestId(req.id);
+                                    setAdmitForm({
+                                      patient_id: req.patient_id,
+                                      admitting_doctor_id: req.doctor_id,
+                                      diagnosis: req.reason,
+                                      initial_deposit: 2000
+                                    });
+                                    let availableBed = null;
+                                    if (req.category_id) {
+                                      availableBed = bedsData.find((b: any) => b.category?.id === req.category_id && b.status === 'available');
+                                    }
+                                    if (!availableBed) {
+                                      availableBed = bedsData.find((b: any) => b.status === 'available');
+                                    }
+                                    if (availableBed) {
+                                      setSelectedBed(availableBed);
+                                      setIsAdmitModalOpen(true);
+                                    } else {
+                                      showToast('No available bed found in clinic. Please clear or clean a bed first.', 'error');
+                                    }
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 700,
+                                    background: '#0B7894',
+                                    borderColor: '#0B7894',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}
+                                >
+                                  <Bed size={15} /> Admit & Assign Bed
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {bedsError && (
+                        <div className="profile-alert error" style={{ marginBottom: '16px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '12px', borderRadius: '8px' }}>
+                          {bedsError}
+                        </div>
+                      )}
+
+                  {isLoadingBeds ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                      <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', marginBottom: '30px' }}>
+                      {(() => {
+                        const groupedCategories: { [key: string]: any[] } = {};
+                        bedsData.forEach((bed: any) => {
+                          const catName = bed.category?.name || 'General Ward';
+                          if (!groupedCategories[catName]) {
+                            groupedCategories[catName] = [];
+                          }
+                          groupedCategories[catName].push(bed);
+                        });
+
+                        const categoryMeta: any = {
+                          'General Ward': { borderLeft: '5px solid #3b82f6', bg: '#eff6ff', color: '#1d4ed8', tagBg: '#dbeafe', tagColor: '#1e40af' },
+                          'ICU': { borderLeft: '5px solid #ef4444', bg: '#fef2f2', color: '#b91c1c', tagBg: '#fee2e2', tagColor: '#991b1b' },
+                          'Private Deluxe': { borderLeft: '5px solid #8b5cf6', bg: '#f5f3ff', color: '#6d28d9', tagBg: '#ede9fe', tagColor: '#5b21b6' }
+                        };
+
+                        if (Object.keys(groupedCategories).length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                              No clinic beds found.
+                            </div>
+                          );
+                        }
+
+                        return Object.entries(groupedCategories).map(([catName, bedsList]) => {
+                          const meta = categoryMeta[catName] || { borderLeft: '5px solid #0d9488', bg: '#f0fdf4', color: '#0f766e', tagBg: '#ccfbf1', tagColor: '#115e59' };
+                          const availableCount = bedsList.filter((b: any) => b.status === 'available').length;
+                          const occupiedCount = bedsList.filter((b: any) => b.status === 'occupied').length;
+                          const cleaningCount = bedsList.filter((b: any) => b.status === 'cleaning').length;
+
+                          return (
+                            <div key={catName} style={{ background: '#ffffff', borderRadius: '14px', padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                              {/* Category Header Banner */}
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '12px 18px',
+                                  background: meta.bg,
+                                  borderRadius: '10px',
+                                  borderLeft: meta.borderLeft,
+                                  marginBottom: '20px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: meta.color, letterSpacing: '0.5px' }}>
+                                    {catName.toUpperCase()}
+                                  </h3>
+                                  <span style={{ fontSize: '0.82rem', fontWeight: 700, background: meta.tagBg, color: meta.tagColor, padding: '3px 10px', borderRadius: '20px' }}>
+                                    {bedsList.length} {bedsList.length === 1 ? 'Bed' : 'Beds'} Total
+                                  </span>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', fontWeight: 700 }}>
+                                  <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: '20px' }}>
+                                    {availableCount} Available
+                                  </span>
+                                  <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '4px 12px', borderRadius: '20px' }}>
+                                    {occupiedCount} Occupied
+                                  </span>
+                                  {cleaningCount > 0 && (
+                                    <span style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fef3c7', padding: '4px 12px', borderRadius: '20px' }}>
+                                      {cleaningCount} Cleaning
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Beds Grid for this Category */}
+                              <div className="beds-grid-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                                {bedsList.map((bed: any) => {
+                                  const statusColors: any = {
+                                    available: { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d', badge: 'Available' },
+                                    occupied: { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c', badge: 'Occupied' },
+                                    cleaning: { bg: '#fffbeb', border: '#fef3c7', text: '#b45309', badge: 'Cleaning' }
+                                  };
+                                  const color = statusColors[bed.status] || statusColors.available;
+
+                                  return (
+                                    <div
+                                      key={bed.id}
+                                      className="bed-card-premium"
+                                      style={{
+                                        background: '#ffffff',
+                                        border: `1px solid ${color.border}`,
+                                        borderRadius: '12px',
+                                        padding: '20px',
+                                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
+                                        position: 'relative',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        minHeight: '260px'
+                                      }}
+                                    >
+                                      <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                                            {bed.category?.name}
+                                          </span>
+                                          <span
+                                            style={{
+                                              background: color.bg,
+                                              color: color.text,
+                                              border: `1px solid ${color.border}`,
+                                              padding: '3px 10px',
+                                              borderRadius: '9999px',
+                                              fontSize: '0.74rem',
+                                              fontWeight: 700
+                                            }}
+                                          >
+                                            {color.badge}
+                                          </span>
+                                        </div>
+
+                                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
+                                          Bed {bed.bed_number}
+                                        </h3>
+
+                                        <div style={{ fontSize: '0.84rem', color: '#64748b', marginBottom: '16px' }}>
+                                          <div>Rate: ₹{bed.category?.base_charge_24h}/24h</div>
+                                          <div>Overtime: ₹{bed.category?.hourly_overtime_rate}/hour</div>
+                                        </div>
+
+                                        {bed.active_admission && (
+                                          <div
+                                            style={{
+                                              background: '#f8fafc',
+                                              border: '1px solid #e2e8f0',
+                                              borderRadius: '8px',
+                                              padding: '12px',
+                                              fontSize: '0.8rem',
+                                              marginBottom: '16px'
+                                            }}
+                                          >
+                                            <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}>
+                                              {bed.active_admission.patient_name}
+                                            </div>
+                                            <div style={{ color: '#64748b' }}>Code: {bed.active_admission.patient_code}</div>
+                                            <div style={{ color: '#64748b' }}>Doctor: {bed.active_admission.admitting_doctor}</div>
+                                            <div style={{ color: '#64748b', marginTop: '4px', fontStyle: 'italic' }}>
+                                              Diagnosis: {bed.active_admission.diagnosis}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: 'auto' }}>
+                                        {bed.status === 'available' && (
+                                          <button
+                                            type="button"
+                                            className="recep-btn-primary"
+                                            style={{ width: '100%', padding: '8px', fontSize: '0.84rem' }}
+                                            onClick={() => {
+                                              setSelectedBed(bed);
+                                              setIsAdmitModalOpen(true);
+                                            }}
+                                          >
+                                            Admit Patient
+                                          </button>
+                                        )}
+
+                                        {bed.status === 'occupied' && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="recep-btn-secondary"
+                                              style={{ flex: '1 1 45%', padding: '6px 8px', fontSize: '0.78rem', fontWeight: 700 }}
+                                              onClick={() => {
+                                                setSelectedBed(bed);
+                                                setIsVitalsModalOpen(true);
+                                                if (bed.active_admission) {
+                                                  fetchClinicalRecords(bed.active_admission.admission_id);
+                                                }
+                                              }}
+                                            >
+                                              Vitals
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="recep-btn-secondary"
+                                              style={{ flex: '1 1 45%', padding: '6px 8px', fontSize: '0.78rem', fontWeight: 700 }}
+                                              onClick={() => {
+                                                setSelectedBed(bed);
+                                                setIsMacModalOpen(true);
+                                                if (bed.active_admission) {
+                                                  fetchClinicalRecords(bed.active_admission.admission_id);
+                                                }
+                                              }}
+                                            >
+                                              MAC
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="recep-btn-secondary"
+                                              style={{ flex: '1 1 45%', padding: '6px 8px', fontSize: '0.78rem', fontWeight: 700 }}
+                                              onClick={() => {
+                                                setSelectedBed(bed);
+                                                setIsTransferModalOpen(true);
+                                              }}
+                                            >
+                                              Transfer
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="recep-btn-primary"
+                                              style={{ flex: '1 1 45%', padding: '6px 8px', fontSize: '0.78rem', fontWeight: 700, background: '#dc2626', borderColor: '#dc2626' }}
+                                              onClick={() => {
+                                                setSelectedBed(bed);
+                                                setIsCheckoutModalOpen(true);
+                                                if (bed.active_admission) {
+                                                  fetchCheckoutBill(bed.active_admission.admission_id);
+                                                }
+                                              }}
+                                            >
+                                              Checkout
+                                            </button>
+                                          </>
+                                        )}
+
+                                        {bed.status === 'cleaning' && (
+                                          <button
+                                            type="button"
+                                            className="recep-btn-primary"
+                                            style={{ width: '100%', padding: '8px', fontSize: '0.84rem', background: '#d97706', borderColor: '#d97706' }}
+                                            onClick={() => handleCleanBed(bed.id)}
+                                          >
+                                            Ready / Mark Clean
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* SUB-TAB 2: DEDICATED BED BOOKING HISTORY LOGS */}
+              {bedSubTab === 'history' && (
+                <div style={{ background: '#ffffff', borderRadius: '14px', padding: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                  {/* Search and Summary Counters */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+                    <div style={{ position: 'relative', width: '320px' }}>
+                      <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <input
+                        type="text"
+                        placeholder="Search patient, bed number, or doctor..."
+                        value={historySearchQuery}
+                        onChange={(e) => setHistorySearchQuery(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px 9px 36px',
+                          fontSize: '0.88rem',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Records</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>{admissionHistory.length}</div>
+                      </div>
+                      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>Active Stays</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#15803d' }}>
+                          {admissionHistory.filter(a => a.admission_status === 'admitted').length}
+                        </div>
+                      </div>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Discharged</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#475569' }}>
+                          {admissionHistory.filter(a => a.admission_status === 'discharged').length}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isLoadingHistory ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                      <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
+                    </div>
+                  ) : (
+                    (() => {
+                      const filteredHistory = admissionHistory.filter((item: any) => {
+                        const q = historySearchQuery.toLowerCase();
+                        return (
+                          (item.patient_name && item.patient_name.toLowerCase().includes(q)) ||
+                          (item.patient_code && item.patient_code.toLowerCase().includes(q)) ||
+                          (item.bed_number && item.bed_number.toLowerCase().includes(q)) ||
+                          (item.admitting_doctor && item.admitting_doctor.toLowerCase().includes(q)) ||
+                          (item.category_name && item.category_name.toLowerCase().includes(q))
+                        );
+                      });
+
+                      if (filteredHistory.length === 0) {
+                        return (
+                          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                            <FileText size={40} style={{ margin: '0 auto 12px', color: '#cbd5e1' }} />
+                            <h4 style={{ margin: '0 0 6px', color: '#334155' }}>No Admission History Found</h4>
+                            <p style={{ margin: 0, fontSize: '0.88rem' }}>No historical bed booking records match your query.</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem', textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                                <th style={{ padding: '12px 14px' }}>Patient Details</th>
+                                <th style={{ padding: '12px 14px' }}>Ward & Bed</th>
+                                <th style={{ padding: '12px 14px' }}>Admitting Doctor</th>
+                                <th style={{ padding: '12px 14px' }}>Admission Datetime</th>
+                                <th style={{ padding: '12px 14px' }}>Discharge Datetime</th>
+                                <th style={{ padding: '12px 14px' }}>Duration</th>
+                                <th style={{ padding: '12px 14px' }}>Status</th>
+                                <th style={{ padding: '12px 14px', textAlign: 'right' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredHistory.map((item: any, idx: number) => {
+                                const isDischarged = item.admission_status === 'discharged';
+                                return (
+                                  <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '12px 14px' }}>
+                                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.patient_name}</div>
+                                      <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Code: {item.patient_code}</div>
+                                      {item.diagnosis && (
+                                        <div style={{ fontSize: '0.76rem', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                                          Diag: {item.diagnosis}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '12px 14px' }}>
+                                      <div style={{ fontWeight: 700, color: '#0f172a' }}>Bed {item.bed_number}</div>
+                                      <span style={{ fontSize: '0.74rem', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                                        {item.category_name}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '12px 14px', fontWeight: 600, color: '#334155' }}>
+                                      Dr. {item.admitting_doctor}
+                                    </td>
+                                    <td style={{ padding: '12px 14px', color: '#475569' }}>
+                                      {new Date(item.admission_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                    </td>
+                                    <td style={{ padding: '12px 14px', color: '#475569' }}>
+                                      {item.discharge_datetime
+                                        ? new Date(item.discharge_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                                        : <span style={{ color: '#059669', fontWeight: 700 }}>Active Stay</span>}
+                                    </td>
+                                    <td style={{ padding: '12px 14px', fontWeight: 700, color: '#0f172a' }}>
+                                      {item.stay_days > 0 ? `${item.stay_days} Days (${item.stay_hours}h)` : `${item.stay_hours} Hours`}
+                                    </td>
+                                    <td style={{ padding: '12px 14px' }}>
+                                      <span
+                                        style={{
+                                          padding: '4px 10px',
+                                          borderRadius: '20px',
+                                          fontSize: '0.76rem',
+                                          fontWeight: 700,
+                                          background: isDischarged ? '#f1f5f9' : '#dcfce7',
+                                          color: isDischarged ? '#475569' : '#15803d',
+                                          border: isDischarged ? '1px solid #cbd5e1' : '1px solid #86efac'
+                                        }}
+                                      >
+                                        {isDischarged ? 'Discharged' : 'Admitted'}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                      <button
+                                        type="button"
+                                        className="recep-btn-secondary"
+                                        style={{ padding: '5px 12px', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '6px' }}
+                                        onClick={() => fetchHistoryDetails(item.id)}
+                                      >
+                                        <Eye size={13} /> View Details
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
               {/* TAB: AVAILABILITY SETTINGS MANAGER */}
               {activeTab === 'availability' && (
@@ -4138,59 +5160,89 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   </tr>
                 </thead>
                 <tbody>
-                  {/* 1. Consultation */}
-                  {selectedInvoiceForPreview.consultation && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>
-                        <div>Consultation Fee</div>
-                        <small style={{ color: 'var(--muted)' }}>{formatDocName(selectedInvoiceForPreview.consultation.doctor?.user?.full_name)}</small>
-                      </td>
-                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                        ₹{(selectedInvoiceForPreview.consultation.doctor?.consultation_fee || 500).toFixed(2)}
-                      </td>
-                    </tr>
-                  )}
+                  {selectedInvoiceForPreview.items_breakdown && selectedInvoiceForPreview.items_breakdown.length > 0 ? (
+                    selectedInvoiceForPreview.items_breakdown.map((item: any, idx: number) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '10px 0', color: item.amount < 0 ? 'var(--success)' : 'var(--text-primary)', fontWeight: item.amount < 0 ? 600 : 500 }}>
+                          {item.description}
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600, color: item.amount < 0 ? 'var(--success)' : 'var(--text-primary)' }}>
+                          {item.amount < 0 ? `- ₹${Math.abs(item.amount).toFixed(2)}` : `₹${item.amount.toFixed(2)}`}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <>
+                      {/* 1. Consultation */}
+                      {selectedInvoiceForPreview.consultation && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>Consultation Fee</div>
+                            <small style={{ color: 'var(--muted)' }}>{formatDocName(selectedInvoiceForPreview.consultation.doctor?.user?.full_name)}</small>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            ₹{(selectedInvoiceForPreview.consultation.doctor?.consultation_fee || 500).toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
 
-                  {/* 2. Prescription Items */}
-                  {selectedInvoiceForPreview.prescription_items && selectedInvoiceForPreview.prescription_items.length > 0 && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>
-                        <div>Dispensed Medicines / Prescriptions</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                          {selectedInvoiceForPreview.prescription_items.map((item: any, idx: number) => (
-                            <span key={idx} style={{ fontSize: '0.75rem', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', color: 'var(--primary-dark)' }}>
-                              {item.medicine_name}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 0', textAlign: 'right', verticalAlign: 'middle' }}>
-                        Included
-                      </td>
-                    </tr>
-                  )}
+                      {/* 2. Prescription Items */}
+                      {selectedInvoiceForPreview.prescription_items && selectedInvoiceForPreview.prescription_items.length > 0 && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>Dispensed Medicines / Prescriptions</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                              {selectedInvoiceForPreview.prescription_items.map((item: any, idx: number) => (
+                                <span key={idx} style={{ fontSize: '0.75rem', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', color: 'var(--primary-dark)' }}>
+                                  {item.medicine_name}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', verticalAlign: 'middle' }}>
+                            Included
+                          </td>
+                        </tr>
+                      )}
 
-                  {/* 3. Treatment Plan */}
-                  {selectedInvoiceForPreview.treatment_plan && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>
-                        <div>Treatment Plan Procedures</div>
-                        <small style={{ color: 'var(--muted)' }}>{selectedInvoiceForPreview.treatment_plan.title}</small>
-                      </td>
-                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                        ₹{(selectedInvoiceForPreview.treatment_plan.procedures?.reduce((sum: number, p: any) => sum + (p.cost || 0), 0) || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  )}
-                  
-                  {/* Default fallback row if no consultation/treatment plan (standard bill) */}
-                  {!selectedInvoiceForPreview.consultation && !selectedInvoiceForPreview.treatment_plan && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>General Consultation & Billed Services</td>
-                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                        ₹{selectedInvoiceForPreview.total_amount.toFixed(2)}
-                      </td>
-                    </tr>
+                      {/* 3. Treatment Plan */}
+                      {selectedInvoiceForPreview.treatment_plan && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>Treatment Plan Procedures</div>
+                            <small style={{ color: 'var(--muted)' }}>{selectedInvoiceForPreview.treatment_plan.title}</small>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            ₹{(selectedInvoiceForPreview.treatment_plan.procedures?.reduce((sum: number, p: any) => sum + (p.cost || 0), 0) || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
+
+                      {/* 4. IPD Admission Stay */}
+                      {selectedInvoiceForPreview.admission && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>IPD Bed Stay & Rent</div>
+                            <small style={{ color: 'var(--muted)' }}>
+                              Bed {selectedInvoiceForPreview.admission.bed?.bed_number || 'N/A'} ({selectedInvoiceForPreview.admission.bed?.category?.name || 'IPD Category'})
+                            </small>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            Included in total
+                          </td>
+                        </tr>
+                      )}
+                      
+                      {/* Default fallback row if no consultation/treatment plan/admission (standard bill) */}
+                      {!selectedInvoiceForPreview.consultation && !selectedInvoiceForPreview.treatment_plan && !selectedInvoiceForPreview.admission && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>General Consultation & Billed Services</td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            ₹{selectedInvoiceForPreview.total_amount.toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -4952,6 +6004,846 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. ADMIT PATIENT MODAL */}
+      {isAdmitModalOpen && selectedBed && (() => {
+        const activeReq = activeAdmissionRequestId 
+          ? pendingAdmissionRequests.find((r: any) => r.id === activeAdmissionRequestId)
+          : null;
+
+        const categoriesMap: { [catId: string]: { id: string, name: string, beds: any[] } } = {};
+        bedsData.forEach((b: any) => {
+          const catId = b.category?.id || 'default';
+          const catName = b.category?.name || 'General Ward';
+          if (!categoriesMap[catId]) {
+            categoriesMap[catId] = { id: catId, name: catName, beds: [] };
+          }
+          if (b.status === 'available' || b.id === selectedBed.id) {
+            categoriesMap[catId].beds.push(b);
+          }
+        });
+        const categoriesList = Object.values(categoriesMap);
+        const currentCategory = categoriesList.find(c => c.id === selectedBed.category?.id) || categoriesList[0];
+
+        return (
+          <div className="recep-modal-overlay" onClick={() => { setIsAdmitModalOpen(false); setActiveAdmissionRequestId(null); }}>
+            <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '560px', maxWidth: '94vw', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', padding: 0 }}>
+              
+              {/* Header */}
+              <div style={{ background: 'linear-gradient(135deg, #064B62 0%, #073B55 100%)', color: '#ffffff', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#16B9D4', marginBottom: '4px' }}>
+                    IPD Hospitalization Admission
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Bed size={22} style={{ color: '#16B9D4' }} /> Admit Patient to Bed
+                  </h3>
+                </div>
+                <button className="close-btn" onClick={() => { setIsAdmitModalOpen(false); setActiveAdmissionRequestId(null); }} style={{ color: '#94a3b8', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', transition: 'all 0.2s' }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAdmitPatient} style={{ padding: '24px' }}>
+                {/* WARD & BED SELECTION CARD */}
+                <div style={{ background: '#F1F8FA', border: '1.5px solid #D6E7ED', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#102A43', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Bed size={14} style={{ color: '#0B7894' }} /> Ward & Bed Assignment
+                    </span>
+                    {activeReq?.category_name && (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0B7894', background: '#E8F7FA', padding: '3px 9px', borderRadius: '12px', border: '1px solid #D6E7ED' }}>
+                        Advised Ward: {activeReq.category_name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Ward / Category
+                      </label>
+                      <select
+                        className="recep-select-field"
+                        value={selectedBed.category?.id || ''}
+                        onChange={(e) => {
+                          const catId = e.target.value;
+                          const cat = categoriesList.find(c => c.id === catId);
+                          if (cat && cat.beds.length > 0) {
+                            setSelectedBed(cat.beds[0]);
+                          }
+                        }}
+                        required
+                        style={{ background: '#ffffff', fontWeight: 600, width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #D6E7ED', fontSize: '0.88rem', color: '#102A43' }}
+                      >
+                        {categoriesList.map(cat => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name} ({cat.beds.length} Avail)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Assign Bed Number
+                      </label>
+                      <select
+                        className="recep-select-field"
+                        value={selectedBed.id}
+                        onChange={(e) => {
+                          const bed = bedsData.find((b: any) => b.id === e.target.value);
+                          if (bed) setSelectedBed(bed);
+                        }}
+                        required
+                        style={{ background: '#ffffff', fontWeight: 700, width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #0B8EAB', fontSize: '0.88rem', color: '#0B8EAB' }}
+                      >
+                        {currentCategory?.beds.map((b: any) => (
+                          <option key={b.id} value={b.id}>
+                            {b.bed_number} ({b.status === 'available' ? 'Available' : 'Selected'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PATIENT DETAILS */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Patient Name
+                  </label>
+                  {activeReq ? (
+                    <div style={{ background: '#E8F7FA', border: '1.5px solid #D6E7ED', padding: '12px 16px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#0B8EAB', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                          <User size={18} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#102A43' }}>
+                            {activeReq.patient_name}
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: '#58758A' }}>
+                            Code: <strong style={{ color: '#0B7894' }}>{activeReq.patient_code}</strong>
+                          </div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0B7894', background: '#ffffff', border: '1px solid #D6E7ED', padding: '4px 10px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle size={12} style={{ color: '#18B981' }} /> Advised via Consultation
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      className="recep-select-field"
+                      value={admitForm.patient_id}
+                      onChange={(e) => setAdmitForm({ ...admitForm, patient_id: e.target.value })}
+                      required
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px' }}
+                    >
+                      <option value="">-- Choose Patient --</option>
+                      {patients.map((p: any) => (
+                        <option key={p.id} value={p.id}>
+                          {p.user?.full_name || p.name || 'Patient'} ({p.patient_code})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* ADMITTING DOCTOR */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Admitting Doctor
+                  </label>
+                  {activeReq ? (
+                    <div style={{ background: '#F1F8FA', border: '1px solid #D6E7ED', padding: '10px 14px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#E8F7FA', color: '#0B7894', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Stethoscope size={16} />
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#102A43' }}>
+                          Dr. {activeReq.doctor_name}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: '#58758A', fontStyle: 'italic' }}>
+                        Recommending Physician
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      className="recep-select-field"
+                      value={admitForm.admitting_doctor_id}
+                      onChange={(e) => setAdmitForm({ ...admitForm, admitting_doctor_id: e.target.value })}
+                      required
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px' }}
+                    >
+                      <option value="">-- Choose Doctor --</option>
+                      {doctors.map((d: any) => (
+                        <option key={d.id} value={d.id}>
+                          {formatDocName(d.user?.full_name || d.name)} ({d.specialization || 'General'})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* DIAGNOSIS / REASON */}
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Diagnosis / Admission Clinical Notes
+                  </label>
+                  <textarea
+                    className="recep-input-field"
+                    rows={3}
+                    value={admitForm.diagnosis}
+                    onChange={(e) => setAdmitForm({ ...admitForm, diagnosis: e.target.value })}
+                    placeholder="e.g. Severe pneumonia observation, post-op care"
+                    required
+                    style={{ resize: 'vertical', width: '100%', borderRadius: '8px', padding: '10px', fontSize: '0.88rem' }}
+                  />
+                </div>
+
+                {/* INITIAL DEPOSIT */}
+                <div className="form-group" style={{ marginBottom: '24px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#58758A', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Initial Deposit Amount (₹)
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: '#58758A' }}>₹</span>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={admitForm.initial_deposit}
+                      onChange={(e) => setAdmitForm({ ...admitForm, initial_deposit: Number(e.target.value) })}
+                      min="0"
+                      style={{ width: '100%', paddingLeft: '28px', borderRadius: '8px', fontWeight: 700, fontSize: '1rem', color: '#102A43' }}
+                    />
+                  </div>
+                </div>
+
+                {/* FOOTER */}
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid #D6E7ED', paddingTop: '18px' }}>
+                  <button
+                    type="button"
+                    className="btn-cancel"
+                    onClick={() => { setIsAdmitModalOpen(false); setActiveAdmissionRequestId(null); }}
+                    style={{ padding: '10px 18px', borderRadius: '8px', fontWeight: 600, color: '#58758A', background: '#EAF6FA', border: 'none', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-submit"
+                    style={{ padding: '10px 22px', borderRadius: '8px', fontWeight: 700, color: '#ffffff', background: 'linear-gradient(135deg, #0B7894 0%, #0B8EAB 100%)', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(11, 142, 171, 0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    <Bed size={16} /> Confirm & Admit Patient
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 2. TRANSFER BED MODAL */}
+      {isTransferModalOpen && selectedBed && (
+        <div className="recep-modal-overlay" onClick={() => setIsTransferModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '500px', maxWidth: '92vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Transfer Patient — From Bed {selectedBed.bed_number}</h3>
+              <button className="close-btn" onClick={() => setIsTransferModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleTransferPatient}>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label>Target Bed (Available beds only)</label>
+                <select
+                  className="recep-select-field"
+                  value={transferForm.to_bed_id}
+                  onChange={(e) => setTransferForm({ ...transferForm, to_bed_id: e.target.value })}
+                  required
+                >
+                  <option value="">-- Choose Available Bed --</option>
+                  {bedsData
+                    .filter((b: any) => b.status === 'available')
+                    .map((b: any) => (
+                      <option key={b.id} value={b.id}>
+                        Bed {b.bed_number} ({b.category?.name} - ₹{b.category?.base_charge_24h}/day)
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label>Transfer Reason</label>
+                <textarea
+                  className="recep-input-field"
+                  rows={3}
+                  value={transferForm.reason}
+                  onChange={(e) => setTransferForm({ ...transferForm, reason: e.target.value })}
+                  placeholder="e.g. Patient requested deluxe room, clinical condition requires ICU monitoring"
+                  required
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                <button type="button" className="btn-cancel" onClick={() => setIsTransferModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-submit">Transfer Patient</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. VITALS ROUNDING LOG MODAL */}
+      {isVitalsModalOpen && selectedBed && selectedBed.active_admission && (
+        <div className="recep-modal-overlay" onClick={() => setIsVitalsModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '850px', maxWidth: '95vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Clinical Rounding: Vitals & Nursing Logs</h3>
+              <button className="close-btn" onClick={() => setIsVitalsModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* Left Side: Vitals History */}
+              <div style={{ borderRight: '1px solid #e2e8f0', paddingRight: '20px', maxHeight: '450px', overflowY: 'auto' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Vitals History</h4>
+                {isLoadingClinical ? (
+                  <RefreshCw size={24} className="spin-animation" />
+                ) : vitalsHistory.length === 0 ? (
+                  <p style={{ fontSize: '0.84rem', color: '#64748b' }}>No clinical logs recorded for this admission yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {vitalsHistory.map((v: any) => (
+                      <div key={v.id} style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: '6px', color: '#0f766e' }}>
+                          <span>Temp: {v.temp}°F | SpO2: {v.spo2}%</span>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>{new Date(v.recorded_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div>Pulse: {v.pulse} bpm | Resp: {v.respiratory_rate}/min</div>
+                        <div>BP: {v.bp} mmHg</div>
+                        <div style={{ color: '#475569', marginTop: '6px', fontStyle: 'italic' }}>Notes: {v.nursing_notes}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Log Vitals Form */}
+              <form onSubmit={handleRecordVitals}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Record Roundings</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div className="form-group">
+                    <label>Temperature (°F)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="recep-input-field"
+                      value={vitalsForm.temp}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, temp: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Pulse Rate (bpm)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.pulse}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, pulse: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>BP Systolic (mmHg)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.systolic_bp}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, systolic_bp: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>BP Diastolic (mmHg)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.diastolic_bp}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, diastolic_bp: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>SpO2 Saturation (%)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.spo2}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, spo2: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Resp Rate (/min)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.respiratory_rate}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, respiratory_rate: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label>Clinical Notes</label>
+                  <textarea
+                    className="recep-input-field"
+                    rows={3}
+                    value={vitalsForm.nursing_notes}
+                    onChange={(e) => setVitalsForm({ ...vitalsForm, nursing_notes: e.target.value })}
+                    placeholder="Enter observation notes, IV status, pain levels, etc."
+                    required
+                    style={{ resize: 'vertical' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                  <button type="button" className="btn-cancel" onClick={() => setIsVitalsModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn-submit">Save Rounding</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. MEDICATION ADMINISTRATION CHART (MAC) MODAL */}
+      {isMacModalOpen && selectedBed && selectedBed.active_admission && (
+        <div className="recep-modal-overlay" onClick={() => setIsMacModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '850px', maxWidth: '95vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Medication Administration Chart (MAC)</h3>
+              <button className="close-btn" onClick={() => setIsMacModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* Left Side: MAC Schedule Grid */}
+              <div style={{ borderRight: '1px solid #e2e8f0', paddingRight: '20px', maxHeight: '480px', overflowY: 'auto' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Medication Schedule</h4>
+                {isLoadingClinical ? (
+                  <RefreshCw size={24} className="spin-animation" />
+                ) : macHistory.length === 0 ? (
+                  <p style={{ fontSize: '0.84rem', color: '#64748b' }}>No medicines scheduled for this stay yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {macHistory.map((m: any) => {
+                      const statusStyles: any = {
+                        scheduled: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+                        administered: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+                        missed: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' }
+                      };
+                      const style = statusStyles[m.status] || statusStyles.scheduled;
+
+                      return (
+                        <div key={m.id} style={{ background: '#ffffff', border: `1px solid ${style.border}`, padding: '12px', borderRadius: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.86rem' }}>{m.medicine_name}</span>
+                            <span style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}`, padding: '2px 8px', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700 }}>
+                              {m.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#475569' }}>Dosage: {m.dosage}</div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Scheduled: {new Date(m.scheduled_time).toLocaleString()}</div>
+
+                          {m.status === 'scheduled' && (
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                              <button
+                                type="button"
+                                className="recep-btn-secondary"
+                                style={{ padding: '3px 8px', fontSize: '0.74rem', color: '#16a34a', borderColor: '#bbf7d0' }}
+                                onClick={() => handleAdministerMedication(m.id, 'administered')}
+                              >
+                                Mark Given
+                              </button>
+                              <button
+                                type="button"
+                                className="recep-btn-secondary"
+                                style={{ padding: '3px 8px', fontSize: '0.74rem', color: '#dc2626', borderColor: '#fecaca' }}
+                                onClick={() => handleAdministerMedication(m.id, 'missed')}
+                              >
+                                Mark Missed
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Schedule New Form */}
+              <form onSubmit={handleScheduleMedication}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Schedule Medication</h4>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label>Medicine Name</label>
+                  <input
+                    type="text"
+                    className="recep-input-field"
+                    value={macForm.medicine_name}
+                    onChange={(e) => setMacForm({ ...macForm, medicine_name: e.target.value })}
+                    placeholder="e.g. Inj. Pantocid 40mg"
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label>Dosage & Route</label>
+                  <input
+                    type="text"
+                    className="recep-input-field"
+                    value={macForm.dosage}
+                    onChange={(e) => setMacForm({ ...macForm, dosage: e.target.value })}
+                    placeholder="e.g. IV twice daily, 1 tab orally"
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label>Scheduled Administer Time</label>
+                  <input
+                    type="datetime-local"
+                    className="recep-input-field"
+                    value={macForm.scheduled_time}
+                    onChange={(e) => setMacForm({ ...macForm, scheduled_time: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                  <button type="button" className="btn-cancel" onClick={() => setIsMacModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn-submit">Add Schedule</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. FINALIZE CHECKOUT / BILLING SUMMARY MODAL */}
+      {isCheckoutModalOpen && selectedBed && selectedBed.active_admission && (
+        <div className="recep-modal-overlay" onClick={() => setIsCheckoutModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '600px', maxWidth: '92vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Final Checkout Invoice Preview</h3>
+              <button className="close-btn" onClick={() => setIsCheckoutModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            {isLoadingCheckoutBill ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
+                <RefreshCw size={28} className="spin-animation" style={{ color: '#0d9488' }} />
+              </div>
+            ) : checkoutBill ? (
+              <div className="invoice-container-premium" style={{ color: '#1e293b', maxHeight: '70vh', overflowY: 'auto' }}>
+                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f766e', marginBottom: '4px' }}>
+                    PATIENT: {checkoutBill.patient_name}
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: '#64748b' }}>
+                    Admitted: {new Date(checkoutBill.admission_date).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: '#64748b' }}>
+                    Stay duration: {checkoutBill.hours_stayed} hours
+                  </div>
+                </div>
+
+                <h4 style={{ margin: '0 0 10px 0', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+                  BILLING BREAKDOWN
+                </h4>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', fontSize: '0.86rem' }}>
+                  {checkoutBill.bill_items?.map((item: any, idx: number) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px dashed #f1f5f9' }}>
+                      <div>
+                        <span style={{ fontWeight: 700 }}>{item.item_name}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.78rem', marginLeft: '6px' }}>({item.quantity} units)</span>
+                      </div>
+                      <span style={{ fontWeight: 700 }}>₹{item.total_price}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '2px solid #e2e8f0', paddingTop: '12px', marginBottom: '24px', fontSize: '0.9rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Subtotal:</span>
+                    <span>₹{checkoutBill.subtotal}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+                    <span>Tax (GST):</span>
+                    <span>₹{checkoutBill.tax_amount}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
+                    <span>Grand Total:</span>
+                    <span>₹{checkoutBill.grand_total}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontStyle: 'italic' }}>
+                    <span>Initial Deposit Paid:</span>
+                    <span>- ₹{checkoutBill.initial_deposit}</span>
+                  </div>
+                  {checkoutBill.insurance_approved_amount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2563eb', fontStyle: 'italic' }}>
+                      <span>Insurance Credit:</span>
+                      <span>- ₹{checkoutBill.insurance_approved_amount}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.15rem', color: '#dc2626', borderTop: '1px solid #cbd5e1', paddingTop: '8px' }}>
+                    <span>Outstanding Due:</span>
+                    <span>₹{checkoutBill.balance_due}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                  <button type="button" className="btn-cancel" onClick={() => setIsCheckoutModalOpen(false)}>Close Preview</button>
+                  <button
+                    type="button"
+                    className="btn-submit"
+                    style={{ background: '#16a34a', borderColor: '#16a34a', color: '#ffffff' }}
+                    onClick={handleFinalizeCheckout}
+                  >
+                    Confirm Discharge & Checkout
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p>Failed to retrieve checkout summary.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ADMISSION HISTORY FULL SUMMARY MODAL */}
+      {isHistoryDetailsModalOpen && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '850px', width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', padding: '28px' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
+                    {historyDetailsData ? historyDetailsData.patient_name : 'Patient History Case Sheet'}
+                  </h3>
+                  {historyDetailsData && (
+                    <span style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: '20px', fontWeight: 700, background: historyDetailsData.admission_status === 'discharged' ? '#f1f5f9' : '#dcfce7', color: historyDetailsData.admission_status === 'discharged' ? '#475569' : '#15803d', border: historyDetailsData.admission_status === 'discharged' ? '1px solid #cbd5e1' : '1px solid #86efac' }}>
+                      {historyDetailsData.admission_status === 'discharged' ? 'Discharged' : 'Active Stay'}
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: '4px 0 0', fontSize: '0.86rem', color: '#64748b' }}>
+                  Patient Code: <strong>{historyDetailsData?.patient_code || 'N/A'}</strong> | Admission ID: <span style={{ fontFamily: 'monospace' }}>{historyDetailsData?.id?.slice(0, 8)}...</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHistoryDetailsModalOpen(false);
+                  setHistoryDetailsData(null);
+                }}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {isLoadingHistoryDetails ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+                <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
+              </div>
+            ) : historyDetailsData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Key Metric Highlights Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Ward & Bed</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      Bed {historyDetailsData.bed_number}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#0d9488', fontWeight: 600 }}>{historyDetailsData.category_name}</div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Admitting Doctor</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      Dr. {historyDetailsData.admitting_doctor}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Ph: {historyDetailsData.doctor_phone}</div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Stay Duration</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      {historyDetailsData.stay_days > 0 ? `${historyDetailsData.stay_days} Days` : `${historyDetailsData.stay_hours} Hours`}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>({historyDetailsData.stay_hours} Hours Total)</div>
+                  </div>
+
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Initial Deposit</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
+                      ₹{historyDetailsData.initial_deposit.toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#16a34a' }}>Approved Ins: ₹{historyDetailsData.insurance_approved_amount.toLocaleString()}</div>
+                  </div>
+                </div>
+
+                {/* Patient Details & Diagnosis Card */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: '#0f172a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Admission & Clinical Diagnosis
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', fontSize: '0.88rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Patient Contact:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>{historyDetailsData.patient_phone}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Emergency Contact:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>{historyDetailsData.emergency_contact_phone}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Admission Datetime:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>{new Date(historyDetailsData.admission_datetime).toLocaleString()}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Discharge Datetime:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>
+                        {historyDetailsData.discharge_datetime ? new Date(historyDetailsData.discharge_datetime).toLocaleString() : 'Currently Admitted'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Daily Rate (24h):</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>₹{historyDetailsData.base_charge_24h}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Overtime Rate (hourly):</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>₹{historyDetailsData.hourly_overtime_rate}/hr</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #e2e8f0' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>PRIMARY DIAGNOSIS / REASON FOR ADMISSION</div>
+                    <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', color: '#334155', fontStyle: 'italic' }}>
+                      {historyDetailsData.diagnosis || 'No specific diagnosis notes recorded.'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Vitals History Logs Section */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Recorded Vitals History ({historyDetailsData.vitals_records?.length || 0})</span>
+                  </h4>
+                  {historyDetailsData.vitals_records && historyDetailsData.vitals_records.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>
+                            <th style={{ padding: '8px 10px' }}>Time Recorded</th>
+                            <th style={{ padding: '8px 10px' }}>Recorded By</th>
+                            <th style={{ padding: '8px 10px' }}>Temp (°F)</th>
+                            <th style={{ padding: '8px 10px' }}>Pulse</th>
+                            <th style={{ padding: '8px 10px' }}>BP</th>
+                            <th style={{ padding: '8px 10px' }}>SpO2</th>
+                            <th style={{ padding: '8px 10px' }}>Nursing Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyDetailsData.vitals_records.map((v: any) => (
+                            <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{new Date(v.recorded_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 600 }}>{v.recorded_by}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: v.temp > 100 ? '#dc2626' : '#0f172a' }}>{v.temp}°F</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700 }}>{v.pulse} bpm</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700 }}>{v.bp}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: v.spo2 < 95 ? '#dc2626' : '#059669' }}>{v.spo2}%</td>
+                              <td style={{ padding: '8px 10px', color: '#475569', fontStyle: 'italic' }}>{v.nursing_notes || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.84rem', color: '#94a3b8', fontStyle: 'italic' }}>No vitals logs recorded during this stay.</div>
+                  )}
+                </div>
+
+                {/* MAC Medication Logs Section */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: '#0f172a', fontWeight: 700 }}>
+                    Medication Administration Chart (MAC Logs - {historyDetailsData.mac_records?.length || 0})
+                  </h4>
+                  {historyDetailsData.mac_records && historyDetailsData.mac_records.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>
+                            <th style={{ padding: '8px 10px' }}>Medicine Name</th>
+                            <th style={{ padding: '8px 10px' }}>Dosage</th>
+                            <th style={{ padding: '8px 10px' }}>Scheduled Time</th>
+                            <th style={{ padding: '8px 10px' }}>Administered Time</th>
+                            <th style={{ padding: '8px 10px' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyDetailsData.mac_records.map((m: any) => (
+                            <tr key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0f172a' }}>{m.medicine_name}</td>
+                              <td style={{ padding: '8px 10px' }}>{m.dosage}</td>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{new Date(m.scheduled_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{m.administered_time ? new Date(m.administered_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
+                              <td style={{ padding: '8px 10px' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 700, background: m.status === 'given' ? '#dcfce7' : '#fef3c7', color: m.status === 'given' ? '#15803d' : '#b45309' }}>
+                                  {m.status.toUpperCase()}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.84rem', color: '#94a3b8', fontStyle: 'italic' }}>No medication administrations logged.</div>
+                  )}
+                </div>
+
+              </div>
+            ) : null}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                className="recep-btn-secondary"
+                onClick={() => {
+                  setIsHistoryDetailsModalOpen(false);
+                  setHistoryDetailsData(null);
+                }}
+                style={{ padding: '8px 20px', fontSize: '0.88rem', fontWeight: 700 }}
+              >
+                Close Case Sheet Summary
+              </button>
+            </div>
+
           </div>
         </div>
       )}

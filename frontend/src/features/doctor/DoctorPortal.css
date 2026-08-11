@@ -1,16 +1,16 @@
 /* DoctorPortal.css — Premium styling for Clinic OS Doctor Dashboard */
 
 :root {
-  --doc-primary: var(--primary);
-  --doc-primary-dark: var(--primary-dark);
-  --doc-primary-light: var(--accent);
-  --doc-sidebar-bg: var(--primary-dark);
-  --doc-sidebar-hover: rgba(255, 255, 255, 0.1);
-  --doc-sidebar-active: var(--primary);
-  --doc-bg-light: #f8fafc;
-  --doc-text-dark: #0f172a;
-  --doc-text-muted: #64748b;
-  --doc-border: #e2e8f0;
+  --doc-primary: var(--primary-teal);
+  --doc-primary-dark: var(--dark-sidebar);
+  --doc-primary-light: var(--bright-cyan);
+  --doc-sidebar-bg: var(--dark-sidebar);
+  --doc-sidebar-hover: rgba(22, 185, 212, 0.15);
+  --doc-sidebar-active: var(--active-nav);
+  --doc-bg-light: #EAF6FA;
+  --doc-text-dark: #102A43;
+  --doc-text-muted: #58758A;
+  --doc-border: #D6E7ED;
 }
 
 .doc-layout {
@@ -24,7 +24,8 @@
 /* Sidebar */
 .doc-sidebar {
   width: 260px;
-  background-color: var(--doc-sidebar-bg);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -34,7 +35,7 @@
   left: 0;
   z-index: 100;
   padding: 24px 0;
-  box-shadow: 4px 0 20px rgba(15, 118, 110, 0.08);
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 .doc-sidebar-header {

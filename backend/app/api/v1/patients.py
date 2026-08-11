@@ -656,7 +656,7 @@ async def list_my_billing(
     "/",
     summary="Create walk-in patient (staff/receptionist only)",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.RECEPTIONIST))],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.CLINIC_MANAGER))],
 )
 async def create_walkin_patient(
     request: PatientCreate,
@@ -679,7 +679,7 @@ async def create_walkin_patient(
 @router.get(
     "/",
     summary="List and search patients (staff only)",
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST))],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.CLINIC_MANAGER))],
 )
 async def list_patients(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -749,7 +749,7 @@ async def update_patient(
     service = PatientService(db)
     patient = await service.get_patient(patient_id)
     
-    is_staff = current_user.role in (UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.DOCTOR)
+    is_staff = current_user.role in (UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.CLINIC_MANAGER)
     is_owner = patient.user_id == current_user.id
     
     if not (is_staff or is_owner):

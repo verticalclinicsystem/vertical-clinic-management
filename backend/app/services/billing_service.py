@@ -36,10 +36,18 @@ class BillingService:
         # 3. Calculate totals
         grand_total = max(0.0, request.total_amount - request.discount_amount + request.tax_amount)
         
+        # Support multiple selected admission IDs
+        import json
+        adm_ids = [str(i) for i in request.admission_ids] if request.admission_ids else ([] if not request.admission_id else [str(request.admission_id)])
+        primary_adm_id = adm_ids[0] if adm_ids else request.admission_id
+        adm_ids_json = json.dumps(adm_ids) if adm_ids else None
+
         invoice_data = {
             "patient_id": request.patient_id,
             "consultation_id": request.consultation_id,
             "treatment_plan_id": request.treatment_plan_id,
+            "admission_id": primary_adm_id,
+            "admission_ids_json": adm_ids_json,
             "invoice_number": invoice_number,
             "total_amount": request.total_amount,
             "discount_amount": request.discount_amount,
@@ -126,7 +134,49 @@ class BillingService:
                         "amount": float(proc.cost)
                     })
 
-        # 4. Clinical Materials / Used Things
+        # 4. IPD Bed Stay & Charges
+        if invoice.admission:
+            adm = invoice.admission
+            from datetime import UTC, datetime
+            end_t = adm.discharge_datetime or datetime.now(UTC)
+            hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
+            bed = adm.bed
+            if bed and bed.category:
+                days = int(hours_stay // 24)
+                rem_h = hours_stay % 24
+                if days == 0:
+                    rent = bed.category.base_charge_24h
+                else:
+                    overtime = rem_h * bed.category.hourly_overtime_rate if rem_h > 2.0 else 0.0
+                    rent = (days * bed.category.base_charge_24h) + overtime
+                pdf_items.append({
+                    "description": f"IPD Bed Stay: {bed.bed_number} ({bed.category.name}) - {round(hours_stay, 1)} hours",
+                    "amount": float(round(rent, 2))
+                })
+
+            # Fetch past transferred bed bill items
+            from sqlalchemy import select
+            from app.models.ipd import IpdBillItem
+            past_res = await self.db.execute(select(IpdBillItem).where(IpdBillItem.admission_id == adm.id))
+            past_items = past_res.scalars().all()
+            for item in past_items:
+                pdf_items.append({
+                    "description": item.item_name,
+                    "amount": float(item.total_price)
+                })
+
+            if adm.initial_deposit > 0:
+                pdf_items.append({
+                    "description": "Less: Initial Admission Deposit Paid",
+                    "amount": float(-adm.initial_deposit)
+                })
+            if adm.insurance_approved_amount > 0:
+                pdf_items.append({
+                    "description": "Less: Insurance Approved Credit",
+                    "amount": float(-adm.insurance_approved_amount)
+                })
+
+        # 5. Clinical Materials / Used Things
         if invoice.treatment_plan:
             completed_count = sum(1 for p in invoice.treatment_plan.procedures if p.status == "completed")
             if completed_count > 0:
@@ -134,7 +184,7 @@ class BillingService:
                     "description": "Used Dental Materials & Sterile Consumables",
                     "amount": float(completed_count * 200.0)
                 })
-        elif invoice.consultation:
+        elif invoice.consultation and not invoice.admission:
             pdf_items.append({
                 "description": "Clinical Materials & Sterile Consumables",
                 "amount": 150.0

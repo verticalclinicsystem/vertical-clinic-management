@@ -28,7 +28,10 @@ import {
   ArrowLeft,
   LogOut,
   User,
-  Edit3
+  Edit3,
+  Bed,
+  Eye,
+  RefreshCw
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
@@ -292,6 +295,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [vitalsHeight, setVitalsHeight] = useState<string>('172');
   const [followupAdvised, setFollowupAdvised] = useState<boolean>(false);
   const [followupAfterDays, setFollowupAfterDays] = useState<number>(7);
+
+  // IPD Admission Advised States
+  const [ipdAdvised, setIpdAdvised] = useState<boolean>(false);
+  const [ipdPreferredCategory, setIpdPreferredCategory] = useState<string>('');
+  const [ipdReason, setIpdReason] = useState<string>('');
+  const [ipdUrgency, setIpdUrgency] = useState<string>('routine');
   const [vitalsWeight, setVitalsWeight] = useState<string>('74');
   const [vitalsSpo2, setVitalsSpo2] = useState<number>(98);
   const [calculatedBmiInfo, setCalculatedBmiInfo] = useState<{ bmi: string; label: string; color: string }>({ bmi: '25.0', label: 'Normal', color: '#16a34a' });
@@ -988,9 +997,130 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
   };
 
+  // IPD Ward Round States
+  const [ipdBeds, setIpdBeds] = useState<any[]>([]);
+  const [ipdCategories, setIpdCategories] = useState<any[]>([]);
+  const [loadingIpdBeds, setLoadingIpdBeds] = useState<boolean>(false);
+  const [selectedWardCategory, setSelectedWardCategory] = useState<string>('all');
+  const [ipdSearchQuery, setIpdSearchQuery] = useState<string>('');
+
+  // History Detail Modal State for Doctor
+  const [isHistoryDetailsModalOpen, setIsHistoryDetailsModalOpen] = useState<boolean>(false);
+  const [isLoadingHistoryDetails, setIsLoadingHistoryDetails] = useState<boolean>(false);
+  const [historyDetailsData, setHistoryDetailsData] = useState<any>(null);
+
+  // Doctor Round Note Modal State
+  const [isRoundNoteModalOpen, setIsRoundNoteModalOpen] = useState<boolean>(false);
+  const [selectedBedForRound, setSelectedBedForRound] = useState<any>(null);
+  const [roundVitalsForm, setRoundVitalsForm] = useState({
+    temp: 98.6,
+    pulse: 72,
+    systolic_bp: 120,
+    diastolic_bp: 80,
+    spo2: 98,
+    respiratory_rate: 16,
+    doctor_notes: '',
+  });
+  const [submittingRoundNote, setSubmittingRoundNote] = useState<boolean>(false);
+
+  // Lock body scroll when any modal is active
+  useEffect(() => {
+    const isAnyModalOpen = isHistoryDetailsModalOpen || isRoundNoteModalOpen;
+    if (isAnyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isHistoryDetailsModalOpen, isRoundNoteModalOpen]);
+
+  const fetchIpdBeds = async () => {
+    setLoadingIpdBeds(true);
+    try {
+      const [bedsRes, catRes] = await Promise.all([
+        api.get('/ipd/beds'),
+        api.get('/ipd/categories')
+      ]);
+      if (bedsRes.data && bedsRes.data.success) {
+        setIpdBeds(bedsRes.data.data || []);
+      }
+      if (catRes.data && catRes.data.success) {
+        setIpdCategories(catRes.data.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching IPD beds for doctor rounds:', err);
+    } finally {
+      setLoadingIpdBeds(false);
+    }
+  };
+
+  const fetchHistoryDetails = async (admissionId: string) => {
+    setIsLoadingHistoryDetails(true);
+    setIsHistoryDetailsModalOpen(true);
+    try {
+      const res = await api.get(`/ipd/admissions/${admissionId}/summary`);
+      if (res.data && res.data.success) {
+        setHistoryDetailsData(res.data.data);
+      } else {
+        showToast('Could not load patient history case sheet.', 'error');
+      }
+    } catch (err: any) {
+      console.error('Error fetching admission summary:', err);
+      showToast('Error loading patient history details.', 'error');
+    } finally {
+      setIsLoadingHistoryDetails(false);
+    }
+  };
+
+  const handleSaveRoundNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBedForRound || !selectedBedForRound.active_admission) return;
+    if (!roundVitalsForm.doctor_notes.trim()) {
+      showToast('Please enter doctor round notes.', 'error');
+      return;
+    }
+    setSubmittingRoundNote(true);
+    try {
+      const payload = {
+        admission_id: selectedBedForRound.active_admission.id,
+        temp: parseFloat(String(roundVitalsForm.temp)),
+        pulse: parseInt(String(roundVitalsForm.pulse)),
+        systolic_bp: parseInt(String(roundVitalsForm.systolic_bp)),
+        diastolic_bp: parseInt(String(roundVitalsForm.diastolic_bp)),
+        spo2: parseInt(String(roundVitalsForm.spo2)),
+        respiratory_rate: parseInt(String(roundVitalsForm.respiratory_rate)),
+        nursing_notes: `[DOCTOR ROUND NOTE] ${roundVitalsForm.doctor_notes}`
+      };
+      const res = await api.post('/ipd/vitals/', payload);
+      if (res.data && res.data.success) {
+        showToast('Doctor Ward Round Note recorded successfully!', 'success');
+        setIsRoundNoteModalOpen(false);
+        setRoundVitalsForm({
+          temp: 98.6,
+          pulse: 72,
+          systolic_bp: 120,
+          diastolic_bp: 80,
+          spo2: 98,
+          respiratory_rate: 16,
+          doctor_notes: '',
+        });
+        fetchIpdBeds();
+      }
+    } catch (err: any) {
+      console.error('Error saving doctor round note:', err);
+      showToast(err.response?.data?.message || 'Failed to save doctor round note.', 'error');
+    } finally {
+      setSubmittingRoundNote(false);
+    }
+  };
+
   // Fetch all tab contents on change
   useEffect(() => {
-    if (activeTab === 'prescriptions') {
+    if (activeTab === 'ipd') {
+      fetchIpdBeds();
+    } else if (activeTab === 'prescriptions') {
       fetchPrescriptions();
     } else if (activeTab === 'patients') {
       handleSearchPatients('');
@@ -1457,7 +1587,25 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           await api.post('/prescriptions/', prescPayload);
         }
 
+        if (ipdAdvised) {
+          try {
+            await api.post('/ipd/admission-requests', {
+              patient_id: activeAppt.patient_id,
+              category_id: ipdPreferredCategory || null,
+              reason: ipdReason || diagnosis || 'Advised for IPD admission & monitoring.',
+              urgency: ipdUrgency
+            });
+            showToast('IPD Admission request & alert sent to Receptionist!', 'info');
+          } catch (ipdErr) {
+            console.error('Failed to send IPD admission request:', ipdErr);
+          }
+        }
+
         showToast('Consultation and prescription recorded successfully!', 'success');
+        setIpdAdvised(false);
+        setIpdReason('');
+        setIpdPreferredCategory('');
+        setIpdUrgency('routine');
         setActiveAppt(null);
         fetchDashboard();
       }
@@ -1579,6 +1727,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
             <Calendar size={18} /> Availability
           </div>
 
+          <div className="doc-nav-group-label">IN-PATIENT (IPD)</div>
+          <div 
+            className={`doc-nav-item ${activeTab === 'ipd' ? 'active' : ''}`}
+            onClick={() => { handleRootTabChange('ipd'); setSelectedPatientHistory(null); }}
+          >
+            <Bed size={18} /> IPD Ward Rounds
+          </div>
+
           <div className="doc-nav-group-label">PROFILE</div>
           <div 
             className={`doc-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
@@ -1618,6 +1774,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 {activeTab === 'treatment' && 'Treatment Plans'}
                 {activeTab === 'followup' && 'Follow-up Center'}
                 {activeTab === 'availability' && 'Availability Settings'}
+                {activeTab === 'ipd' && 'IPD Ward Rounds'}
                 {activeTab === 'workflow' && 'Full Clinic Workflow'}
                 {activeTab === 'profile' && 'My Profile'}
               </h1>
@@ -3405,6 +3562,270 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 </div>
               )}
 
+              {/* TAB: IPD WARD ROUNDS */}
+              {activeTab === 'ipd' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Header & Controls */}
+                  <div className="doc-card" style={{ padding: '20px', marginBottom: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <h2 className="doc-card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Bed size={22} style={{ color: '#0d9488' }} /> In-Patient (IPD) Ward Rounds
+                        </h2>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                          Monitor live occupied beds, review clinical vitals & MAC medication logs, and record daily doctor round progress notes.
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ position: 'relative', width: '240px' }}>
+                          <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                          <input
+                            type="text"
+                            className="doc-input"
+                            style={{ height: '36px', paddingLeft: '32px', fontSize: '0.84rem', width: '100%', margin: 0 }}
+                            placeholder="Search patient / bed..."
+                            value={ipdSearchQuery}
+                            onChange={(e) => setIpdSearchQuery(e.target.value)}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          className="doc-btn-secondary"
+                          onClick={fetchIpdBeds}
+                          style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem' }}
+                        >
+                          <RefreshCw size={15} className={loadingIpdBeds ? 'spin-animation' : ''} /> Refresh Wards
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Category Filter Pills */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', overflowX: 'auto' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedWardCategory('all')}
+                        style={{
+                          padding: '6px 16px',
+                          borderRadius: '20px',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          border: selectedWardCategory === 'all' ? '1px solid #0d9488' : '1px solid #e2e8f0',
+                          background: selectedWardCategory === 'all' ? '#0d9488' : '#ffffff',
+                          color: selectedWardCategory === 'all' ? '#ffffff' : '#64748b',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        All Wards ({ipdBeds.length} Beds)
+                      </button>
+                      {ipdCategories.map((cat: any) => {
+                        const count = ipdBeds.filter((b: any) => b.category_id === cat.id).length;
+                        const isSelected = selectedWardCategory === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setSelectedWardCategory(cat.id)}
+                            style={{
+                              padding: '6px 16px',
+                              borderRadius: '20px',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              border: isSelected ? '1px solid #0d9488' : '1px solid #e2e8f0',
+                              background: isSelected ? '#0d9488' : '#ffffff',
+                              color: isSelected ? '#ffffff' : '#64748b',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {cat.name} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Ward Occupancy Content */}
+                  {loadingIpdBeds ? (
+                    <div style={{ textAlign: 'center', padding: '60px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                      <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
+                      <p style={{ marginTop: '12px', fontSize: '0.9rem', color: '#64748b' }}>Loading live IPD ward status...</p>
+                    </div>
+                  ) : (
+                    (() => {
+                      const filteredCategories = selectedWardCategory === 'all'
+                        ? ipdCategories
+                        : ipdCategories.filter((c: any) => c.id === selectedWardCategory);
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                          {filteredCategories.map((cat: any) => {
+                            const categoryBeds = ipdBeds.filter((b: any) => {
+                              if (b.category_id !== cat.id) return false;
+                              if (!ipdSearchQuery.trim()) return true;
+                              const query = ipdSearchQuery.toLowerCase();
+                              const bedNoMatch = b.bed_number.toLowerCase().includes(query);
+                              const patientMatch = b.active_admission?.patient_name?.toLowerCase().includes(query);
+                              const docMatch = b.active_admission?.admitting_doctor?.toLowerCase().includes(query);
+                              return bedNoMatch || patientMatch || docMatch;
+                            });
+
+                            if (categoryBeds.length === 0) return null;
+
+                            const occupiedCount = categoryBeds.filter((b: any) => b.status === 'occupied').length;
+
+                            return (
+                              <div key={cat.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
+                                {/* Ward Section Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '10px', borderBottom: '2px solid #f1f5f9' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>{cat.name}</h3>
+                                    <span style={{ fontSize: '0.78rem', background: '#f1f5f9', padding: '3px 10px', borderRadius: '12px', color: '#475569', fontWeight: 600 }}>
+                                      {cat.description || 'In-Patient Ward'}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0d9488' }}>
+                                    Occupancy: {occupiedCount} / {categoryBeds.length} Beds
+                                  </div>
+                                </div>
+
+                                {/* Bed Cards Grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                                  {categoryBeds.map((bed: any) => {
+                                    const isOccupied = bed.status === 'occupied' && bed.active_admission;
+                                    const adm = bed.active_admission;
+
+                                    return (
+                                      <div
+                                        key={bed.id}
+                                        style={{
+                                          border: isOccupied ? '1px solid #cbd5e1' : '1px dashed #cbd5e1',
+                                          borderRadius: '14px',
+                                          padding: '16px',
+                                          background: isOccupied ? '#ffffff' : '#f8fafc',
+                                          boxShadow: isOccupied ? '0 4px 6px -1px rgba(0, 0, 0, 0.05)' : 'none',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          justifyContent: 'space-between'
+                                        }}
+                                      >
+                                        <div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <Bed size={18} style={{ color: isOccupied ? '#0d9488' : '#94a3b8' }} /> Bed {bed.bed_number}
+                                            </span>
+                                            <span style={{
+                                              fontSize: '0.72rem',
+                                              padding: '3px 8px',
+                                              borderRadius: '12px',
+                                              fontWeight: 700,
+                                              background: isOccupied ? '#dcfce7' : '#f1f5f9',
+                                              color: isOccupied ? '#15803d' : '#64748b',
+                                              border: isOccupied ? '1px solid #86efac' : '1px solid #cbd5e1'
+                                            }}>
+                                              {isOccupied ? 'Occupied' : 'Vacant'}
+                                            </span>
+                                          </div>
+
+                                          {isOccupied ? (
+                                            <div style={{ fontSize: '0.85rem' }}>
+                                              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.95rem' }}>
+                                                {adm.patient_name}
+                                              </div>
+                                              <div style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 8px' }}>
+                                                Code: <strong>{adm.patient_code}</strong> | Dr. {adm.admitting_doctor}
+                                              </div>
+
+                                              <div style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '10px' }}>
+                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>DIAGNOSIS</div>
+                                                <div style={{ fontSize: '0.82rem', color: '#334155', fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                  {adm.diagnosis || 'No diagnosis recorded'}
+                                                </div>
+                                              </div>
+
+                                              <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                                <span>Admitted: {new Date(adm.admission_datetime).toLocaleDateString()}</span>
+                                                <span style={{ fontWeight: 700, color: '#0f172a' }}>Day {adm.stay_days || 1}</span>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem', fontStyle: 'italic' }}>
+                                              Bed is currently available for admission.
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {isOccupied && (
+                                          <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => fetchHistoryDetails(adm.id)}
+                                              style={{
+                                                flex: 1,
+                                                padding: '7px 8px',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 700,
+                                                background: '#f0fdf4',
+                                                color: '#15803d',
+                                                border: '1px solid #bbf7d0',
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '4px'
+                                              }}
+                                            >
+                                              <Eye size={14} /> Case Sheet
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setSelectedBedForRound(bed);
+                                                setRoundVitalsForm({
+                                                  temp: 98.6,
+                                                  pulse: 72,
+                                                  systolic_bp: 120,
+                                                  diastolic_bp: 80,
+                                                  spo2: 98,
+                                                  respiratory_rate: 16,
+                                                  doctor_notes: '',
+                                                });
+                                                setIsRoundNoteModalOpen(true);
+                                              }}
+                                              style={{
+                                                flex: 1,
+                                                padding: '7px 8px',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 700,
+                                                background: '#0d9488',
+                                                color: '#ffffff',
+                                                border: '1px solid #0d9488',
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '4px'
+                                              }}
+                                            >
+                                              <Edit3 size={14} /> Round Note
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
 
               {/* TAB: CONSULTATION WORKSPACE (ENTERPRISE EMR WORKSPACE) */}
               {activeTab === 'consultation' && (
@@ -3912,6 +4333,81 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               </div>
                               <div style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic' }}>
                                 Note: The patient will be notified on their portal to schedule a follow-up for <strong>{diagnosis || 'Routine Follow-up'}</strong>.
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 🏥 IPD ADMISSION RECOMMENDATION BLOCK */}
+                        <div style={{
+                          backgroundColor: ipdAdvised ? '#f0fdf4' : '#ffffff',
+                          padding: '14px',
+                          borderRadius: '8px',
+                          border: ipdAdvised ? '1px solid #86efac' : '1px solid #e2e8f0',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '12px',
+                          marginTop: '12px'
+                        }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: '700', color: ipdAdvised ? '#166534' : '#0f172a' }}>
+                            <input
+                              type="checkbox"
+                              checked={ipdAdvised}
+                              onChange={(e) => setIpdAdvised(e.target.checked)}
+                              style={{ width: '16px', height: '16px', accentColor: '#059669' }}
+                            />
+                            🏥 Advise IPD Admission (Recommend Hospitalization)?
+                          </label>
+                          {ipdAdvised && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '24px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                                    Preferred Ward / Category:
+                                  </label>
+                                  <select
+                                    className="doc-input"
+                                    value={ipdPreferredCategory}
+                                    onChange={(e) => setIpdPreferredCategory(e.target.value)}
+                                    style={{ marginBottom: 0, height: '34px', padding: '0 8px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                                  >
+                                    <option value="">Any Available Ward</option>
+                                    {ipdCategories.map((c: any) => (
+                                      <option key={c.id} value={c.id}>{c.name} (₹{c.base_charge_24h}/day)</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                                    Urgency Level:
+                                  </label>
+                                  <select
+                                    className="doc-input"
+                                    value={ipdUrgency}
+                                    onChange={(e) => setIpdUrgency(e.target.value)}
+                                    style={{ marginBottom: 0, height: '34px', padding: '0 8px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                                  >
+                                    <option value="routine">Routine Admission</option>
+                                    <option value="urgent">Urgent</option>
+                                    <option value="emergency">Emergency / ICU</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                                  Clinical Reason & Instructions for Receptionist:
+                                </label>
+                                <input
+                                  type="text"
+                                  className="doc-input"
+                                  placeholder="e.g. Severe dehydration, requires 48h IV monitoring & bed assignment..."
+                                  value={ipdReason}
+                                  onChange={(e) => setIpdReason(e.target.value)}
+                                  style={{ marginBottom: 0, fontSize: '0.8rem', height: '34px' }}
+                                />
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#15803d', background: '#dcfce7', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                                🔔 Saving consultation will immediately send a real-time notification alert to <strong>Receptionist</strong> and <strong>Patient</strong> for bed assignment queue.
                               </div>
                             </div>
                           )}
@@ -5447,6 +5943,352 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   style={{ padding: '8px 20px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
                   {savingEditPrescription ? 'Saving Changes...' : 'Save Prescription'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── DOCTOR PATIENT CASE SHEET SUMMARY MODAL ── */}
+      {isHistoryDetailsModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(5px)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          zIndex: 9999, padding: '24px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff', borderRadius: '16px', width: '100%',
+            maxWidth: '920px', maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 28px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              backgroundColor: '#0d9488', color: '#ffffff'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>
+                  Clinical Case Sheet Summary & Ward Log
+                </h3>
+                <span style={{ fontSize: '0.82rem', color: '#ccfbf1' }}>
+                  Complete In-Patient IPD Clinical Audit History
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsHistoryDetailsModalOpen(false); setHistoryDetailsData(null); }}
+                style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, backgroundColor: '#f8fafc' }}>
+              {isLoadingHistoryDetails ? (
+                <div style={{ textAlign: 'center', padding: '60px' }}>
+                  <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
+                  <p style={{ marginTop: '12px', fontSize: '0.9rem', color: '#64748b' }}>Loading case sheet details...</p>
+                </div>
+              ) : historyDetailsData ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Patient & Admission Overview Card */}
+                  <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                          {historyDetailsData.admission?.patient?.full_name || 'Patient Summary'}
+                        </h4>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                          Patient Code: <strong>{historyDetailsData.admission?.patient?.patient_code}</strong> | Admitted by Dr. {historyDetailsData.admission?.doctor?.full_name || 'N/A'}
+                        </p>
+                      </div>
+                      <span style={{
+                        padding: '4px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 800,
+                        background: historyDetailsData.admission?.status === 'admitted' ? '#dcfce7' : '#e2e8f0',
+                        color: historyDetailsData.admission?.status === 'admitted' ? '#15803d' : '#475569'
+                      }}>
+                        {historyDetailsData.admission?.status?.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px', fontSize: '0.82rem' }}>
+                      <div><span style={{ color: '#64748b' }}>Current Bed:</span> <strong style={{ color: '#0d9488' }}>Bed {historyDetailsData.admission?.bed?.bed_number}</strong></div>
+                      <div><span style={{ color: '#64748b' }}>Ward Category:</span> <strong>{historyDetailsData.admission?.bed?.category?.name || 'Standard'}</strong></div>
+                      <div><span style={{ color: '#64748b' }}>Admission Date:</span> <strong>{new Date(historyDetailsData.admission?.admission_datetime).toLocaleDateString()}</strong></div>
+                      <div><span style={{ color: '#64748b' }}>Stay Duration:</span> <strong>{historyDetailsData.admission?.stay_days || 1} Days</strong></div>
+                    </div>
+
+                    <div style={{ marginTop: '14px', fontSize: '0.85rem' }}>
+                      <span style={{ fontWeight: 700, color: '#334155' }}>Primary Diagnosis: </span>
+                      <span style={{ fontStyle: 'italic', color: '#475569' }}>{historyDetailsData.admission?.diagnosis || 'No initial diagnosis recorded'}</span>
+                    </div>
+                  </div>
+
+                  {/* Bed Transfer History */}
+                  {historyDetailsData.transfers && historyDetailsData.transfers.length > 0 && (
+                    <div style={{ background: '#ffffff', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <h5 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>🔀 Bed Movement / Transfer History</h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {historyDetailsData.transfers.map((tr: any) => (
+                          <div key={tr.id} style={{ fontSize: '0.8rem', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Transferred from Bed {tr.from_bed?.bed_number} ➔ Bed {tr.to_bed?.bed_number}</span>
+                            <span style={{ color: '#64748b' }}>{new Date(tr.transferred_at).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Vitals & Clinical Round Notes */}
+                  <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <h5 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Activity size={18} style={{ color: '#0d9488' }} /> Patient Vitals & Clinical Assessment Log
+                    </h5>
+                    <div className="doc-table-container">
+                      <table className="doc-table">
+                        <thead>
+                          <tr>
+                            <th>Recorded At</th>
+                            <th>Temp (°F)</th>
+                            <th>Pulse (bpm)</th>
+                            <th>BP (mmHg)</th>
+                            <th>SpO2 (%)</th>
+                            <th>Clinical Progress Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!historyDetailsData.vitals || historyDetailsData.vitals.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} style={{ textAlign: 'center', padding: '16px', color: '#94a3b8' }}>No clinical vitals logged yet.</td>
+                            </tr>
+                          ) : (
+                            historyDetailsData.vitals.map((v: any) => (
+                              <tr key={v.id}>
+                                <td style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                                  {new Date(v.recorded_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                </td>
+                                <td><span style={{ fontWeight: 700, color: v.temp > 99.5 ? '#dc2626' : '#1e293b' }}>{v.temp}°F</span></td>
+                                <td>{v.pulse} bpm</td>
+                                <td>{v.systolic_bp}/{v.diastolic_bp}</td>
+                                <td><span style={{ fontWeight: 700, color: v.spo2 < 95 ? '#dc2626' : '#16a34a' }}>{v.spo2}%</span></td>
+                                <td style={{ fontSize: '0.8rem', color: '#334155' }}>{v.nursing_notes || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* MAC Medication Log */}
+                  <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <h5 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      💊 Medication Administration Chart (MAC) Log
+                    </h5>
+                    <div className="doc-table-container">
+                      <table className="doc-table">
+                        <thead>
+                          <tr>
+                            <th>Scheduled Time</th>
+                            <th>Medicine & Dosage</th>
+                            <th>Status</th>
+                            <th>Administered Time</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!historyDetailsData.medication_administrations || historyDetailsData.medication_administrations.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} style={{ textAlign: 'center', padding: '16px', color: '#94a3b8' }}>No medication administrations logged yet.</td>
+                            </tr>
+                          ) : (
+                            historyDetailsData.medication_administrations.map((m: any) => (
+                              <tr key={m.id}>
+                                <td style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                  {new Date(m.scheduled_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                </td>
+                                <td><strong>{m.medicine_name}</strong> ({m.dosage})</td>
+                                <td>
+                                  <span style={{
+                                    padding: '3px 8px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800,
+                                    background: m.status === 'administered' ? '#dcfce7' : '#fff7ed',
+                                    color: m.status === 'administered' ? '#15803d' : '#ea580c'
+                                  }}>
+                                    {m.status.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                  {m.administered_time ? new Date(m.administered_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', backgroundColor: '#ffffff', textAlign: 'right' }}>
+              <button
+                type="button"
+                className="doc-btn-secondary"
+                onClick={() => { setIsHistoryDetailsModalOpen(false); setHistoryDetailsData(null); }}
+                style={{ padding: '8px 20px', fontSize: '0.85rem', fontWeight: 700 }}
+              >
+                Close Case Sheet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DOCTOR WARD ROUND NOTE & VITALS LOG MODAL ── */}
+      {isRoundNoteModalOpen && selectedBedForRound && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(5px)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          zIndex: 9999, padding: '24px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff', borderRadius: '16px', width: '100%',
+            maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              backgroundColor: '#0d9488', color: '#ffffff'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
+                  Doctor Ward Round Progress Note
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#ccfbf1' }}>
+                  Bed {selectedBedForRound.bed_number} · Patient: <strong>{selectedBedForRound.active_admission?.patient_name}</strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRoundNoteModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRoundNote} style={{ padding: '24px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase' }}>Bedside Vitals Assessment</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Body Temp (°F)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="doc-input"
+                      style={{ height: '36px', fontSize: '0.85rem', margin: 0 }}
+                      value={roundVitalsForm.temp}
+                      onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, temp: parseFloat(e.target.value) || 98.6 })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Pulse (bpm)</label>
+                    <input
+                      type="number"
+                      className="doc-input"
+                      style={{ height: '36px', fontSize: '0.85rem', margin: 0 }}
+                      value={roundVitalsForm.pulse}
+                      onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, pulse: parseInt(e.target.value) || 72 })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>SpO2 (%)</label>
+                    <input
+                      type="number"
+                      className="doc-input"
+                      style={{ height: '36px', fontSize: '0.85rem', margin: 0 }}
+                      value={roundVitalsForm.spo2}
+                      onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, spo2: parseInt(e.target.value) || 98 })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Systolic BP</label>
+                    <input
+                      type="number"
+                      className="doc-input"
+                      style={{ height: '36px', fontSize: '0.85rem', margin: 0 }}
+                      value={roundVitalsForm.systolic_bp}
+                      onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, systolic_bp: parseInt(e.target.value) || 120 })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Diastolic BP</label>
+                    <input
+                      type="number"
+                      className="doc-input"
+                      style={{ height: '36px', fontSize: '0.85rem', margin: 0 }}
+                      value={roundVitalsForm.diastolic_bp}
+                      onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, diastolic_bp: parseInt(e.target.value) || 80 })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Resp Rate (/min)</label>
+                    <input
+                      type="number"
+                      className="doc-input"
+                      style={{ height: '36px', fontSize: '0.85rem', margin: 0 }}
+                      value={roundVitalsForm.respiratory_rate}
+                      onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, respiratory_rate: parseInt(e.target.value) || 16 })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  Doctor Round Clinical Evaluation & Progress Note *
+                </label>
+                <textarea
+                  className="doc-input"
+                  rows={4}
+                  style={{ width: '100%', fontSize: '0.85rem', padding: '10px' }}
+                  placeholder="Record patient response, daily clinical round observations, medication adjustments..."
+                  value={roundVitalsForm.doctor_notes}
+                  onChange={(e) => setRoundVitalsForm({ ...roundVitalsForm, doctor_notes: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  className="doc-btn-secondary"
+                  onClick={() => setIsRoundNoteModalOpen(false)}
+                  style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="doc-btn-primary"
+                  disabled={submittingRoundNote}
+                  style={{ padding: '8px 24px', fontSize: '0.85rem', background: '#0d9488', borderColor: '#0d9488' }}
+                >
+                  {submittingRoundNote ? 'Saving Note...' : 'Save Round Note'}
                 </button>
               </div>
             </form>

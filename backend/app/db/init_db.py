@@ -4,34 +4,36 @@ Seeds real clinic data: branches, staff, doctors, patients, appointments, and cl
 No dummy/static data — everything goes into PostgreSQL.
 """
 from __future__ import annotations
-from typing import Any
 
+import contextlib
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import AsyncSessionLocal, engine
-from app.core.security import hash_password
-
-from app.models.branch import Branch
-from app.models.user import User
-from app.models.doctor import Doctor, DoctorSlot
-from app.models.patient import Patient
-from app.models.receptionist import Receptionist
-from app.models.inventory import Medicine
 from app.models.appointment import Appointment
+from app.models.branch import Branch
 from app.models.consultation import Consultation
-from app.models.prescription import Prescription, PrescriptionItem
-from app.models.medical_report import MedicalReport
+from app.models.doctor import Doctor, DoctorSlot
+from app.models.inventory import Medicine
 from app.models.invoice import Invoice
-from app.models.payment import Payment
+from app.models.medical_report import MedicalReport
 from app.models.notification import Notification
-from app.models.treatment import TreatmentPlan, TreatmentProcedure
+from app.models.patient import Patient
+from app.models.payment import Payment
+from app.models.prescription import Prescription, PrescriptionItem
+from app.models.receptionist import Receptionist
 from app.models.teleconsult import TeleConsultation
+from app.models.treatment import TreatmentPlan, TreatmentProcedure
+from app.models.user import User
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +43,24 @@ async def create_tables() -> None:
     # Register all models with Base
     from app.models import (  # noqa: F401
         appointment,
+        availability_request,
         branch,
+        chat,
         consultation,
         doctor,
         inventory,
         invoice,
+        ipd,
         medical_report,
         notification,
         patient,
         payment,
         pharmacy,
         prescription,
+        receptionist,
         teleconsult,
         treatment,
         user,
-        receptionist,
-        availability_request,
-        chat,
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -66,13 +69,12 @@ async def create_tables() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1 NOT NULL;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP WITH TIME ZONE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT;",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;"
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS admission_id UUID REFERENCES admissions(id) ON DELETE SET NULL;"
         ]
         for stmt in alter_statements:
-            try:
+            with contextlib.suppress(Exception):
                 await conn.execute(text(stmt))
-            except Exception:
-                pass
     logger.info("✅ Database tables and column migrations synchronized")
 
 
@@ -104,6 +106,9 @@ async def seed_database() -> None:
 
             # Seed the three branches (Satellite, Bopal, Navrangpura)
             branch_ids = await _seed_branches(db)
+
+            # Seed IPD Beds
+            await _seed_beds(db, branch_ids)
 
             # Seed users and profiles
             doctor_ids, patient_ids = await _seed_users_and_profiles(db, branch_ids)
@@ -475,7 +480,7 @@ async def _seed_clinical_records(
         logger.info("  ⏭️ Clinical records already exist in database, skipping")
         return
 
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
     today_date = today.date()
 
     # Define primary mappings for comprehensive clinical records
@@ -519,7 +524,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_1,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=9, minutes=30),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=9, minutes=30),
                 "treatment_type": "Routine Checkup",
                 "consultation_type": "in_person",
                 "status": "checked_in",
@@ -529,7 +534,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_2,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=11, minutes=0),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=11, minutes=0),
                 "treatment_type": "Consultation",
                 "consultation_type": "in_person",
                 "status": "confirmed",
@@ -539,7 +544,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_1,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=14, minutes=30),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=14, minutes=30),
                 "treatment_type": "Scaling & Polishing",
                 "consultation_type": "teleconsultation",
                 "status": "checked_in",
@@ -549,7 +554,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_2,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=16, minutes=0),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=16, minutes=0),
                 "treatment_type": "Tooth Extraction",
                 "consultation_type": "in_person",
                 "status": "pending",
@@ -759,7 +764,6 @@ async def _seed_clinical_records(
 
 async def _seed_medicines(db: AsyncSession) -> None:
     """Seed initial medicine/inventory catalogue."""
-    from app.models.inventory import Medicine
 
     medicines = [
         {
@@ -844,3 +848,42 @@ async def _seed_medicines(db: AsyncSession) -> None:
 
     await db.flush()
     logger.info(f"  ✅ {len(medicines)} medicines seeded")
+
+
+async def _seed_beds(db: AsyncSession, branch_ids: dict[str, uuid.UUID]) -> None:
+    """Seed bed categories and physical beds for each branch."""
+    from sqlalchemy import select
+
+    from app.models.ipd import Bed, BedCategory
+
+    categories = [
+        {"name": "General Ward", "base_charge_24h": 1200.0, "hourly_overtime_rate": 50.0, "tax_rate": 0.05},
+        {"name": "Private Deluxe", "base_charge_24h": 3500.0, "hourly_overtime_rate": 150.0, "tax_rate": 0.05},
+        {"name": "ICU", "base_charge_24h": 5000.0, "hourly_overtime_rate": 250.0, "tax_rate": 0.12},
+    ]
+
+    cat_map = {}
+    for cat_data in categories:
+        res = await db.execute(select(BedCategory).where(BedCategory.name == cat_data["name"]))
+        cat = res.scalar_one_or_none()
+        if not cat:
+            cat = BedCategory(id=uuid.uuid4(), **cat_data)
+            db.add(cat)
+            await db.flush()
+        cat_map[cat_data["name"]] = cat.id
+
+    for _code, branch_id in branch_ids.items():
+        beds = [
+            {"bed_number": "Bed-01", "category_id": cat_map["General Ward"]},
+            {"bed_number": "Bed-02", "category_id": cat_map["General Ward"]},
+            {"bed_number": "Bed-03", "category_id": cat_map["Private Deluxe"]},
+            {"bed_number": "Bed-04", "category_id": cat_map["ICU"]},
+        ]
+        for bed_data in beds:
+            res = await db.execute(select(Bed).where(Bed.branch_id == branch_id, Bed.bed_number == bed_data["bed_number"]))
+            bed = res.scalar_one_or_none()
+            if not bed:
+                bed = Bed(id=uuid.uuid4(), branch_id=branch_id, status="available", **bed_data)
+                db.add(bed)
+    await db.flush()
+    logger.info("  ✅ IPD Bed categories and Bed assets seeded")

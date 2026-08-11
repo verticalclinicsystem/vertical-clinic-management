@@ -26,6 +26,7 @@ from app.api.v1 import (
     receptionists,
     availability_requests,
     clinic_manager,
+    ipd,
 )
 
 router = APIRouter()
@@ -53,4 +54,5 @@ router.include_router(notifications.router,     prefix="/notifications",    tags
 router.include_router(ai.router,                prefix="/ai",               tags=["AI Assistant"])
 router.include_router(admin.router,             prefix="/admin",            tags=["Admin Portal"])
 router.include_router(clinic_manager.router,    prefix="/clinic-manager",   tags=["Clinic Manager Portal"])
+router.include_router(ipd.router,               prefix="/ipd",              tags=["IPD Bed Management"])
 
