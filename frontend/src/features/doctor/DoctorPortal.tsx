@@ -56,6 +56,12 @@ interface Leave {
 
 
 
+const formatBedNumber = (bedNum: string): string => {
+  if (!bedNum) return '';
+  const hasAlphaPrefix = /^[a-zA-Z]/.test(bedNum);
+  return hasAlphaPrefix ? bedNum : `Bed ${bedNum}`;
+};
+
 const formatDocName = (name?: string): string => {
   if (!name) return '';
   const trimmed = name.trim();
@@ -3712,7 +3718,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                         <div>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                             <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                              <Bed size={18} style={{ color: isOccupied ? '#0d9488' : '#94a3b8' }} /> Bed {bed.bed_number}
+                                              <Bed size={18} style={{ color: isOccupied ? '#0d9488' : '#94a3b8' }} /> {formatBedNumber(bed.bed_number)}
                                             </span>
                                             <span style={{
                                               fontSize: '0.72rem',
@@ -6016,7 +6022,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px', fontSize: '0.82rem' }}>
-                      <div><span style={{ color: '#64748b' }}>Current Bed:</span> <strong style={{ color: '#0d9488' }}>Bed {historyDetailsData.admission?.bed?.bed_number}</strong></div>
+                      <div><span style={{ color: '#64748b' }}>Current Bed:</span> <strong style={{ color: '#0d9488' }}>{formatBedNumber(historyDetailsData.admission?.bed?.bed_number || '')}</strong></div>
                       <div><span style={{ color: '#64748b' }}>Ward Category:</span> <strong>{historyDetailsData.admission?.bed?.category?.name || 'Standard'}</strong></div>
                       <div><span style={{ color: '#64748b' }}>Admission Date:</span> <strong>{new Date(historyDetailsData.admission?.admission_datetime).toLocaleDateString()}</strong></div>
                       <div><span style={{ color: '#64748b' }}>Stay Duration:</span> <strong>{historyDetailsData.admission?.stay_days || 1} Days</strong></div>
@@ -6035,7 +6041,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {historyDetailsData.transfers.map((tr: any) => (
                           <div key={tr.id} style={{ fontSize: '0.8rem', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
-                            <span>Transferred from Bed {tr.from_bed?.bed_number} ➔ Bed {tr.to_bed?.bed_number}</span>
+                            <span>Transferred from {formatBedNumber(tr.from_bed?.bed_number || '')} ➔ {formatBedNumber(tr.to_bed?.bed_number || '')}</span>
                             <span style={{ color: '#64748b' }}>{new Date(tr.transferred_at).toLocaleString()}</span>
                           </div>
                         ))}
@@ -6173,7 +6179,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   Doctor Ward Round Progress Note
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: '#ccfbf1' }}>
-                  Bed {selectedBedForRound.bed_number} · Patient: <strong>{selectedBedForRound.active_admission?.patient_name}</strong>
+                  {formatBedNumber(selectedBedForRound.bed_number)} · Patient: <strong>{selectedBedForRound.active_admission?.patient_name}</strong>
                 </span>
               </div>
               <button

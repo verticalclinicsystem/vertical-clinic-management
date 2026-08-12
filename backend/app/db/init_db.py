@@ -852,7 +852,7 @@ async def _seed_medicines(db: AsyncSession) -> None:
 
 async def _seed_beds(db: AsyncSession, branch_ids: dict[str, uuid.UUID]) -> None:
     """Seed bed categories and physical beds for each branch."""
-    from sqlalchemy import select
+    from sqlalchemy import select, update
 
     from app.models.ipd import Bed, BedCategory
 
@@ -873,11 +873,27 @@ async def _seed_beds(db: AsyncSession, branch_ids: dict[str, uuid.UUID]) -> None
         cat_map[cat_data["name"]] = cat.id
 
     for _code, branch_id in branch_ids.items():
+        # Pre-migration: rename old default names if they exist to the new abbreviated format
+        # This keeps integrity with existing transactions/admissions
+        rename_pairs = [
+            ("Bed-01", "GW-01"),
+            ("Bed-02", "GW-02"),
+            ("Bed-03", "DL-101"),
+            ("Bed-04", "ICU-101"),
+        ]
+        for old_num, new_num in rename_pairs:
+            await db.execute(
+                update(Bed)
+                .where(Bed.branch_id == branch_id, Bed.bed_number == old_num)
+                .values(bed_number=new_num)
+            )
+        await db.flush()
+
         beds = [
-            {"bed_number": "Bed-01", "category_id": cat_map["General Ward"]},
-            {"bed_number": "Bed-02", "category_id": cat_map["General Ward"]},
-            {"bed_number": "Bed-03", "category_id": cat_map["Private Deluxe"]},
-            {"bed_number": "Bed-04", "category_id": cat_map["ICU"]},
+            {"bed_number": "GW-01", "category_id": cat_map["General Ward"]},
+            {"bed_number": "GW-02", "category_id": cat_map["General Ward"]},
+            {"bed_number": "DL-101", "category_id": cat_map["Private Deluxe"]},
+            {"bed_number": "ICU-101", "category_id": cat_map["ICU"]},
         ]
         for bed_data in beds:
             res = await db.execute(select(Bed).where(Bed.branch_id == branch_id, Bed.bed_number == bed_data["bed_number"]))

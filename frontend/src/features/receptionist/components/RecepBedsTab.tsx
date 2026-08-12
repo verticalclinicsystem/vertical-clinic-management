@@ -29,6 +29,12 @@ interface RecepBedsTabProps {
   fetchCheckoutBill: (admissionId: string) => void;
 }
 
+const formatBedNumber = (bedNum: string) => {
+  if (!bedNum) return '';
+  const hasAlphaPrefix = /^[a-zA-Z]/.test(bedNum);
+  return hasAlphaPrefix ? bedNum : `Bed ${bedNum}`;
+};
+
 export const RecepBedsTab: React.FC<RecepBedsTabProps> = ({
   bedSubTab,
   setBedSubTab,
@@ -473,7 +479,7 @@ export const RecepBedsTab: React.FC<RecepBedsTabProps> = ({
                                 </div>
 
                                 <h3 style={{ margin: '0 0 8px 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
-                                  Bed {bed.bed_number}
+                                  {formatBedNumber(bed.bed_number)}
                                 </h3>
 
                                 <div style={{ fontSize: '0.84rem', color: '#64748b', marginBottom: '16px' }}>
@@ -731,7 +737,7 @@ export const RecepBedsTab: React.FC<RecepBedsTabProps> = ({
                               )}
                             </td>
                             <td style={{ padding: '12px 14px' }}>
-                              <div style={{ fontWeight: 700, color: '#0f172a' }}>Bed {item.bed_number}</div>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>{formatBedNumber(item.bed_number)}</div>
                               <span
                                 style={{
                                   fontSize: '0.74rem',

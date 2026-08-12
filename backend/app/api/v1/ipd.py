@@ -89,11 +89,15 @@ async def get_beds_dashboard(
     """Get real-time bed occupancy and details."""
     # Build query to fetch all beds
     stmt = select(Bed)
+    if current_user.branch_id:
+        stmt = stmt.where(Bed.branch_id == current_user.branch_id)
     res = await db.execute(stmt)
     beds = res.scalars().all()
 
     # Build active admissions dict
-    adm_stmt = select(Admission).where(Admission.admission_status != "discharged")
+    adm_stmt = select(Admission).join(Bed).where(Admission.admission_status != "discharged")
+    if current_user.branch_id:
+        adm_stmt = adm_stmt.where(Bed.branch_id == current_user.branch_id)
     adm_res = await db.execute(adm_stmt)
     active_admissions = adm_res.scalars().all()
     adm_map = {adm.bed_id: adm for adm in active_admissions}
@@ -140,10 +144,10 @@ async def get_admissions_history(
     db: AsyncSession = Depends(get_db)
 ) -> JSONResponse:
     """Get complete bed booking / IPD admission history logs."""
-    stmt = (
-        select(Admission)
-        .order_by(Admission.admission_datetime.desc())
-    )
+    stmt = select(Admission).join(Bed)
+    if current_user.branch_id:
+        stmt = stmt.where(Bed.branch_id == current_user.branch_id)
+    stmt = stmt.order_by(Admission.admission_datetime.desc())
     res = await db.execute(stmt)
     admissions = res.scalars().all()
 
@@ -896,11 +900,12 @@ async def get_pending_admission_requests(
     db: AsyncSession = Depends(get_db)
 ) -> JSONResponse:
     """Fetch pending IPD admission requests for Receptionist/Doctor review."""
-    reqs_res = await db.execute(
-        select(IpdAdmissionRequest)
-        .where(IpdAdmissionRequest.status == "pending")
-        .order_by(IpdAdmissionRequest.requested_at.desc())
-    )
+    stmt = select(IpdAdmissionRequest).where(IpdAdmissionRequest.status == "pending")
+    if current_user.branch_id:
+        stmt = stmt.join(Doctor).where(Doctor.branch_id == current_user.branch_id)
+    stmt = stmt.order_by(IpdAdmissionRequest.requested_at.desc())
+    
+    reqs_res = await db.execute(stmt)
     requests = reqs_res.scalars().all()
 
     output = []

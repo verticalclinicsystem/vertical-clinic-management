@@ -43,6 +43,12 @@ interface ReceptionistPortalProps {
   onLogout: () => void;
 }
 
+const formatBedNumber = (bedNum: string): string => {
+  if (!bedNum) return '';
+  const hasAlphaPrefix = /^[a-zA-Z]/.test(bedNum);
+  return hasAlphaPrefix ? bedNum : `Bed ${bedNum}`;
+};
+
 const getLocalApptDate = (datetimeStr: string): string => {
   if (!datetimeStr) return '';
   const d = new Date(datetimeStr);
@@ -2978,7 +2984,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           <td style={{ padding: '10px 0' }}>
                             <div>IPD Bed Stay & Rent</div>
                             <small style={{ color: 'var(--muted)' }}>
-                              Bed {selectedInvoiceForPreview.admission.bed?.bed_number || 'N/A'} ({selectedInvoiceForPreview.admission.bed?.category?.name || 'IPD Category'})
+                              {formatBedNumber(selectedInvoiceForPreview.admission.bed?.bed_number || '') || 'N/A'} ({selectedInvoiceForPreview.admission.bed?.category?.name || 'IPD Category'})
                             </small>
                           </td>
                           <td style={{ padding: '10px 0', textAlign: 'right' }}>
@@ -3787,7 +3793,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         <div className="recep-modal-overlay" onClick={() => setIsTransferModalOpen(false)}>
           <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '500px', maxWidth: '92vw' }}>
             <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h3 style={{ margin: 0 }}>Transfer Patient — From Bed {selectedBed.bed_number}</h3>
+              <h3 style={{ margin: 0 }}>Transfer Patient — From {formatBedNumber(selectedBed.bed_number)}</h3>
               <button className="close-btn" onClick={() => setIsTransferModalOpen(false)}>
                 <X size={18} />
               </button>
@@ -3806,7 +3812,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                     .filter((b: any) => b.status === 'available')
                     .map((b: any) => (
                       <option key={b.id} value={b.id}>
-                        Bed {b.bed_number} ({b.category?.name} - ₹{b.category?.base_charge_24h}/day)
+                        {formatBedNumber(b.bed_number)} ({b.category?.name} - ₹{b.category?.base_charge_24h}/day)
                       </option>
                     ))}
                 </select>
@@ -4211,7 +4217,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Ward & Bed</div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                      Bed {historyDetailsData.bed_number}
+                      {formatBedNumber(historyDetailsData.bed_number)}
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#0d9488', fontWeight: 600 }}>{historyDetailsData.category_name}</div>
                   </div>

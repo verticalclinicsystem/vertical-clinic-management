@@ -33,6 +33,12 @@ interface ClinicManagerPortalProps {
   onLogout: () => void;
 }
 
+const formatBedNumber = (bedNum: string): string => {
+  if (!bedNum) return '';
+  const hasAlphaPrefix = /^[a-zA-Z]/.test(bedNum);
+  return hasAlphaPrefix ? bedNum : `Bed ${bedNum}`;
+};
+
 export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<
     'overview' | 'staff' | 'onboard' | 'emergency' | 'billing' | 'notices' | 'requests' | 'profile' | 'beds'
@@ -2479,7 +2485,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                         </div>
 
                                         <h3 style={{ margin: '0 0 8px 0', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
-                                          Bed {bed.bed_number}
+                                          {formatBedNumber(bed.bed_number)}
                                         </h3>
 
                                         <div style={{ fontSize: '0.84rem', color: '#64748b', marginBottom: '16px' }}>
@@ -2707,7 +2713,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                       )}
                                     </td>
                                     <td style={{ padding: '12px 14px' }}>
-                                      <div style={{ fontWeight: 700, color: '#0f172a' }}>Bed {item.bed_number}</div>
+                                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{formatBedNumber(item.bed_number)}</div>
                                       <span style={{ fontSize: '0.74rem', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
                                         {item.category_name}
                                       </span>
@@ -2931,7 +2937,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         <div className="manager-modal-overlay" onClick={() => setIsAdmitModalOpen(false)}>
           <div className="manager-modal-card" onClick={(e) => e.stopPropagation()} style={{ width: '500px' }}>
             <div className="modal-header">
-              <h3>Admit Patient — Bed {selectedBed.bed_number}</h3>
+              <h3>Admit Patient — {formatBedNumber(selectedBed.bed_number)}</h3>
               <button className="close-btn" onClick={() => setIsAdmitModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleAdmitPatient}>
@@ -3006,7 +3012,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         <div className="manager-modal-overlay" onClick={() => setIsTransferModalOpen(false)}>
           <div className="manager-modal-card" onClick={(e) => e.stopPropagation()} style={{ width: '500px' }}>
             <div className="modal-header">
-              <h3>Transfer Patient — From Bed {selectedBed.bed_number}</h3>
+              <h3>Transfer Patient — From {formatBedNumber(selectedBed.bed_number)}</h3>
               <button className="close-btn" onClick={() => setIsTransferModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleTransferPatient}>
@@ -3023,7 +3029,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                     .filter((b: any) => b.status === 'available')
                     .map((b: any) => (
                       <option key={b.id} value={b.id}>
-                        Bed {b.bed_number} ({b.category.name} - ₹{b.category.base_charge_24h}/day)
+                        {formatBedNumber(b.bed_number)} ({b.category.name} - ₹{b.category.base_charge_24h}/day)
                       </option>
                     ))}
                 </select>
@@ -3420,7 +3426,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                   <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Ward & Bed</div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                      Bed {historyDetailsData.bed_number}
+                      {formatBedNumber(historyDetailsData.bed_number)}
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#0d9488', fontWeight: 600 }}>{historyDetailsData.category_name}</div>
                   </div>

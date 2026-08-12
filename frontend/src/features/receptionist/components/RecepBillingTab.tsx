@@ -25,6 +25,12 @@ interface RecepBillingTabProps {
   formatDocName: (name: string) => string;
 }
 
+const formatBedNumber = (bedNum: string) => {
+  if (!bedNum) return '';
+  const hasAlphaPrefix = /^[a-zA-Z]/.test(bedNum);
+  return hasAlphaPrefix ? bedNum : `Bed ${bedNum}`;
+};
+
 export const RecepBillingTab: React.FC<RecepBillingTabProps> = ({
   handleCreateInvoice,
   billingForm,
@@ -293,7 +299,7 @@ export const RecepBillingTab: React.FC<RecepBillingTabProps> = ({
                               style={{ width: '16px', height: '16px', accentColor: '#16a34a' }}
                             />
                             <div style={{ flex: 1 }}>
-                              <span style={{ fontWeight: 600 }}>Bed {adm.bed_number}</span> (
+                              <span style={{ fontWeight: 600 }}>{formatBedNumber(adm.bed_number)}</span> (
                               {adm.category_name}) &middot; {adm.hours_stayed}h stay
                             </div>
                             <div style={{ textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
@@ -512,7 +518,7 @@ export const RecepBillingTab: React.FC<RecepBillingTabProps> = ({
                   return (
                     <div key={adm.id} className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                       <span>
-                        IPD Bed Stay: Bed {adm.bed_number} ({adm.category_name}, {adm.hours_stayed}h)
+                        IPD Bed Stay: {formatBedNumber(adm.bed_number)} ({adm.category_name}, {adm.hours_stayed}h)
                       </span>
                       <span>₹{(adm.current_bed_rent || 0).toFixed(2)}</span>
                     </div>
