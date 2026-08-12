@@ -23,6 +23,7 @@ class InvoiceRepository(BaseRepository[Invoice]):
         from app.models.doctor import Doctor
         from app.models.prescription import Prescription, PrescriptionItem
         from app.models.treatment import TreatmentPlan, TreatmentProcedure
+        from app.models.ipd import Admission, Bed, BedCategory
         
         stmt = (
             select(Invoice)
@@ -31,7 +32,8 @@ class InvoiceRepository(BaseRepository[Invoice]):
                 joinedload(Invoice.payments),
                 joinedload(Invoice.consultation).joinedload(Consultation.doctor).joinedload(Doctor.user),
                 joinedload(Invoice.consultation).joinedload(Consultation.prescriptions).joinedload(Prescription.items).joinedload(PrescriptionItem.medicine),
-                joinedload(Invoice.treatment_plan).joinedload(TreatmentPlan.procedures)
+                joinedload(Invoice.treatment_plan).joinedload(TreatmentPlan.procedures),
+                joinedload(Invoice.admission).joinedload(Admission.bed).joinedload(Bed.category)
             )
             .where(Invoice.id == invoice_id)
         )

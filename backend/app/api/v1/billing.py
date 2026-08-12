@@ -23,7 +23,7 @@ router = APIRouter()
 
 
 def invoice_to_out(invoice) -> dict:
-    """Convert an Invoice ORM object to InvoiceOut dict, enriching with prescription items."""
+    """Convert an Invoice ORM object to InvoiceOut dict, enriching with prescription items and full itemized breakdown."""
     data = InvoiceOut.model_validate(invoice).model_dump()
     
     # Enforce accurate payment status based on real balance_due & amount_paid
@@ -37,19 +37,97 @@ def invoice_to_out(invoice) -> dict:
         else:
             data["status"] = "unpaid"
 
-    # Attach prescription items from the linked consultation (for bill breakdown)
+    # Attach prescription items & full breakdown (for bill receipt)
     items = []
-    if invoice.consultation and hasattr(invoice.consultation, 'prescriptions'):
-        for presc in invoice.consultation.prescriptions:
-            if hasattr(presc, 'items'):
-                for item in presc.items:
-                    items.append({
-                        "medicine_name": item.medicine_name,
-                        "dosage": item.dosage,
-                        "duration": item.duration,
-                        "instructions": item.instructions,
-                    })
+    breakdown = []
+
+    # 1. Consultation & Doctor fee
+    if invoice.consultation:
+        doc_name = ""
+        if hasattr(invoice.consultation, "doctor") and invoice.consultation.doctor and hasattr(invoice.consultation.doctor, "user") and invoice.consultation.doctor.user:
+            doc_name = f" - Dr. {invoice.consultation.doctor.user.full_name}"
+        fee = getattr(getattr(invoice.consultation, "doctor", None), "consultation_fee", 500.0) or 500.0
+        breakdown.append({
+            "description": f"General Consultation{doc_name}",
+            "amount": float(fee)
+        })
+
+        if hasattr(invoice.consultation, 'prescriptions') and invoice.consultation.prescriptions:
+            for presc in invoice.consultation.prescriptions:
+                if hasattr(presc, 'items'):
+                    for item in presc.items:
+                        items.append({
+                            "medicine_name": item.medicine_name,
+                            "dosage": item.dosage,
+                            "duration": item.duration,
+                            "instructions": item.instructions,
+                        })
+                        qty = getattr(item, "quantity", None)
+                        if qty is None:
+                            qty = calculate_medicine_qty(item.dosage, item.duration)
+                        med_price = getattr(getattr(item, "medicine", None), "unit_price", 10.0) or 10.0
+                        breakdown.append({
+                            "description": f"Medicine: {item.medicine_name} ({qty} units)",
+                            "amount": float(round(qty * med_price, 2))
+                        })
+
+    # 2. Treatment Plan Procedures
+    if invoice.treatment_plan and hasattr(invoice.treatment_plan, 'procedures'):
+        for proc in invoice.treatment_plan.procedures:
+            breakdown.append({
+                "description": f"Procedure: {proc.procedure_name}",
+                "amount": float(proc.cost)
+            })
+
+    # 3. IPD Bed Stay & Charges
+    if invoice.admission:
+        adm = invoice.admission
+        from datetime import UTC, datetime
+        end_t = adm.discharge_datetime or datetime.now(UTC)
+        hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
+        bed = getattr(adm, "bed", None)
+        if bed and hasattr(bed, "category") and bed.category:
+            days = int(hours_stay // 24)
+            rem_h = hours_stay % 24
+            if days == 0:
+                rent = bed.category.base_charge_24h
+            else:
+                overtime = rem_h * bed.category.hourly_overtime_rate if rem_h > 2.0 else 0.0
+                rent = (days * bed.category.base_charge_24h) + overtime
+            breakdown.append({
+                "description": f"IPD Bed Stay: Bed {bed.bed_number} ({bed.category.name}) - {round(hours_stay, 1)}h stay",
+                "amount": float(round(rent, 2))
+            })
+
+        if getattr(adm, "initial_deposit", 0) > 0:
+            breakdown.append({
+                "description": f"Less: Initial Admission Deposit Paid (Bed {bed.bed_number if bed else ''})",
+                "amount": float(-adm.initial_deposit)
+            })
+        if getattr(adm, "insurance_approved_amount", 0) > 0:
+            breakdown.append({
+                "description": "Less: Insurance Approved Credit",
+                "amount": float(-adm.insurance_approved_amount)
+            })
+
+    # Check if there is a remaining clinical materials or extra consumables cost in total_amount
+    pos_sum = sum(item["amount"] for item in breakdown if item["amount"] > 0)
+    diff = round(float(data.get("total_amount", 0.0)) - pos_sum, 2)
+    if diff > 0.01:
+        breakdown.append({
+            "description": "Clinical Materials & Sterile Consumables",
+            "amount": float(diff)
+        })
+
+    # Fallback if breakdown is empty but total_amount > 0
+    if not breakdown and float(data.get("total_amount", 0.0)) > 0:
+        breakdown.append({
+            "description": "General Clinical Services & Consultation",
+            "amount": float(data.get("total_amount", 0.0))
+        })
+
     data["prescription_items"] = items
+    data["items_breakdown"] = breakdown
     return data
 
 
@@ -287,10 +365,78 @@ async def calculate_pending_charges(
         {"name": "Cotton Rolls, Saliva Ejector & Sterile Drape", "cost": 100.0}
     ]
 
+    # Fetch active or unbilled IPD admissions for this specific patient
+    from app.models.ipd import Admission, IpdBillItem
+    adm_stmt = (
+        select(Admission)
+        .where(
+            Admission.patient_id == patient_id
+        )
+        .order_by(Admission.admission_datetime.desc())
+    )
+    adm_result = await db.execute(adm_stmt)
+    admissions = adm_result.scalars().all()
+
+    invoiced_adm_stmt = select(Invoice.admission_id, Invoice.admission_ids_json).where(Invoice.patient_id == patient_id)
+    if exclude_invoice_id:
+        invoiced_adm_stmt = invoiced_adm_stmt.where(Invoice.id != exclude_invoice_id)
+    invoiced_adm_res = await db.execute(invoiced_adm_stmt)
+    invoiced_adm_ids = set()
+    import json
+    for single_id, json_str in invoiced_adm_res.all():
+        if single_id:
+            invoiced_adm_ids.add(single_id)
+        if json_str:
+            try:
+                for item_id in json.loads(json_str):
+                    invoiced_adm_ids.add(UUID(item_id))
+            except Exception:
+                pass
+
+    unbilled_admissions = []
+    from datetime import UTC, datetime
+    for adm in admissions:
+        if adm.id in invoiced_adm_ids:
+            continue
+        
+        end_time = adm.discharge_datetime or datetime.now(UTC)
+        hours_stay = max(0.5, (end_time - adm.admission_datetime).total_seconds() / 3600.0)
+        bed = adm.bed
+        base_charge_24h = bed.category.base_charge_24h
+        hourly_rate = bed.category.hourly_overtime_rate
+
+        days = int(hours_stay // 24)
+        rem_hours = hours_stay % 24
+        if days == 0:
+            current_bed_rent = base_charge_24h
+        else:
+            overtime_cost = rem_hours * hourly_rate if rem_hours > 2.0 else 0.0
+            current_bed_rent = (days * base_charge_24h) + overtime_cost
+        current_bed_rent = round(current_bed_rent, 2)
+
+        items_res = await db.execute(select(IpdBillItem).where(IpdBillItem.admission_id == adm.id))
+        past_items = items_res.scalars().all()
+
+        unbilled_admissions.append({
+            "id": str(adm.id),
+            "bed_number": bed.bed_number,
+            "category_name": bed.category.name,
+            "admission_datetime": adm.admission_datetime.isoformat(),
+            "hours_stayed": round(hours_stay, 1),
+            "current_bed_rent": current_bed_rent,
+            "past_items": [{
+                "item_name": item.item_name,
+                "total_price": float(item.total_price)
+            } for item in past_items],
+            "initial_deposit": float(adm.initial_deposit),
+            "insurance_approved_amount": float(adm.insurance_approved_amount)
+        })
+
     return ApiResponse.success(
         data={
             "consultations": unbilled_consultations,
             "treatment_plans": unbilled_plans,
+            "ipd_admissions": unbilled_admissions,
             "standard_materials": materials
         },
         message="Pending charges calculated successfully."

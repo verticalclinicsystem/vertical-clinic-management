@@ -40,7 +40,7 @@ def event_loop():
     loop.close()
 
 
-from app.db.init_db import _seed_branches, _seed_users_and_profiles, _seed_medicines
+from app.db.init_db import _seed_branches, _seed_users_and_profiles, _seed_medicines, _seed_beds
 
 @pytest_asyncio.fixture(scope="session")
 async def setup_db():
@@ -51,6 +51,7 @@ async def setup_db():
     # Seed the test database with standard accounts
     async with TestingSessionLocal() as db:
         branch_ids = await _seed_branches(db)
+        await _seed_beds(db, branch_ids)
         await _seed_users_and_profiles(db, branch_ids, test_mode=True)
         await _seed_medicines(db)
         await db.commit()

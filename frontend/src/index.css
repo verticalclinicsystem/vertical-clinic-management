@@ -1,55 +1,59 @@
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* ── Colors — taken directly from dental-clinic-prototype.html ── */
-  --bg:              #F5F8FA;
-  --surface:         #FFFFFF;
-  --surface-2:       #F0F5F7;
+  /* ── Medical Teal + Blue Design System ── */
+  --primary-teal:       #0B7894;
+  --bright-cyan:        #16B9D4;
+  --dark-sidebar:       #064B62;
+  --deep-blue:          #073B55;
+  --active-nav:         #0B8EAB;
 
-  --primary:         #0C6E8C;
-  --primary-dark:    #0A4F66;
-  --primary-light:   #E4F1F5;
+  --bg:                 #EAF6FA;
+  --surface:            #FFFFFF;
+  --surface-2:          #F1F8FA;
 
-  /* Aliases used across the portal */
-  --primary-teal:       #0C6E8C;
-  --primary-teal-dark:  #0A4F66;
-  --primary-teal-light: #E4F1F5;
+  --primary:            #0B8EAB;
+  --primary-dark:       #064B62;
+  --primary-light:      #E8F7FA;
 
-  --accent:          #14B8A6;
-  --accent-light:    #E1F7F3;
+  /* Aliases used across portals */
+  --primary-teal-dark:  #064B62;
+  --primary-teal-light: #E8F7FA;
 
-  /* Aliases */
-  --accent-green:       #14B8A6;
-  --accent-green-light: #E1F7F3;
+  --accent:             #16B9D4;
+  --accent-light:       #E8F7FA;
 
-  --ink:             #132430;
-  --ink-2:           #33495A;
-  --muted:           #68808F;
-  --border:          #DDE7EB;
+  --accent-green:       #18B981;
+  --accent-green-light: #D1FAE5;
 
-  --success:         #1A9E5C;
-  --success-bg:      #E5F7ED;
-  --warning:         #C7790A;
-  --warning-bg:      #FDF1E1;
-  --danger:          #D2402F;
-  --danger-bg:       #FBEAE7;
-  --info:            #3563C9;
-  --info-bg:         #EAF0FC;
+  --ink:                #102A43;
+  --ink-2:              #1E3A8A;
+  --muted:              #58758A;
+  --border:             #D6E7ED;
 
-  /* Aliases */
-  --error-red:       #D2402F;
-  --success-green:   #1A9E5C;
-  --text-dark:       #132430;
-  --text-muted:      #68808F;
-  --text-light:      #FFFFFF;
-  --bg-light:        #F5F8FA;
-  --bg-white:        #FFFFFF;
-  --border-color:    #DDE7EB;
-  --border-focus:    #0C6E8C;
+  --success:            #18B981;
+  --success-bg:         #D1FAE5;
+  --warning:            #F59E0B;
+  --warning-bg:         #FEF3C7;
+  --danger:             #EF4444;
+  --danger-bg:          #FEE2E2;
+  --info:               #3B82F6;
+  --info-bg:            #DBEAFE;
 
-  /* Gradient tokens (login visual) */
-  --teal-gradient-start: #0E7C9C;
-  --teal-gradient-end:   #062F3D;
+  /* Global Aliases */
+  --error-red:          #EF4444;
+  --success-green:      #18B981;
+  --text-dark:          #102A43;
+  --text-muted:         #58758A;
+  --text-light:         #FFFFFF;
+  --bg-light:           #EAF6FA;
+  --bg-white:           #FFFFFF;
+  --border-color:       #D6E7ED;
+  --border-focus:       #0B8EAB;
+
+  /* Gradient tokens */
+  --teal-gradient-start: #0B7894;
+  --teal-gradient-end:   #064B62;
 
   /* Typography */
   --font-sans:    'Inter', system-ui, -apple-system, sans-serif;
@@ -57,16 +61,16 @@
   --font-mono:    'IBM Plex Mono', monospace;
 
   /* Radius */
-  --radius:    14px;
-  --radius-sm: 9px;
-  --radius-lg: 18px;
+  --radius:    12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
 
-  /* Shadows — taken directly from prototype */
-  --shadow-sm: 0 1px 2px rgba(19, 36, 48, 0.06);
-  --shadow-md: 0 6px 20px rgba(19, 36, 48, 0.08);
-  --shadow-lg: 0 16px 40px rgba(19, 36, 48, 0.14);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 0 0 1px rgba(0,0,0,0.02), 0 4px 20px -2px rgba(0,0,0,0.08);
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(16, 42, 67, 0.05);
+  --shadow-md: 0 4px 12px rgba(16, 42, 67, 0.08);
+  --shadow-lg: 0 12px 28px rgba(16, 42, 67, 0.12);
+  --shadow-xl: 0 20px 25px -5px rgba(6, 75, 98, 0.15);
+  --shadow-card: 0 0 0 1px #D6E7ED, 0 2px 8px rgba(16, 42, 67, 0.04);
 
   /* Transitions */
   --transition-all:       all 0.18s ease;

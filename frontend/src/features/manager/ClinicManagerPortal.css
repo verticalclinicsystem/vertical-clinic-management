@@ -2,15 +2,15 @@
 .manager-app-container {
   display: flex;
   min-height: 100vh;
-  background-color: #f8fafc;
+  background-color: #EAF6FA;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: #0f172a;
+  color: #102A43;
 }
 
 /* ── LEFT SIDEBAR NAVIGATION ── */
 .manager-sidebar {
   width: 260px;
-  background: linear-gradient(180deg, #053b34 0%, #004d5a 70%, #084c59 100%);
+  background: linear-gradient(180deg, #064B62 0%, #073B55 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -19,7 +19,7 @@
   left: 0;
   bottom: 0;
   z-index: 40;
-  box-shadow: 4px 0 20px rgba(19, 36, 48, 0.18);
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 .manager-brand-header {
@@ -110,16 +110,16 @@
 }
 
 .sidebar-nav-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(22, 185, 212, 0.15);
   color: #ffffff;
 }
 
 .sidebar-nav-item.active {
-  background: rgba(255, 255, 255, 0.15);
+  background: #0B8EAB;
   color: #ffffff;
   font-weight: 600;
-  border-left: 3px solid #2dd4bf;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-left: 3px solid #16B9D4;
+  box-shadow: 0 4px 12px rgba(11, 142, 171, 0.3);
 }
 
 .manager-sidebar-footer {
@@ -1817,5 +1817,38 @@
   display: inline-block;
   width: fit-content;
   font-size: 0.84rem;
+}
+
+/* ── BED OCCUPANCY GRID & CARDS STYLING ── */
+.beds-workspace {
+  margin-top: 10px;
+}
+
+.bed-card-premium {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bed-card-premium:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Spin animation for refresh button */
+.spin-animation {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Invoice styled table inside checkout preview */
+.invoice-container-premium {
+  font-family: 'Inter', sans-serif;
+}
+
+.invoice-container-premium h4 {
+  letter-spacing: 0.05em;
 }
 

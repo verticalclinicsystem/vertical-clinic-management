@@ -3,7 +3,7 @@ import {
   Home, BarChart2, Package, Users, Layers,
   Settings, ArrowLeft, LogOut, Search, Bell, Plus,
   RefreshCw, Edit, X, Calendar, Check, AlertCircle,
-  Eye, EyeOff, Building, Shield, Clock
+  Eye, EyeOff, Building, Shield, Clock, Bed
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './AdminPortal.css';
@@ -101,6 +101,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // ── Bed Assets & Categories States ──
+  const [adminBeds, setAdminBeds] = useState<any[]>([]);
+  const [adminBedCategories, setAdminBedCategories] = useState<any[]>([]);
+  const [isLoadingBeds, setIsLoadingBeds] = useState(false);
+  const [bedsError, setBedsError] = useState<string | null>(null);
+
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isBedModalOpen, setIsBedModalOpen] = useState(false);
+
+  const [newCategoryForm, setNewCategoryForm] = useState({
+    name: '',
+    base_charge_24h: '',
+    hourly_overtime_rate: '',
+    tax_rate: '0.05'
+  });
+
+  const [newBedForm, setNewBedForm] = useState({
+    bed_number: '',
+    category_id: '',
+    branch_id: ''
+  });
 
   // ── Notifications System State & Listeners ──
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -858,6 +880,89 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const fetchBedsAdminData = async () => {
+    setIsLoadingBeds(true);
+    setBedsError(null);
+    try {
+      const [bedsRes, catsRes] = await Promise.all([
+        api.get('/ipd/dashboard/beds'),
+        api.get('/ipd/categories')
+      ]);
+      if (bedsRes.data?.success) {
+        setAdminBeds(bedsRes.data.data);
+      }
+      if (catsRes.data?.success) {
+        setAdminBedCategories(catsRes.data.data);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setBedsError('Failed to fetch bed assets and categories.');
+    } finally {
+      setIsLoadingBeds(false);
+    }
+  };
+
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/ipd/categories', {
+        name: newCategoryForm.name,
+        base_charge_24h: parseFloat(newCategoryForm.base_charge_24h),
+        hourly_overtime_rate: parseFloat(newCategoryForm.hourly_overtime_rate),
+        tax_rate: parseFloat(newCategoryForm.tax_rate)
+      });
+      if (res.data?.success) {
+        alert(res.data.message || 'Bed Category saved successfully.');
+        setIsCategoryModalOpen(false);
+        setNewCategoryForm({ name: '', base_charge_24h: '', hourly_overtime_rate: '', tax_rate: '0.05' });
+        await fetchBedsAdminData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error occurred while saving category.');
+    }
+  };
+
+  const handleCreateBed = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBedForm.category_id || !newBedForm.branch_id || !newBedForm.bed_number) {
+      alert('Please fill in all bed asset fields.');
+      return;
+    }
+    try {
+      const res = await api.post('/ipd/beds', {
+        bed_number: newBedForm.bed_number,
+        category_id: newBedForm.category_id,
+        branch_id: newBedForm.branch_id
+      });
+      if (res.data?.success) {
+        alert(res.data.message || 'Bed asset registered successfully.');
+        setIsBedModalOpen(false);
+        setNewBedForm({ bed_number: '', category_id: '', branch_id: '' });
+        await fetchBedsAdminData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error occurred while registering bed.');
+    }
+  };
+
+  const handleDeleteBed = async (id: string) => {
+    if (!window.confirm('Are you sure you want to decommission this bed? This cannot be undone.')) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/ipd/beds/${id}`);
+      if (res.data?.success) {
+        alert(res.data.message || 'Bed decommissioned successfully.');
+        await fetchBedsAdminData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error occurred while decommissioning bed.');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'availability-requests') {
       fetchAvailabilityRequests();
@@ -870,6 +975,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
     if (activeTab === 'attendance') {
       fetchStaffAttendance(attendanceDateFilter, attendanceBranchFilter);
+    }
+    if (activeTab === 'beds') {
+      fetchBedsAdminData();
     }
   }, [activeTab, attendanceDateFilter, attendanceBranchFilter]);
 
@@ -1188,6 +1296,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             { id: 'staff', icon: <Users size={18} />, label: 'Staff Management' },
             { id: 'attendance', icon: <Clock size={18} />, label: 'Staff Attendance' },
             { id: 'branches', icon: <Layers size={18} />, label: 'Branch Management' },
+            { id: 'beds', icon: <Bed size={18} />, label: 'Bed Assets & Registry' },
             { id: 'availability-requests', icon: <Calendar size={18} />, label: 'Availability Requests' },
             { id: 'active-sessions', icon: <Shield size={18} />, label: 'Active Sessions & Security' },
             { id: 'settings', icon: <Settings size={18} />, label: 'Settings' },
@@ -1224,6 +1333,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 {activeTab === 'staff' && 'Staff Management'}
                 {activeTab === 'attendance' && 'Staff Attendance Dashboard'}
                 {activeTab === 'branches' && 'Branch Management'}
+                {activeTab === 'beds' && 'Bed Assets & Category Registry'}
                 {activeTab === 'availability-requests' && 'Availability Change Requests'}
                 {activeTab === 'active-sessions' && 'Active Sessions & Security Controls'}
                 {activeTab === 'settings' && 'Settings'}
@@ -2426,6 +2536,336 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── BED ASSETS & REGISTRY ── */}
+          {activeTab === 'beds' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="beds-workspace-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px', color: '#0f172a', fontWeight: 800 }}>
+                    <Bed size={22} className="text-teal-600" style={{ color: '#0d9488' }} /> Bed Assets & Categories Configuration
+                  </h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.86rem', color: '#64748b' }}>
+                    Configure ward categories, base pricing, hourly overtime proration rates, and deploy physical bed assets.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    type="button"
+                    className="admin-btn-secondary"
+                    onClick={fetchBedsAdminData}
+                    disabled={isLoadingBeds}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <RefreshCw size={14} className={isLoadingBeds ? 'spin' : ''} /> Refresh Registry
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn-primary"
+                    onClick={() => {
+                      setNewCategoryForm({ name: '', base_charge_24h: '', hourly_overtime_rate: '', tax_rate: '0.05' });
+                      setIsCategoryModalOpen(true);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Plus size={14} /> Configure Category
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn-primary"
+                    onClick={() => {
+                      if (adminBedCategories.length === 0) {
+                        alert('Please configure at least one Bed Category first.');
+                        return;
+                      }
+                      setNewBedForm({
+                        bed_number: '',
+                        category_id: adminBedCategories[0]?.id || '',
+                        branch_id: branches[0]?.id || ''
+                      });
+                      setIsBedModalOpen(true);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Plus size={14} /> Register Physical Bed
+                  </button>
+                </div>
+              </div>
+
+              {bedsError && (
+                <div className="admin-alert error" style={{ padding: '12px 16px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', borderRadius: '10px', fontSize: '0.86rem' }}>
+                  {bedsError}
+                </div>
+              )}
+
+              {isLoadingBeds ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}>
+                  <RefreshCw size={32} className="spin" style={{ color: '#0d9488' }} />
+                </div>
+              ) : (
+                <>
+                  {/* Category Configuration Cards Grid */}
+                  <div>
+                    <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>
+                      1. Configured Bed Categories & Pricing Rates
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                      {adminBedCategories.map((cat: any) => (
+                        <div key={cat.id} className="admin-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>{cat.name}</h4>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0d9488', background: '#ccfbf1', padding: '3px 8px', borderRadius: '6px' }}>
+                              Tax: {cat.tax_rate * 100}% GST
+                            </span>
+                          </div>
+                          <hr style={{ border: 'none', borderTop: '1px solid #f1f5f9', margin: '4px 0' }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.86rem', color: '#475569' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Base Rate (24 hours):</span>
+                              <strong style={{ color: '#0f172a' }}>₹{cat.base_charge_24h.toLocaleString('en-IN')}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Overtime Hourly Rate:</span>
+                              <strong style={{ color: '#0f172a' }}>₹{cat.hourly_overtime_rate.toLocaleString('en-IN')}/hr</strong>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="admin-btn-secondary"
+                            onClick={() => {
+                              setNewCategoryForm({
+                                name: cat.name,
+                                base_charge_24h: String(cat.base_charge_24h),
+                                hourly_overtime_rate: String(cat.hourly_overtime_rate),
+                                tax_rate: String(cat.tax_rate)
+                              });
+                              setIsCategoryModalOpen(true);
+                            }}
+                            style={{ width: '100%', marginTop: '8px', padding: '6px', fontSize: '0.82rem', fontWeight: 600 }}
+                          >
+                            Update Config Rates
+                          </button>
+                        </div>
+                      ))}
+                      {adminBedCategories.length === 0 && (
+                        <div style={{ gridColumn: '1 / -1', padding: '30px', textAlign: 'center', background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: '12px', color: '#64748b', fontSize: '0.88rem' }}>
+                          No bed categories configured yet. Click "+ Configure Category" to add one.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bed Assets List Table */}
+                  <div className="admin-card" style={{ padding: '24px' }}>
+                    <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>
+                      2. Registered Bed Assets Inventory
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="admin-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #cbd5e1' }}>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Bed Number</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Category</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Branch</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Current Status</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adminBeds.map((bed: any) => {
+                            const statusColorMap: any = {
+                              available: { bg: '#dcfce7', text: '#166534', label: 'Available' },
+                              occupied: { bg: '#fee2e2', text: '#991b1b', label: 'Occupied' },
+                              cleaning: { bg: '#fef3c7', text: '#92400e', label: 'Cleaning' }
+                            };
+                            const statusStyle = statusColorMap[bed.status] || { bg: '#f1f5f9', text: '#475569', label: bed.status };
+
+                            return (
+                              <tr key={bed.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>{bed.bed_number}</td>
+                                <td style={{ padding: '14px 16px', color: '#475569', fontSize: '0.86rem' }}>{bed.category?.name || 'Unassigned'}</td>
+                                <td style={{ padding: '14px 16px', color: '#475569', fontSize: '0.86rem' }}>{bed.branch_name || 'Main Clinic'}</td>
+                                <td style={{ padding: '14px 16px' }}>
+                                  <span style={{ fontSize: '0.78rem', fontWeight: 700, background: statusStyle.bg, color: statusStyle.text, padding: '4px 10px', borderRadius: '12px' }}>
+                                    {statusStyle.label}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteBed(bed.id)}
+                                    disabled={bed.status !== 'available'}
+                                    className="admin-btn-secondary"
+                                    style={{
+                                      padding: '4px 10px',
+                                      fontSize: '0.78rem',
+                                      color: bed.status === 'available' ? '#dc2626' : '#94a3b8',
+                                      borderColor: bed.status === 'available' ? '#fca5a5' : '#e2e8f0',
+                                      cursor: bed.status === 'available' ? 'pointer' : 'not-allowed'
+                                    }}
+                                  >
+                                    Decommission
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {adminBeds.length === 0 && (
+                            <tr>
+                              <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '0.86rem' }}>
+                                No beds registered in this branch inventory yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── MODAL: CONFIGURE BED CATEGORY ── */}
+              {isCategoryModalOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+                  <div style={{ background: '#ffffff', width: '480px', borderRadius: '16px', padding: '28px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                        Configure Bed Category & Rates
+                      </h3>
+                      <button type="button" onClick={() => setIsCategoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleCreateCategory} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Category Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={newCategoryForm.name}
+                          onChange={e => setNewCategoryForm({ ...newCategoryForm, name: e.target.value })}
+                          placeholder="e.g. ICU, Semi-Private"
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Base Charge (24h)</label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            step="0.01"
+                            value={newCategoryForm.base_charge_24h}
+                            onChange={e => setNewCategoryForm({ ...newCategoryForm, base_charge_24h: e.target.value })}
+                            placeholder="e.g. 3500"
+                            style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Hourly Overtime Rate</label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            step="0.01"
+                            value={newCategoryForm.hourly_overtime_rate}
+                            onChange={e => setNewCategoryForm({ ...newCategoryForm, hourly_overtime_rate: e.target.value })}
+                            placeholder="e.g. 150"
+                            style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>GST Tax Rate (%)</label>
+                        <select
+                          value={newCategoryForm.tax_rate}
+                          onChange={e => setNewCategoryForm({ ...newCategoryForm, tax_rate: e.target.value })}
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', background: '#ffffff' }}
+                        >
+                          <option value="0.00">0% (Exempt)</option>
+                          <option value="0.05">5% GST</option>
+                          <option value="0.12">12% GST</option>
+                          <option value="0.18">18% GST</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+                        <button type="button" className="admin-btn-secondary" onClick={() => setIsCategoryModalOpen(false)}>
+                          Cancel
+                        </button>
+                        <button type="submit" className="admin-btn-primary">
+                          Save Category Config
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* ── MODAL: REGISTER PHYSICAL BED ── */}
+              {isBedModalOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+                  <div style={{ background: '#ffffff', width: '440px', borderRadius: '16px', padding: '28px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                        Register Physical Bed Asset
+                      </h3>
+                      <button type="button" onClick={() => setIsBedModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleCreateBed} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Bed Number / Code</label>
+                        <input
+                          type="text"
+                          required
+                          value={newBedForm.bed_number}
+                          onChange={e => setNewBedForm({ ...newBedForm, bed_number: e.target.value })}
+                          placeholder="e.g. Bed-05, ICU-10"
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Select Category</label>
+                        <select
+                          required
+                          value={newBedForm.category_id}
+                          onChange={e => setNewBedForm({ ...newBedForm, category_id: e.target.value })}
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', background: '#ffffff' }}
+                        >
+                          {adminBedCategories.map((cat: any) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Deploy to Branch</label>
+                        <select
+                          required
+                          value={newBedForm.branch_id}
+                          onChange={e => setNewBedForm({ ...newBedForm, branch_id: e.target.value })}
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', background: '#ffffff' }}
+                        >
+                          {branches.map((br: any) => (
+                            <option key={br.id} value={br.id}>{br.name} ({br.code})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+                        <button type="button" className="admin-btn-secondary" onClick={() => setIsBedModalOpen(false)}>
+                          Cancel
+                        </button>
+                        <button type="submit" className="admin-btn-primary">
+                          Register Bed
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               )}
             </div>

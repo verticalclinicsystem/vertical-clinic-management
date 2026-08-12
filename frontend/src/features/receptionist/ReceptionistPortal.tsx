@@ -11,31 +11,43 @@ import {
   FileText, 
   IndianRupee, 
   CreditCard, 
-  UserPlus, 
-  CalendarPlus, 
   Download, 
   CheckCircle, 
   AlertCircle, 
   UserCheck, 
   X,
-  User,
   ArrowLeft,
-  ArrowRight,
   Stethoscope,
-  Trash2,
   Settings,
   Bell,
   Edit2,
   History,
-  Eye,
-  Mail
+  Mail,
+  Bed,
+  RefreshCw
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
+import AdmitPatientModal from '../../components/AdmitPatientModal';
+import { RecepDashboardTab } from './components/RecepDashboardTab';
+import { RecepAppointmentsTab } from './components/RecepAppointmentsTab';
+import { RecepBillingTab } from './components/RecepBillingTab';
+import { RecepQueueTab } from './components/RecepQueueTab';
+import { RecepPatientsTab } from './components/RecepPatientsTab';
+import { RecepInvoicesTab } from './components/RecepInvoicesTab';
+import { RecepCheckInTab } from './components/RecepCheckInTab';
+import { RecepBedsTab } from './components/RecepBedsTab';
+import { RecepAvailabilityTab } from './components/RecepAvailabilityTab';
 import './ReceptionistPortal.css';
 
 interface ReceptionistPortalProps {
   onLogout: () => void;
 }
+
+const formatBedNumber = (bedNum: string): string => {
+  if (!bedNum) return '';
+  const hasAlphaPrefix = /^[a-zA-Z]/.test(bedNum);
+  return hasAlphaPrefix ? bedNum : `Bed ${bedNum}`;
+};
 
 const getLocalApptDate = (datetimeStr: string): string => {
   if (!datetimeStr) return '';
@@ -518,6 +530,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [loadingPendingCharges, setLoadingPendingCharges] = useState<boolean>(false);
   const [selectedConsultationId, setSelectedConsultationId] = useState<string | null>(null);
   const [selectedTreatmentPlanId, setSelectedTreatmentPlanId] = useState<string | null>(null);
+  const [selectedAdmissionIds, setSelectedAdmissionIds] = useState<string[]>([]);
   const [includeMedicines, setIncludeMedicines] = useState<boolean>(true);
   const [includeMaterials, setIncludeMaterials] = useState<boolean>(true);
   const [customMaterialsCost, setCustomMaterialsCost] = useState<number>(0);
@@ -528,6 +541,80 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     payment_method: 'cash', // cash | card | online_upi | bank_transfer
     transaction_reference: '',
   });
+
+  // Bed Management states
+  const [bedsData, setBedsData] = useState<any[]>([]);
+  const [isLoadingBeds, setIsLoadingBeds] = useState<boolean>(false);
+  const [bedsError, setBedsError] = useState<string | null>(null);
+
+  // Bed Management Sub-Tab & History States
+  const [bedSubTab, setBedSubTab] = useState<'grid' | 'history'>('grid');
+  const [pendingAdmissionRequests, setPendingAdmissionRequests] = useState<any[]>([]);
+  const [activeAdmissionRequestId, setActiveAdmissionRequestId] = useState<string | null>(null);
+  const [admissionHistory, setAdmissionHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+  
+  // History Detail Modal State
+  const [isHistoryDetailsModalOpen, setIsHistoryDetailsModalOpen] = useState<boolean>(false);
+  const [isLoadingHistoryDetails, setIsLoadingHistoryDetails] = useState<boolean>(false);
+  const [historyDetailsData, setHistoryDetailsData] = useState<any>(null);
+  
+  // Modal states for admissions/transfer/vitals/checkout/MAC
+  const [selectedBed, setSelectedBed] = useState<any>(null);
+  const [isAdmitModalOpen, setIsAdmitModalOpen] = useState<boolean>(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
+  const [isVitalsModalOpen, setIsVitalsModalOpen] = useState<boolean>(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+  const [isMacModalOpen, setIsMacModalOpen] = useState<boolean>(false);
+
+  // Lock body scroll when any modal is active
+  useEffect(() => {
+    const isAnyModalOpen = isAdmitModalOpen || isTransferModalOpen || isVitalsModalOpen || isCheckoutModalOpen || isMacModalOpen || isHistoryDetailsModalOpen;
+    if (isAnyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isAdmitModalOpen, isTransferModalOpen, isVitalsModalOpen, isCheckoutModalOpen, isMacModalOpen, isHistoryDetailsModalOpen]);
+  
+  // Form fields
+  const [admitForm, setAdmitForm] = useState({
+    patient_id: '',
+    admitting_doctor_id: '',
+    diagnosis: '',
+    initial_deposit: 0,
+  });
+  const [transferForm, setTransferForm] = useState({
+    to_bed_id: '',
+    reason: '',
+  });
+  const [vitalsForm, setVitalsForm] = useState({
+    temp: 98.6,
+    pulse: 72,
+    systolic_bp: 120,
+    diastolic_bp: 80,
+    spo2: 98,
+    respiratory_rate: 16,
+    nursing_notes: '',
+  });
+  const [macForm, setMacForm] = useState({
+    medicine_name: '',
+    dosage: '',
+    scheduled_time: '',
+  });
+  
+  // Checkout detail state
+  const [checkoutBill, setCheckoutBill] = useState<any>(null);
+  const [isLoadingCheckoutBill, setIsLoadingCheckoutBill] = useState<boolean>(false);
+  
+  // Vitals & MAC logs for the selected patient
+  const [vitalsHistory, setVitalsHistory] = useState<any[]>([]);
+  const [macHistory, setMacHistory] = useState<any[]>([]);
+  const [isLoadingClinical, setIsLoadingClinical] = useState<boolean>(false);
 
   // Action loading states
   const [submitLoading, setSubmitLoading] = useState<boolean>(false);
@@ -597,9 +684,236 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
   };
 
+  const fetchPendingAdmissionRequests = async () => {
+    try {
+      const res = await api.get('/ipd/admission-requests/pending');
+      if (res.data && res.data.success) {
+        setPendingAdmissionRequests(res.data.data || []);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch pending admission requests:', err);
+    }
+  };
+
+  const fetchBedsData = async () => {
+    setIsLoadingBeds(true);
+    setBedsError(null);
+    try {
+      const response = await api.get('/ipd/dashboard/beds');
+      if (response.data && response.data.success) {
+        setBedsData(response.data.data);
+      } else {
+        setBedsError('Failed to load beds.');
+      }
+      fetchPendingAdmissionRequests();
+    } catch (err: any) {
+      setBedsError(err.message || 'An error occurred while loading beds.');
+    } finally {
+      setIsLoadingBeds(false);
+    }
+  };
+
+  const fetchAdmissionHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const res = await api.get('/ipd/admissions/history');
+      if (res.data && res.data.data) {
+        setAdmissionHistory(res.data.data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch admission history:', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const fetchHistoryDetails = async (admissionId: string) => {
+    setIsHistoryDetailsModalOpen(true);
+    setIsLoadingHistoryDetails(true);
+    try {
+      const res = await api.get(`/ipd/admissions/${admissionId}/summary`);
+      if (res.data && res.data.data) {
+        setHistoryDetailsData(res.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching admission summary details", err);
+    } finally {
+      setIsLoadingHistoryDetails(false);
+    }
+  };
+
+  const fetchClinicalRecords = async (admissionId: string) => {
+    setIsLoadingClinical(true);
+    try {
+      const vitalsRes = await api.get(`/ipd/admissions/${admissionId}/vitals`);
+      if (vitalsRes.data && vitalsRes.data.success) {
+        setVitalsHistory(vitalsRes.data.data);
+      }
+      const macRes = await api.get(`/ipd/admissions/${admissionId}/mac`);
+      if (macRes.data && macRes.data.success) {
+        setMacHistory(macRes.data.data);
+      }
+    } catch (err) {
+      console.error("Error loading clinical records", err);
+    } finally {
+      setIsLoadingClinical(false);
+    }
+  };
+
+  const fetchCheckoutBill = async (admissionId: string) => {
+    setIsLoadingCheckoutBill(true);
+    try {
+      const response = await api.get(`/ipd/admissions/${admissionId}/bill-summary`);
+      if (response.data && response.data.success) {
+        setCheckoutBill(response.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching checkout bill", err);
+    } finally {
+      setIsLoadingCheckoutBill(false);
+    }
+  };
+
+  const handleAdmitPatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed) return;
+    try {
+      const res = await api.post('/ipd/admissions', {
+        patient_id: admitForm.patient_id,
+        bed_id: selectedBed.id,
+        admitting_doctor_id: admitForm.admitting_doctor_id,
+        diagnosis: admitForm.diagnosis,
+        initial_deposit: Number(admitForm.initial_deposit),
+      });
+      if (res.data && res.data.success) {
+        showToast('Patient admitted successfully!', 'success');
+        if (activeAdmissionRequestId) {
+          try {
+            await api.post(`/ipd/admission-requests/${activeAdmissionRequestId}/fulfill`);
+          } catch (reqErr) {
+            console.error('Failed to fulfill admission request:', reqErr);
+          }
+          setActiveAdmissionRequestId(null);
+        }
+        setIsAdmitModalOpen(false);
+        setAdmitForm({ patient_id: '', admitting_doctor_id: '', diagnosis: '', initial_deposit: 0 });
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to admit patient.', 'error');
+    }
+  };
+
+  const handleTransferPatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/transfer`, {
+        to_bed_id: transferForm.to_bed_id,
+        reason: transferForm.reason,
+      });
+      if (res.data && res.data.success) {
+        showToast('Patient transferred successfully!', 'success');
+        setIsTransferModalOpen(false);
+        setTransferForm({ to_bed_id: '', reason: '' });
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to transfer patient.', 'error');
+    }
+  };
+
+  const handleRecordVitals = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/vitals`, {
+        temp: Number(vitalsForm.temp),
+        pulse: Number(vitalsForm.pulse),
+        systolic_bp: Number(vitalsForm.systolic_bp),
+        diastolic_bp: Number(vitalsForm.diastolic_bp),
+        spo2: Number(vitalsForm.spo2),
+        respiratory_rate: Number(vitalsForm.respiratory_rate),
+        nursing_notes: vitalsForm.nursing_notes,
+      });
+      if (res.data && res.data.success) {
+        showToast('Rounding vitals logged successfully!', 'success');
+        setIsVitalsModalOpen(false);
+        setVitalsForm({ temp: 98.6, pulse: 72, systolic_bp: 120, diastolic_bp: 80, spo2: 98, respiratory_rate: 16, nursing_notes: '' });
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to log vitals.', 'error');
+    }
+  };
+
+  const handleScheduleMedication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/mac`, {
+        medicine_name: macForm.medicine_name,
+        dosage: macForm.dosage,
+        scheduled_time: new Date(macForm.scheduled_time).toISOString(),
+      });
+      if (res.data && res.data.success) {
+        showToast('Medication scheduled successfully!', 'success');
+        setMacForm({ medicine_name: '', dosage: '', scheduled_time: '' });
+        fetchClinicalRecords(selectedBed.active_admission.admission_id);
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to schedule medication.', 'error');
+    }
+  };
+
+  const handleAdministerMedication = async (itemId: string, status: string) => {
+    try {
+      const res = await api.patch(`/ipd/admissions/mac/${itemId}`, { status });
+      if (res.data && res.data.success) {
+        showToast(`Medication marked as ${status}!`, 'success');
+        if (selectedBed && selectedBed.active_admission) {
+          fetchClinicalRecords(selectedBed.active_admission.admission_id);
+        }
+      }
+    } catch (err: any) {
+      showToast('Failed to update medication administration.', 'error');
+    }
+  };
+
+  const handleFinalizeCheckout = async () => {
+    if (!selectedBed || !selectedBed.active_admission) return;
+    try {
+      const res = await api.post(`/ipd/admissions/${selectedBed.active_admission.admission_id}/finalize-checkout`);
+      if (res.data && res.data.success) {
+        showToast('Patient checked out and discharged successfully!', 'success');
+        setIsCheckoutModalOpen(false);
+        setCheckoutBill(null);
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast('Failed to finalize checkout.', 'error');
+    }
+  };
+
+  const handleCleanBed = async (bedId: string) => {
+    try {
+      const res = await api.post(`/ipd/beds/${bedId}/clean`);
+      if (res.data && res.data.success) {
+        showToast('Bed marked as available and ready for use!', 'success');
+        fetchBedsData();
+      }
+    } catch (err: any) {
+      showToast('Failed to mark bed as clean.', 'error');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'availability') {
       fetchMyRequests();
+    }
+    if (activeTab === 'beds') {
+      fetchBedsData();
+      fetchAdmissionHistory();
     }
   }, [activeTab]);
 
@@ -968,7 +1282,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         const data = res.data.data;
         setPendingCharges(data);
         
-        // Auto-select latest consultation/treatment plan if available
+        // Auto-select latest consultation/treatment plan/admission if available
         if (data.consultations && data.consultations.length > 0) {
           setSelectedConsultationId(data.consultations[0].id);
         } else {
@@ -979,6 +1293,12 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
           setSelectedTreatmentPlanId(data.treatment_plans[0].id);
         } else {
           setSelectedTreatmentPlanId(null);
+        }
+
+        if (data.ipd_admissions && data.ipd_admissions.length > 0) {
+          setSelectedAdmissionIds([data.ipd_admissions[0].id]);
+        } else {
+          setSelectedAdmissionIds([]);
         }
         
         const materialsSum = data.standard_materials ? data.standard_materials.reduce((sum: number, item: any) => sum + item.cost, 0) : 0;
@@ -1002,6 +1322,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
   useEffect(() => {
     let subtotal = 0;
+    let autoDepositDeduction = 0;
     if (pendingCharges) {
       if (selectedConsultationId) {
         const selectedConsultation = pendingCharges.consultations.find(c => c.id === selectedConsultationId);
@@ -1027,6 +1348,21 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
           });
         }
       }
+
+      if (selectedAdmissionIds.length > 0 && (pendingCharges as any).ipd_admissions) {
+        selectedAdmissionIds.forEach((admId: string) => {
+          const selectedAdm = (pendingCharges as any).ipd_admissions.find((a: any) => a.id === admId);
+          if (selectedAdm) {
+            subtotal += selectedAdm.current_bed_rent || 0;
+            if (selectedAdm.past_items) {
+              selectedAdm.past_items.forEach((item: any) => {
+                subtotal += item.total_price || 0;
+              });
+            }
+            autoDepositDeduction += (selectedAdm.initial_deposit || 0) + (selectedAdm.insurance_approved_amount || 0);
+          }
+        });
+      }
       
       if (includeMaterials) {
         subtotal += Number(customMaterialsCost) || 0;
@@ -1034,9 +1370,10 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
     setBillingForm(prev => ({
       ...prev,
-      total_amount: Math.round(subtotal * 100) / 100
+      total_amount: Math.round(subtotal * 100) / 100,
+      discount_amount: autoDepositDeduction > 0 ? autoDepositDeduction : prev.discount_amount
     }));
-  }, [pendingCharges, selectedConsultationId, selectedTreatmentPlanId, includeMedicines, includeMaterials, customMaterialsCost]);
+  }, [pendingCharges, selectedConsultationId, selectedTreatmentPlanId, selectedAdmissionIds, includeMedicines, includeMaterials, customMaterialsCost]);
 
   const fetchEditPendingCharges = async (patientId: string, invoice: any) => {
     if (!patientId || !invoice) {
@@ -1157,6 +1494,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         tax_amount: Number(billingForm.tax_amount),
         consultation_id: selectedConsultationId || undefined,
         treatment_plan_id: selectedTreatmentPlanId || undefined,
+        admission_id: selectedAdmissionIds.length > 0 ? selectedAdmissionIds[0] : undefined,
+        admission_ids: selectedAdmissionIds,
         status: 'unpaid',
       });
 
@@ -1171,6 +1510,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         });
         setSelectedConsultationId(null);
         setSelectedTreatmentPlanId(null);
+        setSelectedAdmissionIds([]);
         setPendingCharges(null);
         await fetchPortalData();
       }
@@ -1441,6 +1781,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             { id: 'patients', icon: <Users size={18} />, label: 'Patient Intake' },
             { id: 'billing', icon: <IndianRupee size={18} />, label: 'Billing' },
             { id: 'invoices', icon: <FileText size={18} />, label: 'Invoices' },
+            { id: 'beds', icon: <Bed size={18} />, label: 'Bed Management' },
             { id: 'availability', icon: <Calendar size={18} />, label: 'Availability' },
           ].map(tab => (
             <div 
@@ -1483,6 +1824,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 {activeTab === 'patients' && 'Patient Directory & Intake'}
                 {activeTab === 'billing' && 'Create Clinic Bill'}
                 {activeTab === 'invoices' && 'Invoices & Payments'}
+                {activeTab === 'beds' && 'IPD Bed Management'}
                 {activeTab === 'availability' && 'Availability & Leave Settings'}
               </h2>
               <span className="recep-page-subtitle" style={{ marginTop: '2px', display: 'block' }}>
@@ -1693,1751 +2035,191 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
           ) : (
             <>
               {/* DASHBOARD TAB */}
-              {activeTab === 'dashboard' && (() => {
-                const formatTimeToAMPM = (timeStr: string) => {
-                  if (!timeStr) return '';
-                  try {
-                    const timePart = timeStr.includes('T') ? getLocalApptTime(timeStr) : timeStr.slice(0, 5);
-                    const [hours, minutes] = timePart.split(':').map(Number);
-                    const ampm = hours >= 12 ? 'PM' : 'AM';
-                    const formattedHours = hours % 12 || 12;
-                    return `${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-                  } catch (e) {
-                    return timeStr;
-                  }
-                };
-
-                const dbTodayAppointments = appointments.filter((a) => {
-                  const datePart = getLocalApptDate(a.appointment_datetime);
-                  return datePart === today;
-                });
-
-                let displayAppointments = [...dbTodayAppointments];
-                displayAppointments.sort((a, b) => a.appointment_datetime.localeCompare(b.appointment_datetime));
-
-                const todayApptsCount = dbTodayAppointments.length;
-                const displayApptsCount = todayApptsCount;
-                const displayWaitingCount = waitingToday.length;
-                
-                const walkInsTodayCount = appointments.filter(appt => {
-                  const datePart = getLocalApptDate(appt.appointment_datetime);
-                  return datePart === today && (appt.consultation_type === 'walk_in' || appt.notes?.toLowerCase().includes('walk-in'));
-                }).length;
-                const displayWalkInsCount = walkInsTodayCount;
-
-                const availableDocs = doctors.filter(d => d.is_available).length;
-                const totalDocs = doctors.length;
-                const displayDocsRatio = totalDocs > 0 ? `${availableDocs}/${totalDocs}` : '0/0';
-
-                const displayedRevenue = billingRevenueToday;
-
-                const getHourGroupRevenue = (startHour: number, endHour: number): number => {
-                  return invoices
-                    .filter(inv => {
-                      if (inv.status !== 'paid') return false;
-                      const datePart = getLocalApptDate(inv.created_at);
-                      if (datePart !== today) return false;
-                      const d = new Date(inv.created_at);
-                      const h = d.getHours();
-                      return h >= startHour && h < endHour;
-                    })
-                    .reduce((sum, inv) => sum + inv.grand_total, 0);
-                };
-
-                const rev9AM = getHourGroupRevenue(8, 10);
-                const rev11AM = getHourGroupRevenue(10, 12);
-                const rev1PM = getHourGroupRevenue(12, 14);
-                const rev3PM = getHourGroupRevenue(14, 16);
-                const rev5PM = getHourGroupRevenue(16, 24);
-
-                const maxRev = Math.max(rev9AM, rev11AM, rev1PM, rev3PM, rev5PM, 1);
-
-                return (
-                  <div className="recep-dashboard-view">
-                    {/* Stats Grid */}
-                    <div className="recep-stats-grid">
-                      <div className="recep-stat-card border-indigo">
-                        <div className="recep-stat-top">
-                          <span className="recep-stat-icon-wrapper bg-light-purple"><Calendar size={20} /></span>
-                          <span className="recep-stat-trend bg-light-green">+12%</span>
-                        </div>
-                        <span className="recep-stat-val">{displayApptsCount}</span>
-                        <span className="recep-stat-label">Today's Appointments</span>
-                      </div>
-
-                      <div className="recep-stat-card border-orange">
-                        <div className="recep-stat-top">
-                          <span className="recep-stat-icon-wrapper bg-light-orange"><Clock size={20} /></span>
-                        </div>
-                        <span className="recep-stat-val">{displayWaitingCount}</span>
-                        <span className="recep-stat-label">Waiting Patients</span>
-                      </div>
-
-                      <div className="recep-stat-card border-teal">
-                        <div className="recep-stat-top">
-                          <span className="recep-stat-icon-wrapper bg-light-teal"><User size={20} /></span>
-                        </div>
-                        <span className="recep-stat-val">{displayWalkInsCount}</span>
-                        <span className="recep-stat-label">Walk-Ins Today</span>
-                      </div>
-
-                      <div className="recep-stat-card border-green">
-                        <div className="recep-stat-top">
-                          <span className="recep-stat-icon-wrapper bg-light-green"><Stethoscope size={20} /></span>
-                        </div>
-                        <span className="recep-stat-val">{displayDocsRatio}</span>
-                        <span className="recep-stat-label">Doctors Available</span>
-                      </div>
-                    </div>
-
-                    {/* Dashboard Row */}
-                    <div className="recep-dashboard-row">
-                      {/* Left Pane: Today's Appointments List */}
-                      <div className="recep-card flex-2">
-                        <div className="recep-card-header">
-                          <h3 className="recep-card-title">Today's Appointments</h3>
-                          <button className="recep-btn-primary" onClick={() => setShowBookModal(true)}>
-                            <Plus size={16} /> Walk-In
-                          </button>
-                        </div>
-                        
-                        <div className="recep-table-container">
-                          <table className="recep-table">
-                            <thead>
-                              <tr>
-                                <th>ID</th>
-                                <th>Patient</th>
-                                <th>Doctor</th>
-                                <th>Time</th>
-                                <th>Status</th>
-                                <th>Action</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {displayAppointments.length === 0 ? (
-                                <tr>
-                                  <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
-                                    No appointments scheduled for today.
-                                  </td>
-                                </tr>
-                              ) : (
-                                displayAppointments.map((appt) => {
-                                  const timeStr = formatTimeToAMPM(appt.appointment_datetime);
-                                  const apptId = appt.appointment_number || appt.patient?.patient_code || `APT-${appt.id.toString().slice(-5).toUpperCase()}`;
-                                  
-                                  const isCheckedIn = appt.status === 'checked_in' || appt.status === 'Waiting';
-                                  
-                                  let displayStatus = appt.status;
-                                  if (displayStatus === 'pending') {
-                                    displayStatus = 'Waiting';
-                                  } else if (displayStatus === 'confirmed') {
-                                    displayStatus = 'Confirmed';
-                                  } else if (displayStatus === 'completed') {
-                                    displayStatus = 'Completed';
-                                  } else if (displayStatus === 'cancelled') {
-                                    displayStatus = 'Cancelled';
-                                  }
-                                  
-                                  if (isCheckedIn) {
-                                    displayStatus = 'Checked In';
-                                  }
-                                
-                                let badgeClass = 'badge-pending';
-                                if (displayStatus === 'Waiting') badgeClass = 'badge-waiting';
-                                else if (displayStatus === 'Confirmed') badgeClass = 'badge-confirmed';
-                                else if (displayStatus === 'Completed') badgeClass = 'badge-completed';
-                                else if (displayStatus === 'Cancelled') badgeClass = 'badge-cancelled';
-                                else if (displayStatus === 'Checked In') badgeClass = 'badge-completed';
-                                
-                                const showCheckInBtn = displayStatus === 'Waiting' && !isCheckedIn;
-                                
-                                return (
-                                  <tr key={appt.id}>
-                                    <td><strong className="recep-appt-id">{apptId}</strong></td>
-                                    <td><strong>{appt.patient?.user?.full_name || 'Walk-in'}</strong></td>
-                                    <td>{formatDocName(appt.doctor?.user?.full_name || 'Staff Doctor')}</td>
-                                    <td>{timeStr}</td>
-                                    <td>
-                                      <span className={`badge ${badgeClass}`}>{displayStatus}</span>
-                                    </td>
-                                    <td>
-                                      {showCheckInBtn && (
-                                        <button 
-                                          className="recep-checkin-btn-action btn-sm"
-                                          onClick={() => handleCheckIn(appt.id)}
-                                        >
-                                          Check-In
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              }))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {/* Right Pane: Revenue Today */}
-                      <div className="recep-card flex-1">
-                        <div className="recep-card-header">
-                          <h3 className="recep-card-title">Revenue Today</h3>
-                        </div>
-                        <div className="recep-revenue-chart-card">
-                          <div className="recep-revenue-header">
-                            <span className="recep-revenue-title">₹{displayedRevenue.toLocaleString('en-IN')}</span>
-                            <span className="recep-revenue-subtitle">Across Satellite branch</span>
-                          </div>
-                          
-                          <div className="recep-bar-chart">
-                            <div className="recep-chart-bar-container">
-                              <span className="recep-chart-bar-val">₹{rev9AM.toLocaleString('en-IN')}</span>
-                              <div className="recep-chart-bar-fill" style={{ height: `${(rev9AM / maxRev) * 100}%` }}></div>
-                              <span className="recep-chart-bar-label">9AM</span>
-                            </div>
-                            <div className="recep-chart-bar-container">
-                              <span className="recep-chart-bar-val">₹{rev11AM.toLocaleString('en-IN')}</span>
-                              <div className="recep-chart-bar-fill" style={{ height: `${(rev11AM / maxRev) * 100}%` }}></div>
-                              <span className="recep-chart-bar-label">11AM</span>
-                            </div>
-                            <div className="recep-chart-bar-container">
-                              <span className="recep-chart-bar-val">₹{rev1PM.toLocaleString('en-IN')}</span>
-                              <div className="recep-chart-bar-fill" style={{ height: `${(rev1PM / maxRev) * 100}%` }}></div>
-                              <span className="recep-chart-bar-label">1PM</span>
-                            </div>
-                            <div className="recep-chart-bar-container">
-                              <span className="recep-chart-bar-val">₹{rev3PM.toLocaleString('en-IN')}</span>
-                              <div className="recep-chart-bar-fill" style={{ height: `${(rev3PM / maxRev) * 100}%` }}></div>
-                              <span className="recep-chart-bar-label">3PM</span>
-                            </div>
-                            <div className="recep-chart-bar-container">
-                              <span className="recep-chart-bar-val">₹{rev5PM.toLocaleString('en-IN')}</span>
-                              <div className="recep-chart-bar-fill" style={{ height: `${(rev5PM / maxRev) * 100}%` }}></div>
-                              <span className="recep-chart-bar-label">5PM</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              {activeTab === 'dashboard' && (
+                <RecepDashboardTab
+                  appointments={appointments}
+                  waitingToday={waitingToday}
+                  doctors={doctors}
+                  billingRevenueToday={billingRevenueToday}
+                  invoices={invoices}
+                  today={today}
+                  getLocalApptDate={getLocalApptDate}
+                  getLocalApptTime={getLocalApptTime}
+                  formatDocName={formatDocName}
+                  setShowBookModal={setShowBookModal}
+                  handleCheckIn={handleCheckIn}
+                />
+              )}
 
               {/* CALENDAR TAB */}
               {activeTab === 'calendar' && (
-                <div className="recep-calendar-view">
-                  {/* Calendar Toolbar */}
-                  <div className="recep-calendar-toolbar">
-                    <div className="toolbar-left">
-                      <div className="date-picker-container">
-                        <label htmlFor="calendar-date-input">Select Date</label>
-                        <input
-                          id="calendar-date-input"
-                          type="date"
-                          className="calendar-date-input"
-                          value={calendarDate}
-                          onChange={(e) => {
-                            setCalendarDate(e.target.value);
-                            setSelectedCalendarAppt(null);
-                          }}
-                        />
-                      </div>
-                      <div className="calendar-date-display">
-                        <h3>
-                          {new Date(calendarDate).toLocaleDateString('en-US', {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
-                        </h3>
-                        <span className="calendar-subtitle">
-                          {calendarAppointments.length} appointment{calendarAppointments.length !== 1 ? 's' : ''} scheduled
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="toolbar-right">
-                      <button
-                        className="recep-btn-primary"
-                        onClick={() => setShowBookModal(true)}
-                      >
-                        <CalendarPlus size={16} /> New Appointment
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="recep-calendar-split-container">
-                    {/* Left side: Calendar Grid */}
-                    <div className="recep-calendar-grid-card">
-                      {doctors.filter(d => d.branch_id === selectedBranchId).length === 0 ? (
-                        <div className="recep-empty-state">
-                          <Users size={48} />
-                          <p>No doctors assigned to this branch.</p>
-                        </div>
-                      ) : (
-                        <div className="calendar-table-wrapper">
-                          <table className="calendar-grid-table">
-                            <thead>
-                              <tr>
-                                <th className="time-col-header">Time</th>
-                                {doctors
-                                  .filter(d => d.branch_id === selectedBranchId)
-                                  .map(doc => (
-                                    <th key={doc.id} className="doc-col-header">
-                                      {formatDocName(doc.user?.full_name || 'Staff')}
-                                    </th>
-                                  ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {[
-                                { label: '09:00 AM', hour24: 9 },
-                                { label: '10:00 AM', hour24: 10 },
-                                { label: '11:00 AM', hour24: 11 },
-                                { label: '12:00 PM', hour24: 12 },
-                                { label: '01:00 PM', hour24: 13 },
-                                { label: '02:00 PM', hour24: 14 },
-                                { label: '03:00 PM', hour24: 15 },
-                                { label: '04:00 PM', hour24: 16 },
-                                { label: '05:00 PM', hour24: 17 },
-                                { label: '06:00 PM', hour24: 18 },
-                                { label: '07:00 PM', hour24: 19 },
-                                { label: '08:00 PM', hour24: 20 },
-                                { label: '09:00 PM', hour24: 21 }
-                              ].map(slot => {
-                                return (
-                                  <tr key={slot.hour24}>
-                                    <td className="time-cell">{slot.label}</td>
-                                    {doctors
-                                      .filter(d => d.branch_id === selectedBranchId)
-                                      .map(doc => {
-                                        const cellAppts = calendarAppointments.filter(a => {
-                                          const localTime = getLocalApptTime(a.appointment_datetime);
-                                          const apptHour = parseInt(localTime.split(':')[0] || '-1', 10);
-                                          return a.doctor_id === doc.id && apptHour === slot.hour24;
-                                        });
-
-                                        return (
-                                          <td key={doc.id} className="calendar-grid-cell">
-                                            {cellAppts.length === 0 ? (
-                                              <span className="empty-cell-dash">—</span>
-                                            ) : (
-                                              <div className="cell-pills-container">
-                                                {cellAppts.map(appt => {
-                                                  const isSelected = selectedCalendarAppt?.id === appt.id;
-                                                  return (
-                                                    <div
-                                                      key={appt.id}
-                                                      className={`calendar-appt-pill ${appt.status} ${isSelected ? 'selected' : ''}`}
-                                                      onClick={() => setSelectedCalendarAppt(appt)}
-                                                    >
-                                                      <span className="pill-patient-name">
-                                                        {appt.patient?.user?.full_name || 'Walk-in'}
-                                                      </span>
-                                                      <span className="pill-appt-time">
-                                                        {getLocalApptTime(appt.appointment_datetime)}
-                                                      </span>
-                                                    </div>
-                                                  );
-                                                })}
-                                              </div>
-                                            )}
-                                          </td>
-                                        );
-                                      })}
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right side: Sidebar Pane */}
-                    <div className="recep-calendar-sidebar-card">
-                      {selectedCalendarAppt ? (
-                        (() => {
-                          const appt = appointments.find(a => a.id === selectedCalendarAppt.id) || selectedCalendarAppt;
-                          return (
-                            <div className="calendar-appt-detail-pane">
-                              <div className="detail-pane-header">
-                                <h4>Appointment Details</h4>
-                                <button
-                                  className="btn-close-detail"
-                                  onClick={() => setSelectedCalendarAppt(null)}
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-
-                              <div className="detail-pane-body">
-                                <div className="detail-status-section">
-                                  <span className={`badge badge-${appt.status}`}>
-                                    {appt.status?.replace('_', ' ')}
-                                  </span>
-                                  <span className={`badge-consultation ${appt.consultation_type}`}>
-                                    {appt.consultation_type === 'teleconsultation' ? 'Teleconsult' : 'In-Person'}
-                                  </span>
-                                </div>
-
-                                <div className="detail-section">
-                                  <span className="section-label">Patient Details</span>
-                                  <div className="detail-info-block">
-                                    <div className="info-row">
-                                      <strong>Name:</strong>
-                                      <span>{appt.patient?.user?.full_name || 'Walk-in'}</span>
-                                    </div>
-                                    <div className="info-row">
-                                      <strong>Code:</strong>
-                                      <span className="mono-text">{appt.patient?.patient_code || '—'}</span>
-                                    </div>
-                                    <div className="info-row">
-                                      <strong>Phone:</strong>
-                                      <span>{appt.patient?.user?.phone || '—'}</span>
-                                    </div>
-                                    <div className="info-row">
-                                      <strong>Email:</strong>
-                                      <span>{appt.patient?.user?.email || '—'}</span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="detail-section">
-                                  <span className="section-label">Schedule Info</span>
-                                  <div className="detail-info-block">
-                                    <div className="info-row">
-                                      <strong>Date:</strong>
-                                      <span>{getLocalApptDate(appt.appointment_datetime)}</span>
-                                    </div>
-                                    <div className="info-row">
-                                      <strong>Day:</strong>
-                                      <span>
-                                        {new Date(getLocalApptDate(appt.appointment_datetime)).toLocaleDateString('en-US', { weekday: 'long' })}
-                                      </span>
-                                    </div>
-                                    <div className="info-row">
-                                      <strong>Time Slot:</strong>
-                                      <span className="time-highlight">
-                                        {formatTimeToAMPM(getLocalApptTime(appt.appointment_datetime))}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="detail-section">
-                                  <span className="section-label">Clinical Info</span>
-                                  <div className="detail-info-block">
-                                    <div className="info-row">
-                                      <strong>Doctor:</strong>
-                                      <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
-                                    </div>
-                                    <div className="info-row">
-                                      <strong>Treatment:</strong>
-                                      <span>{appt.treatment_type}</span>
-                                    </div>
-                                    {appt.notes && (
-                                      <div className="info-notes-row">
-                                        <strong>Notes:</strong>
-                                        <p>{appt.notes}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="detail-pane-actions">
-                                  {rescheduleApptId === appt.id ? (
-                                    <div className="reschedule-panel" style={{ marginTop: '12px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc', width: '100%' }}>
-                                      <h5 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#1e293b' }}>Reschedule Appointment</h5>
-                                      <div className="form-group" style={{ marginBottom: '8px' }}>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px', fontWeight: 'bold' }}>New Date</label>
-                                        <input
-                                          type="date"
-                                          value={rescheduleDate}
-                                          onChange={(e) => {
-                                            setRescheduleDate(e.target.value);
-                                            setRescheduleTime('');
-                                          }}
-                                          style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
-                                        />
-                                      </div>
-                                      <div className="form-group" style={{ marginBottom: '8px' }}>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px', fontWeight: 'bold' }}>Consultation Type</label>
-                                        <select
-                                          value={rescheduleConsultationType}
-                                          onChange={(e) => setRescheduleConsultationType(e.target.value)}
-                                          style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
-                                        >
-                                          <option value="in_person">In-Clinic Visit</option>
-                                          <option value="teleconsultation">Teleconsultation</option>
-                                        </select>
-                                      </div>
-                                      <div className="form-group" style={{ marginBottom: '12px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', margin: 0 }}>Available Time Slot</label>
-                                          <button
-                                            type="button"
-                                            onClick={() => setIsCustomTimeReschedule(!isCustomTimeReschedule)}
-                                            style={{ background: 'none', border: 'none', color: '#0d9488', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
-                                          >
-                                            {isCustomTimeReschedule ? 'Select from list' : '✍️ Custom Time'}
-                                          </button>
-                                        </div>
-                                        {isCustomTimeReschedule ? (
-                                          <input
-                                            type="time"
-                                            value={rescheduleTime}
-                                            onChange={(e) => setRescheduleTime(e.target.value)}
-                                            style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
-                                          />
-                                        ) : loadingRescheduleSlots ? (
-                                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Loading slots...</div>
-                                        ) : (
-                                          <select
-                                            value={rescheduleTime}
-                                            onChange={(e) => setRescheduleTime(e.target.value)}
-                                            style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem' }}
-                                          >
-                                            <option value="">-- Select Time Slot --</option>
-                                            {rescheduleSlots
-                                              .map((s) => {
-                                                let label = formatTimeToAMPM(s.time);
-                                                const isExpired = s.status === 'expired';
-                                                if (s.status === 'booked') {
-                                                  label += ' (Booked)';
-                                                } else if (isExpired) {
-                                                  label += ' (Expired)';
-                                                } else if (s.status === 'lunch_break') {
-                                                  label += ' (Lunch Break)';
-                                                } else if (s.status === 'tele_only') {
-                                                  label += ' (Tele Only)';
-                                                } else if (s.status === 'in_clinic_only') {
-                                                  label += ' (In-Clinic Only)';
-                                                }
-                                                const isApptInPast = appt.status === 'no_show' || new Date(appt.appointment_datetime) < new Date();
-                                                const isTypeMismatch = (rescheduleConsultationType === 'in_person' && s.status === 'tele_only') ||
-                                                                       (rescheduleConsultationType === 'teleconsultation' && s.status === 'in_clinic_only');
-                                                const isDisabled = (isExpired && !isApptInPast) || s.status === 'booked' || s.status === 'lunch_break' || isTypeMismatch;
-                                                return (
-                                                  <option key={s.time} value={s.time} disabled={isDisabled}>
-                                                    {label}
-                                                  </option>
-                                                );
-                                              })}
-                                          </select>
-                                        )}
-                                      </div>
-                                      <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button
-                                          onClick={handleRescheduleSubmit}
-                                          className="recep-btn-primary"
-                                          style={{ flex: 1, padding: '6px', fontSize: '0.85rem' }}
-                                        >
-                                          Save
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setRescheduleApptId(null);
-                                            setRescheduleDate('');
-                                            setRescheduleTime('');
-                                          }}
-                                          className="btn-cancel"
-                                          style={{ flex: 1, padding: '6px', fontSize: '0.85rem', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '4px', cursor: 'pointer' }}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      {(appt.status === 'pending' || appt.status === 'confirmed') && (
-                                        <button
-                                          className="btn-checkin-appt"
-                                          onClick={() => handleCheckIn(appt.id)}
-                                          style={{ width: '100%' }}
-                                        >
-                                          Check In Patient
-                                        </button>
-                                      )}
-                                      {(appt.status === 'pending' || appt.status === 'confirmed') && (
-                                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', width: '100%' }}>
-                                          <button
-                                            className="btn-reschedule-appt"
-                                            onClick={() => {
-                                              setRescheduleApptId(appt.id);
-                                              setRescheduleDate(getLocalTodayDate());
-                                              setRescheduleConsultationType(appt.consultation_type || 'in_person');
-                                              setIsCustomTimeReschedule(false);
-                                            }}
-                                            style={{ flex: 1, padding: '8px', fontSize: '0.85rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                                          >
-                                            <Clock size={14} /> Reschedule
-                                          </button>
-                                          <button
-                                            className="btn-cancel-appt-action"
-                                            onClick={() => handleCancel(appt.id)}
-                                            style={{ flex: 1, padding: '8px', fontSize: '0.85rem', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                                          >
-                                            <Trash2 size={14} /> Cancel
-                                          </button>
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                  {appt.status === 'completed' && (
-                                    <button
-                                      className="btn-create-invoice-appt"
-                                      onClick={() => {
-                                        setBillingForm({
-                                          patient_id: appt.patient_id,
-                                          total_amount: appt.doctor?.consultation_fee || 500,
-                                          discount_amount: 0,
-                                          tax_amount: 0,
-                                        });
-                                        setActiveTab('billing');
-                                      }}
-                                    >
-                                      Generate Invoice
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <div className="calendar-timeline-pane">
-                          <h4 className="timeline-title">Day Timeline</h4>
-                          <span className="timeline-date">
-                            {new Date(calendarDate).toLocaleDateString('en-US', {
-                              weekday: 'long',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
-                          </span>
-
-                          <div className="timeline-items-container">
-                            {calendarAppointments.length === 0 ? (
-                              <div className="timeline-empty">
-                                <Clock size={32} />
-                                <p>No appointments for this date.</p>
-                              </div>
-                            ) : (
-                              calendarAppointments
-                                .sort((a, b) => a.appointment_datetime.localeCompare(b.appointment_datetime))
-                                .map(appt => {
-                                  const timePart = getLocalApptTime(appt.appointment_datetime);
-                                  return (
-                                    <div
-                                      key={appt.id}
-                                      className={`timeline-item-card status-${appt.status}`}
-                                      onClick={() => {
-                                        setSelectedCalendarAppt(appt);
-                                        setSelectedApptDetails(appt);
-                                      }}
-                                    >
-                                      <div className="timeline-item-time">{timePart}</div>
-                                      <div className="timeline-item-content">
-                                        <h5>{appt.patient?.user?.full_name || 'Walk-in'}</h5>
-                                        <span className="timeline-item-sub">
-                                          {formatDocName(appt.doctor?.user?.full_name || 'Staff')} • {appt.treatment_type}
-                                        </span>
-                                      </div>
-                                      <div className={`timeline-item-status status-${appt.status}`} />
-                                    </div>
-                                  );
-                                })
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <RecepAppointmentsTab
+                  calendarDate={calendarDate}
+                  setCalendarDate={setCalendarDate}
+                  selectedCalendarAppt={selectedCalendarAppt}
+                  setSelectedCalendarAppt={setSelectedCalendarAppt}
+                  calendarAppointments={calendarAppointments}
+                  setShowBookModal={setShowBookModal}
+                  doctors={doctors}
+                  selectedBranchId={selectedBranchId}
+                  formatDocName={formatDocName}
+                  getLocalApptTime={getLocalApptTime}
+                  getLocalApptDate={getLocalApptDate}
+                  appointments={appointments}
+                  rescheduleApptId={rescheduleApptId}
+                  setRescheduleApptId={setRescheduleApptId}
+                  rescheduleDate={rescheduleDate}
+                  setRescheduleDate={setRescheduleDate}
+                  rescheduleTime={rescheduleTime}
+                  setRescheduleTime={setRescheduleTime}
+                  rescheduleConsultationType={rescheduleConsultationType}
+                  setRescheduleConsultationType={setRescheduleConsultationType}
+                  isCustomTimeReschedule={isCustomTimeReschedule}
+                  setIsCustomTimeReschedule={setIsCustomTimeReschedule}
+                  loadingRescheduleSlots={loadingRescheduleSlots}
+                  rescheduleSlots={rescheduleSlots}
+                  handleRescheduleSubmit={handleRescheduleSubmit}
+                  handleCheckIn={handleCheckIn}
+                  handleCancel={handleCancel}
+                  setBillingForm={setBillingForm}
+                  setActiveTab={setActiveTab}
+                  setSelectedApptDetails={setSelectedApptDetails}
+                  getLocalTodayDate={getLocalTodayDate}
+                />
               )}
 
               {/* QUEUE TAB (Kanban Board) */}
               {activeTab === 'queue' && (
-                <div className="recep-kanban-view">
-                  <div className="recep-kanban-board">
-                    {/* Scheduled Lane */}
-                    <div className="recep-kanban-column">
-                      <div className="recep-kanban-col-header bg-gray">
-                        <span>Scheduled Today</span>
-                        <span className="col-count">{scheduledToday.length}</span>
-                      </div>
-                      <div className="recep-kanban-col-content">
-                        {scheduledToday.length === 0 ? (
-                          <div className="kanban-empty">No scheduled slots</div>
-                        ) : (
-                          scheduledToday.map((appt) => (
-                            <div className="recep-kanban-card" key={appt.id} onClick={() => setSelectedApptDetails(appt)} style={{ cursor: 'pointer' }}>
-                              <div className="card-top">
-                                <span className="card-time">{getLocalApptTime(appt.appointment_datetime)}</span>
-                                <span className={`badge-consultation ${appt.consultation_type}`}>
-                                  {appt.consultation_type === 'teleconsultation' ? 'Tele' : 'In-Clinic'}
-                                </span>
-                              </div>
-                              <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
-                              <span className="card-code">{appt.patient?.patient_code}</span>
-                                                             <div className="card-meta">
-                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
-                                <span>{appt.treatment_type}</span>
-                              </div>
-                               <div className="card-actions">
-                                 <button className="btn-checkin" onClick={(e) => { e.stopPropagation(); handleCheckIn(appt.id); }}>
-                                   Check In <ArrowRight size={14} />
-                                 </button>
-                               </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
- 
-                    {/* Checked In / Waiting Lane */}
-                    <div className="recep-kanban-column">
-                      <div className="recep-kanban-col-header bg-orange">
-                        <span>Checked In / Waiting</span>
-                        <span className="col-count">{waitingToday.length}</span>
-                      </div>
-                      <div className="recep-kanban-col-content">
-                        {waitingToday.length === 0 ? (
-                          <div className="kanban-empty">No patients waiting</div>
-                        ) : (
-                          waitingToday.map((appt) => (
-                            <div className="recep-kanban-card border-orange" key={appt.id} onClick={() => setSelectedApptDetails(appt)} style={{ cursor: 'pointer' }}>
-                              <div className="card-top">
-                                <span className="card-time">{getLocalApptTime(appt.appointment_datetime)}</span>
-                                <span className="badge badge-waiting">Waiting</span>
-                              </div>
-                              <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
-                              <span className="card-code">{appt.patient?.patient_code}</span>
-                                                             <div className="card-meta">
-                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
-                                <span>{appt.treatment_type}</span>
-                              </div>
-                              <p className="card-notes"><em>Wait queue...</em></p>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
- 
-                    {/* In Consultation Lane */}
-                    <div className="recep-kanban-column">
-                      <div className="recep-kanban-col-header bg-blue">
-                        <span>In Consultation</span>
-                        <span className="col-count">{activeConsultation.length}</span>
-                      </div>
-                      <div className="recep-kanban-col-content">
-                        {activeConsultation.length === 0 ? (
-                          <div className="kanban-empty">No active cabinets</div>
-                        ) : (
-                          activeConsultation.map((appt) => (
-                            <div className="recep-kanban-card border-blue" key={appt.id} onClick={() => setSelectedApptDetails(appt)} style={{ cursor: 'pointer' }}>
-                              <div className="card-top">
-                                <span className="card-time">{getLocalApptTime(appt.appointment_datetime)}</span>
-                                <span className="badge badge-consultation-active">In Progress</span>
-                              </div>
-                              <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
-                              <span className="card-code">{appt.patient?.patient_code}</span>
-                                                             <div className="card-meta">
-                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
-                                <span>{appt.treatment_type}</span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
- 
-                    {/* Completed Lane */}
-                    <div className="recep-kanban-column">
-                      <div className="recep-kanban-col-header bg-green">
-                        <span>Completed</span>
-                        <span className="col-count">{completedToday.length}</span>
-                      </div>
-                      <div className="recep-kanban-col-content">
-                        {completedToday.length === 0 ? (
-                          <div className="kanban-empty">No completed cases</div>
-                        ) : (
-                          completedToday.map((appt) => (
-                            <div className="recep-kanban-card border-green" key={appt.id} onClick={() => setSelectedApptDetails(appt)} style={{ cursor: 'pointer' }}>
-                              <div className="card-top">
-                                <span className="card-time">{getLocalApptTime(appt.appointment_datetime)}</span>
-                                <span className="badge badge-completed">Done</span>
-                              </div>
-                              <h4 className="card-patient-name">{appt.patient?.user?.full_name || 'Walk-in'}</h4>
-                              <span className="card-code">{appt.patient?.patient_code}</span>
-                                                             <div className="card-meta">
-                                                               <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
-                                <span>{appt.treatment_type}</span>
-                              </div>
-                              <div className="card-actions mt-1">
-                                <button 
-                                  className="btn-bill" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setBillingForm({
-                                      patient_id: appt.patient_id,
-                                      total_amount: appt.doctor?.consultation_fee || 500,
-                                      discount_amount: 0,
-                                      tax_amount: 0,
-                                    });
-                                    setActiveTab('billing');
-                                  }}
-                                >
-                                  Create Invoice
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RecepQueueTab
+                  scheduledToday={scheduledToday}
+                  waitingToday={waitingToday}
+                  activeConsultation={activeConsultation}
+                  completedToday={completedToday}
+                  getLocalApptTime={getLocalApptTime}
+                  formatDocName={formatDocName}
+                  setSelectedApptDetails={setSelectedApptDetails}
+                  handleCheckIn={handleCheckIn}
+                  setBillingForm={setBillingForm}
+                  setActiveTab={setActiveTab}
+                />
               )}
 
               {/* PATIENTS TAB */}
               {activeTab === 'patients' && (
-                <div className="recep-patients-view">
-                  <div className="recep-card">
-                    <div className="recep-card-header flex-column-mobile">
-                      <div className="recep-search-wrapper">
-                        <Search size={16} className="recep-search-icon" />
-                        <input
-                          type="text"
-                          className="recep-search-input"
-                          placeholder="Search patient by name, code, phone..."
-                          list="receptionist-patients-suggestions"
-                          value={patientSearchQuery}
-                          onChange={(e) => setPatientSearchQuery(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && searchPatients()}
-                        />
-                        <datalist id="receptionist-patients-suggestions">
-                          {Array.from(new Set((patients || []).map((pat: any) => pat.user?.full_name || pat.name))).map((name: any) => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
-                        <button className="search-btn-action" onClick={searchPatients}>
-                          Search
-                        </button>
-                      </div>
-
-                      <div className="recep-header-actions">
-                        <button className="recep-btn-primary" onClick={() => setShowRegisterModal(true)}>
-                          <UserPlus size={16} /> New Registration
-                        </button>
-                      </div>
-                    </div>
-
-                    {patients.length === 0 ? (
-                      <div className="recep-empty-state">
-                        <Users size={48} />
-                        <p>No patient records found.</p>
-                      </div>
-                    ) : (
-                      <div className="recep-table-container">
-                        <table className="recep-table">
-                          <thead>
-                            <tr>
-                              <th>Patient Code</th>
-                              <th>Name</th>
-                              <th>Age / Gender</th>
-                              <th>Phone</th>
-                              <th>Insurance Details</th>
-                              <th>Status</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {patients.map((p) => {
-                              const age = p.date_of_birth 
-                                ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear() 
-                                : '—';
-                              return (
-                                <tr key={p.id}>
-                                  <td><strong>{p.patient_code}</strong></td>
-                                  <td>{p.user?.full_name || 'N/A'}</td>
-                                  <td>{age} Yrs / {p.gender || '—'}</td>
-                                  <td>{p.user?.phone || '—'}</td>
-                                  <td>{p.insurance_provider ? `${p.insurance_provider} (${p.insurance_policy_no || 'No Policy'})` : 'None'}</td>
-                                  <td>
-                                    <span className={`badge ${p.is_active ? 'badge-completed' : 'badge-cancelled'}`}>
-                                      {p.is_active ? 'Active' : 'Inactive'}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <div className="recep-actions-row">
-                                      <button 
-                                        className="btn-action-history" 
-                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', borderRadius: '6px' }}
-                                        title="View Patient Profile & Details"
-                                        onClick={() => {
-                                          setSelectedPatientForHistory(p);
-                                          fetchPatientHistoryProfile(p.id);
-                                          setIsEditingPatientProfile(false);
-                                          setShowPatientHistoryModal(true);
-                                        }}
-                                      >
-                                        <Eye size={16} /> View Details
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <RecepPatientsTab
+                  patientSearchQuery={patientSearchQuery}
+                  setPatientSearchQuery={setPatientSearchQuery}
+                  searchPatients={searchPatients}
+                  patients={patients}
+                  setShowRegisterModal={setShowRegisterModal}
+                  setSelectedPatientForHistory={setSelectedPatientForHistory}
+                  fetchPatientHistoryProfile={fetchPatientHistoryProfile}
+                  setIsEditingPatientProfile={setIsEditingPatientProfile}
+                  setShowPatientHistoryModal={setShowPatientHistoryModal}
+                />
               )}
 
               {/* BILLING TAB (Create Bill) */}
               {activeTab === 'billing' && (
-                <div className="recep-billing-container">
-                  <div className="recep-billing-form-section">
-                    <div className="recep-card">
-                      <div className="recep-card-header">
-                        <h3>Create New Bill</h3>
-                      </div>
-                      
-                      <form onSubmit={handleCreateInvoice} className="recep-billing-form-body">
-                        <div className="form-group">
-                          <label>Select Patient *</label>
-                          <select
-                            required
-                            className="recep-select-field"
-                            value={billingForm.patient_id}
-                            onChange={(e) => setBillingForm({ ...billingForm, patient_id: e.target.value })}
-                          >
-                            <option value="">-- Select Patient --</option>
-                            {patients.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.user?.full_name} ({p.patient_code})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {loadingPendingCharges && (
-                          <div className="form-help-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1rem 0' }}>
-                            <Loader2 size={16} className="pharmacy-spinner" /> Loading pending clinical charges...
-                          </div>
-                        )}
-
-                        {pendingCharges && (
-                          <div className="pending-charges-section" style={{ margin: '1.5rem 0', padding: '1rem', background: 'var(--surface-2)', borderRadius: '8px' }}>
-                            <h4 style={{ margin: '0 0 1rem 0', color: 'var(--primary-dark)', fontSize: '0.95rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-                              Clinical Breakdown
-                            </h4>
-
-                            {/* 1. Consultations selection */}
-                            {pendingCharges.consultations && pendingCharges.consultations.length > 0 ? (
-                              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Select Consultation to Bill</label>
-                                <select
-                                  className="recep-select-field"
-                                  style={{ padding: '6px 10px', fontSize: '0.9rem' }}
-                                  value={selectedConsultationId || ''}
-                                  onChange={(e) => setSelectedConsultationId(e.target.value || null)}
-                                >
-                                  <option value="">-- Do Not Bill Consultation --</option>
-                                  {pendingCharges.consultations.map((c: any) => (
-                                    <option key={c.id} value={c.id}>
-                                      {formatDocName(c.doctor_name)} ({new Date(c.consultation_datetime).toLocaleDateString()}) - Fee: ₹{c.consultation_fee}
-                                    </option>
-                                  ))}
-                                </select>
-                                
-                                {/* 2. Medicines checkbox (if consultation is selected and has prescriptions) */}
-                                {selectedConsultationId && pendingCharges.consultations.find(c => c.id === selectedConsultationId)?.prescriptions?.some((p: any) => p.items?.length > 0) && (
-                                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-                                    <input
-                                      type="checkbox"
-                                      className="recep-checkbox"
-                                      checked={includeMedicines}
-                                      onChange={(e) => setIncludeMedicines(e.target.checked)}
-                                    />
-                                    Include Dispensed Prescriptions/Medicines (₹{
-                                      pendingCharges.consultations.find(c => c.id === selectedConsultationId)?.prescriptions?.reduce((sum: number, p: any) => 
-                                        sum + (p.items?.reduce((pSum: number, item: any) => pSum + (item.total_price || 0), 0) || 0)
-                                      , 0).toFixed(2)
-                                    })
-                                  </label>
-                                )}
-                              </div>
-                            ) : (
-                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>No unbilled consultations found.</p>
-                            )}
-
-                            {/* 3. Treatment plan selection */}
-                            {pendingCharges.treatment_plans && pendingCharges.treatment_plans.length > 0 ? (
-                              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                                <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Select Treatment Plan / Procedures</label>
-                                <select
-                                  className="recep-select-field"
-                                  style={{ padding: '6px 10px', fontSize: '0.9rem' }}
-                                  value={selectedTreatmentPlanId || ''}
-                                  onChange={(e) => setSelectedTreatmentPlanId(e.target.value || null)}
-                                >
-                                  <option value="">-- Do Not Bill Treatment Plan --</option>
-                                  {pendingCharges.treatment_plans.map((p: any) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.title} ({p.procedures?.length} procedures) - Cost: ₹{p.procedures?.reduce((sum: number, proc: any) => sum + proc.cost, 0)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            ) : (
-                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>No active/unbilled treatment plans found.</p>
-                            )}
-
-                            {/* 4. Used Materials & Consumables */}
-                            <div className="form-group" style={{ marginBottom: '0.5rem' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-                                <input
-                                  type="checkbox"
-                                  className="recep-checkbox"
-                                  checked={includeMaterials}
-                                  onChange={(e) => setIncludeMaterials(e.target.checked)}
-                                />
-                                Include Used Clinical Things / Materials (₹)
-                              </label>
-                              {includeMaterials && (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  className="recep-input-field"
-                                  style={{ marginTop: '0.5rem', padding: '6px 10px', fontSize: '0.9rem' }}
-                                  value={customMaterialsCost}
-                                  onChange={(e) => setCustomMaterialsCost(parseFloat(e.target.value) || 0)}
-                                  placeholder="Enter materials cost"
-                                />
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="form-group">
-                          <label>Subtotal / Combined Cost (₹) *</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            required
-                            className="recep-input-field readonly"
-                            readOnly
-                            placeholder="Select patient to load cost"
-                            value={billingForm.total_amount || ''}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label>Discount Amount (₹)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="recep-input-field"
-                            placeholder="Enter discount if any"
-                            value={billingForm.discount_amount || ''}
-                            onChange={(e) => setBillingForm({ ...billingForm, discount_amount: parseFloat(e.target.value) || 0 })}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label>GST / Tax Amount (₹)</label>
-                          <div className="gst-input-wrapper">
-                            <input
-                              type="number"
-                              readOnly={currentUser?.role !== 'admin'}
-                              className={`recep-input-field ${currentUser?.role !== 'admin' ? 'readonly' : ''}`}
-                              placeholder="Calculated tax"
-                              value={billingForm.tax_amount}
-                              onChange={(e) => setBillingForm({ ...billingForm, tax_amount: parseFloat(e.target.value) || 0 })}
-                            />
-                            <span className="gst-badge">18% GST</span>
-                          </div>
-                          {currentUser?.role !== 'admin' ? (
-                            <span className="form-help-text">GST rate is fixed at 18%. Only administrators can edit this rate.</span>
-                          ) : (
-                            <span className="form-help-text text-success">Admin Access: You can manually override the GST amount if needed.</span>
-                          )}
-                        </div>
-
-                        <button 
-                          type="submit" 
-                          className="recep-btn-primary full-width" 
-                          disabled={submitLoading || !billingForm.patient_id || billingForm.total_amount <= 0}
-                          style={{ marginTop: '1.5rem' }}
-                        >
-                          {submitLoading ? 'Generating...' : 'Generate & Save Bill'}
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-
-                  {/* Real-time Bill Receipt Preview */}
-                  <div className="recep-billing-preview-section">
-                    <div className="recep-card bill-receipt-card">
-                      <div className="receipt-header">
-                        <div className="clinic-logo-text">Vertical Clinic</div>
-                        <div className="receipt-title">BILL RECEIPT PREVIEW</div>
-                        <div className="receipt-meta">
-                          <span>Date: {new Date().toLocaleDateString()}</span>
-                          <span>Status: <span className="status-unpaid">UNPAID (Pending)</span></span>
-                        </div>
-                      </div>
-
-                      <div className="receipt-divider"></div>
-
-                      <div className="receipt-section">
-                        <h4>Patient Information</h4>
-                        {(() => {
-                          const patient = patients.find(p => p.id === billingForm.patient_id);
-                          if (!patient) return <p className="placeholder-text">No patient selected</p>;
-                          return (
-                            <div className="receipt-patient-details">
-                              <p><strong>Name:</strong> {patient.user?.full_name}</p>
-                              <p><strong>Code:</strong> {patient.patient_code}</p>
-                              <p><strong>Phone:</strong> {patient.user?.phone || '—'}</p>
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="receipt-divider"></div>
-
-                      <div className="receipt-section">
-                        <h4>Billing Breakdowns</h4>
-                        {selectedConsultationId && (() => {
-                          const consultation = pendingCharges?.consultations.find(c => c.id === selectedConsultationId);
-                          return (
-                            <>
-                              <div className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                                <span>Consultation: {formatDocName(consultation?.doctor_name)}</span>
-                                <span>₹{(consultation?.consultation_fee || 0).toFixed(2)}</span>
-                              </div>
-                              {includeMedicines && consultation?.prescriptions?.map((p: any) => 
-                                p.items?.map((item: any, itemIdx: number) => (
-                                  <div key={itemIdx} className="receipt-row" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', paddingLeft: '1rem' }}>
-                                    <span>Medicine: {item.medicine_name} ({item.qty})</span>
-                                    <span>₹{(item.total_price || 0).toFixed(2)}</span>
-                                  </div>
-                                ))
-                              )}
-                            </>
-                          );
-                        })()}
-
-                        {selectedTreatmentPlanId && (() => {
-                          const plan = pendingCharges?.treatment_plans.find(p => p.id === selectedTreatmentPlanId);
-                          return plan?.procedures?.map((proc: any, procIdx: number) => (
-                            <div key={procIdx} className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                              <span>Procedure: {proc.procedure_name}</span>
-                              <span>₹{(proc.cost || 0).toFixed(2)}</span>
-                            </div>
-                          ));
-                        })()}
-
-                        {includeMaterials && (
-                          <div className="receipt-row" style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                            <span>Clinical Materials &amp; Sterile Consumables</span>
-                            <span>₹{Number(customMaterialsCost || 0).toFixed(2)}</span>
-                          </div>
-                        )}
-
-                        {!selectedConsultationId && !selectedTreatmentPlanId && !includeMaterials && (
-                          <div className="receipt-row">
-                            <span>Subtotal Cost</span>
-                            <span>₹{(billingForm.total_amount || 0).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        <div className="receipt-row">
-                          <span>GST (18%)</span>
-                          <span>+ ₹{(billingForm.tax_amount || 0).toFixed(2)}</span>
-                        </div>
-                        <div className="receipt-row text-danger">
-                          <span>Discount</span>
-                          <span>- ₹{(billingForm.discount_amount || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      <div className="receipt-divider"></div>
-
-                      <div className="receipt-total-row">
-                        <span>Grand Total Due</span>
-                        <span className="grand-total-val">
-                          ₹{Math.max(0, (billingForm.total_amount || 0) - (billingForm.discount_amount || 0) + (billingForm.tax_amount || 0)).toFixed(2)}
-                        </span>
-                      </div>
-
-                      <div className="receipt-footer">
-                        <p>Thank you for choosing Vertical Clinic!</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RecepBillingTab
+                  handleCreateInvoice={handleCreateInvoice}
+                  billingForm={billingForm}
+                  setBillingForm={setBillingForm}
+                  patients={patients}
+                  loadingPendingCharges={loadingPendingCharges}
+                  pendingCharges={pendingCharges}
+                  selectedConsultationId={selectedConsultationId}
+                  setSelectedConsultationId={setSelectedConsultationId}
+                  includeMedicines={includeMedicines}
+                  setIncludeMedicines={setIncludeMedicines}
+                  selectedTreatmentPlanId={selectedTreatmentPlanId}
+                  setSelectedTreatmentPlanId={setSelectedTreatmentPlanId}
+                  selectedAdmissionIds={selectedAdmissionIds}
+                  setSelectedAdmissionIds={setSelectedAdmissionIds}
+                  includeMaterials={includeMaterials}
+                  setIncludeMaterials={setIncludeMaterials}
+                  customMaterialsCost={customMaterialsCost}
+                  setCustomMaterialsCost={setCustomMaterialsCost}
+                  submitLoading={submitLoading}
+                  currentUser={currentUser}
+                  formatDocName={formatDocName}
+                />
               )}
 
               {/* INVOICES TAB */}
               {activeTab === 'invoices' && (
-                <div className="recep-billing-view">
-                  <div className="recep-card">
-                    <div className="recep-card-header">
-                      <div className="recep-search-wrapper">
-                        <Search size={16} className="recep-search-icon" />
-                        <input
-                          type="text"
-                          className="recep-search-input"
-                          placeholder="Search invoices by patient, invoice #..."
-                          list="receptionist-invoices-suggestions"
-                          value={billingSearchQuery}
-                          onChange={(e) => setBillingSearchQuery(e.target.value)}
-                        />
-                        <datalist id="receptionist-invoices-suggestions">
-                          {Array.from(new Set(
-                            (invoices || []).flatMap((inv: any) => {
-                              const name = inv.patient?.user?.full_name || '';
-                              const invoiceNum = inv.invoice_number || '';
-                              return [name, invoiceNum].filter(Boolean);
-                            })
-                          )).map((val: any) => (
-                            <option key={val} value={val} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <button 
-                        className="recep-btn-primary" 
-                        onClick={() => {
-                          setBillingForm({
-                            patient_id: '',
-                            total_amount: 0,
-                            discount_amount: 0,
-                            tax_amount: 0,
-                          });
-                          setActiveTab('billing');
-                        }}
-                      >
-                        <Plus size={16} /> New Bill
-                      </button>
-                    </div>
-
-                    {filteredInvoices.length === 0 ? (
-                      <div className="recep-empty-state">
-                        <FileText size={48} />
-                        <p>No invoices matching your query.</p>
-                      </div>
-                    ) : (
-                      <div className="recep-table-container">
-                        <table className="recep-table">
-                          <thead>
-                            <tr>
-                              <th>Invoice #</th>
-                              <th>Patient</th>
-                              <th>Subtotal</th>
-                              <th>Discount</th>
-                              <th>Tax (GST)</th>
-                              <th>Grand Total</th>
-                              <th>Paid</th>
-                              <th>Balance Due</th>
-                              <th>Status</th>
-                              <th>Created</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredInvoices.map((inv) => (
-                              <>
-                              <tr key={inv.id}>
-                                <td><strong>{inv.invoice_number}</strong></td>
-                                <td>
-                                  <div>{inv.patient?.user?.full_name}</div>
-                                  <small style={{ color: 'var(--muted)' }}>{inv.patient?.patient_code}</small>
-                                </td>
-                                <td>₹{inv.total_amount.toLocaleString('en-IN')}</td>
-                                <td>₹{inv.discount_amount.toLocaleString('en-IN')}</td>
-                                <td>₹{inv.tax_amount.toLocaleString('en-IN')}</td>
-                                <td><strong>₹{inv.grand_total.toLocaleString('en-IN')}</strong></td>
-                                <td>₹{inv.amount_paid.toLocaleString('en-IN')}</td>
-                                <td style={{ color: inv.balance_due > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 600 }}>
-                                  ₹{inv.balance_due.toLocaleString('en-IN')}
-                                </td>
-                                <td>
-                                  {(() => {
-                                    const effStatus = getInvoiceEffectiveStatus(inv);
-                                    return (
-                                      <span className={`badge ${
-                                        effStatus === 'paid' ? 'badge-completed' :
-                                        effStatus === 'partially_paid' ? 'badge-confirmed' :
-                                        effStatus === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
-                                      }`}>
-                                        {effStatus === 'paid' ? 'Paid' :
-                                         effStatus === 'partially_paid' ? 'Partial' :
-                                         effStatus === 'cancelled' ? 'Cancelled' : 'Unpaid'}
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                                <td>{new Date(inv.created_at).toLocaleDateString()}</td>
-                                <td>
-                                  <div className="recep-actions-row">
-                                    <button 
-                                      className="btn-download"
-                                      onClick={() => {
-                                        setSelectedInvoiceForPreview(inv);
-                                        setShowInvoicePreviewModal(true);
-                                      }}
-                                      title="View Details & Receipt"
-                                    >
-                                      <Eye size={14} /> View Details
-                                    </button>
-                                    {inv.balance_due > 0 && (
-                                      <button 
-                                        className="btn-pay"
-                                        onClick={() => {
-                                          setSelectedInvoiceForPayment(inv);
-                                          setPaymentForm({
-                                            amount: inv.balance_due,
-                                            payment_method: 'cash',
-                                            transaction_reference: '',
-                                          });
-                                          setShowPaymentModal(true);
-                                        }}
-                                      >
-                                        <CreditCard size={14} /> Pay
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                              {/* Medicine Breakdown Row */}
-                              {inv.prescription_items && inv.prescription_items.length > 0 && (
-                                <tr key={`${inv.id}-medicines`} style={{ background: '#f8faff' }}>
-                                  <td colSpan={11} style={{ padding: '8px 16px 12px 32px' }}>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3b82f6', marginRight: '4px' }}>💊 Medicines:</span>
-                                      {inv.prescription_items.map((med: any, midx: number) => (
-                                        <span key={midx} style={{
-                                          background: '#eff6ff',
-                                          color: '#1e40af',
-                                          borderRadius: '20px',
-                                          padding: '2px 10px',
-                                          fontSize: '0.75rem',
-                                          fontWeight: 600,
-                                          border: '1px solid #bfdbfe',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '4px'
-                                        }}>
-                                          {med.medicine_name}
-                                          <span style={{ color: '#6b7280', fontWeight: 400 }}>{med.dosage} · {med.duration}</span>
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                              </>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <RecepInvoicesTab
+                  billingSearchQuery={billingSearchQuery}
+                  setBillingSearchQuery={setBillingSearchQuery}
+                  invoices={invoices}
+                  setBillingForm={setBillingForm}
+                  setActiveTab={setActiveTab}
+                  filteredInvoices={filteredInvoices}
+                  getInvoiceEffectiveStatus={getInvoiceEffectiveStatus}
+                  setSelectedInvoiceForPreview={setSelectedInvoiceForPreview}
+                  setShowInvoicePreviewModal={setShowInvoicePreviewModal}
+                  setSelectedInvoiceForPayment={setSelectedInvoiceForPayment}
+                  setPaymentForm={setPaymentForm}
+                  setShowPaymentModal={setShowPaymentModal}
+                />
               )}
 
               {/* CHECK-IN TAB */}
               {activeTab === 'checkin' && (
-                <div className="recep-checkin-container">
-                  {/* Left Column: Search & Patient List */}
-                  <div className="recep-checkin-search-section">
-                    <div className="recep-card">
-                      <div className="recep-card-header">
-                        <h3>Today's Patient List</h3>
-                      </div>
-                      <div className="recep-checkin-search-bar-wrapper">
-                        <Search size={18} className="recep-search-icon-inside" />
-                        <input
-                          type="text"
-                          className="recep-checkin-search-input"
-                          placeholder="Search today's patients by name, code or phone..."
-                          list="receptionist-today-patients-suggestions"
-                          value={checkInSearchQuery}
-                          onChange={(e) => setCheckInSearchQuery(e.target.value)}
-                        />
-                        <datalist id="receptionist-today-patients-suggestions">
-                          {Array.from(new Set(
-                            (appointments || []).filter((a: any) => getLocalApptDate(a.appointment_datetime) === today).map((a: any) => a.patient?.user?.full_name || '')
-                          )).map((name: any) => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
-                      </div>
+                <RecepCheckInTab
+                  checkInSearchQuery={checkInSearchQuery}
+                  setCheckInSearchQuery={setCheckInSearchQuery}
+                  appointments={appointments}
+                  getLocalApptDate={getLocalApptDate}
+                  today={today}
+                  checkInFilteredAppointments={checkInFilteredAppointments}
+                  selectedApptForCheckIn={selectedApptForCheckIn}
+                  setSelectedApptForCheckIn={setSelectedApptForCheckIn}
+                  getLocalApptTime={getLocalApptTime}
+                  handleCheckIn={handleCheckIn}
+                  formatDocName={formatDocName}
+                />
+              )}
 
-                      <div className="recep-checkin-patient-list">
-                        {checkInFilteredAppointments.length === 0 ? (
-                          <div className="recep-empty-state" style={{ padding: '2rem' }}>
-                            <Users size={32} />
-                            <p>No patients scheduled for today.</p>
-                          </div>
-                        ) : (
-                          checkInFilteredAppointments.map((appt) => {
-                            const isSelected = selectedApptForCheckIn?.id === appt.id;
-                            const p = appt.patient;
-                            const timeStr = getLocalApptTime(appt.appointment_datetime);
-                            const [hour, minute] = timeStr.split(':');
-                            const formattedTime = `${parseInt(hour) % 12 || 12}:${minute} ${parseInt(hour) >= 12 ? 'PM' : 'AM'}`;
-                            
-                            return (
-                              <div 
-                                key={appt.id}
-                                className={`recep-checkin-patient-card ${isSelected ? 'selected' : ''}`}
-                                onClick={() => setSelectedApptForCheckIn(appt)}
-                              >
-                                <div className="patient-avatar-circle">
-                                  {p?.user?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'PT'}
-                                </div>
-                                <div className="patient-details">
-                                  <span className="patient-name">{p?.user?.full_name || 'N/A'}</span>
-                                  <span className="patient-code-phone">
-                                    {p?.patient_code} &middot; {p?.user?.phone || '—'}
-                                  </span>
-                                  <span style={{ fontSize: '0.78rem', color: 'var(--primary)', marginTop: '2px', display: 'block', fontWeight: 500 }}>
-                                    Time: {formattedTime} &middot; Reason: {appt.treatment_type}
-                                  </span>
-                                </div>
-                                <div className="patient-actions" onClick={(e) => e.stopPropagation()}>
-                                  {appt.status === 'completed' ? (
-                                    <span className="badge badge-completed" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>Completed</span>
-                                  ) : appt.status === 'in_consultation' || appt.status === 'In Consultation' ? (
-                                    <span className="badge badge-confirmed" style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>In Consultation</span>
-                                  ) : appt.status === 'checked_in' || appt.status === 'Waiting' ? (
-                                    <span className="badge badge-completed">Checked In</span>
-                                  ) : (
-                                    <button 
-                                      className="recep-checkin-btn-action"
-                                      onClick={() => handleCheckIn(appt.id)}
-                                    >
-                                      <UserCheck size={16} /> Check In
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Column: Today's Appointment Detail */}
-                  <div className="recep-checkin-detail-section">
-                    <div className="recep-card">
-                      <div className="recep-card-header">
-                        <h3>Appointment Details</h3>
-                      </div>
-                      
-                      {selectedApptForCheckIn ? (
-                        (() => {
-                          const appt = appointments.find(a => a.id === selectedApptForCheckIn.id);
-                          if (!appt || appt.status === 'cancelled' || appt.status === 'rejected') {
-                            return (
-                              <div className="recep-checkin-detail-empty">
-                                <AlertCircle size={32} className="warning-icon" />
-                                <p className="title">Appointment Cancelled or Rejected</p>
-                                <p className="subtitle">This appointment is no longer active.</p>
-                              </div>
-                            );
-                          }
-                          
-                          // Format appointment time
-                          const timeStr = getLocalApptTime(appt.appointment_datetime);
-                          const [hour, minute] = timeStr.split(':');
-                          const formattedTime = `${parseInt(hour) % 12 || 12}:${minute} ${parseInt(hour) >= 12 ? 'PM' : 'AM'}`;
-
-                          return (
-                            <div className="recep-checkin-detail-body">
-                              <div className="detail-row">
-                                <span className="label">Appointment ID</span>
-                                <span className="value text-primary font-bold">APT-{appt.id.slice(0, 5).toUpperCase()}</span>
-                              </div>
-                              <div className="detail-row">
-                                <span className="label">Patient Name</span>
-                                <span className="value font-medium">{appt.patient?.user?.full_name}</span>
-                              </div>
-                              <div className="detail-row">
-                                <span className="label">Phone Number</span>
-                                <span className="value font-medium">{appt.patient?.user?.phone || '—'}</span>
-                              </div>
-                              <div className="detail-row">
-                                <span className="label">Reason / Type</span>
-                                <span className="value font-medium">{appt.treatment_type}</span>
-                              </div>
-                              <div className="detail-row">
-                                <span className="label">Doctor Assigned</span>
-                                <span className="value font-medium">{formatDocName(appt.doctor?.user?.full_name || 'N/A')}</span>
-                              </div>
-                              <div className="detail-row">
-                                <span className="label">Scheduled Time</span>
-                                <span className="value font-medium">{formattedTime}</span>
-                              </div>
-                              {appt.notes && (
-                                <div className="detail-row" style={{ display: 'block', marginTop: '8px' }}>
-                                  <span className="label" style={{ display: 'block', marginBottom: '4px' }}>Notes / Reason details</span>
-                                  <span className="value" style={{ display: 'block', padding: '8px', backgroundColor: 'var(--surface-2)', borderRadius: '6px', fontSize: '0.85rem' }}>
-                                    {appt.notes}
-                                  </span>
-                                </div>
-                              )}
-                              
-                              <div className="detail-divider"></div>
-                              
-                              {appt.status === 'completed' ? (
-                                <div className="checked-in-status-box" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', marginTop: '1rem' }}>
-                                  <CheckCircle size={20} /> Consultation Completed
-                                </div>
-                              ) : appt.status === 'in_consultation' || appt.status === 'In Consultation' ? (
-                                <div className="checked-in-status-box" style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', marginTop: '1rem' }}>
-                                  <CheckCircle size={20} /> Currently In Consultation
-                                </div>
-                              ) : appt.status === 'checked_in' || appt.status === 'Waiting' ? (
-                                <div className="checked-in-status-box">
-                                  <CheckCircle size={20} /> Checked In & Added to Queue
-                                </div>
-                              ) : (
-                                <>
-                                  <p className="detail-notice">
-                                    Once checked in, the patient will be added to the queue and the doctor will be notified automatically.
-                                  </p>
-                                  <button 
-                                    className="recep-btn-primary full-width"
-                                    style={{ marginTop: '1.5rem' }}
-                                    onClick={() => handleCheckIn(appt.id)}
-                                  >
-                                    <UserCheck size={18} /> Check In Patient
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <div className="recep-checkin-detail-empty">
-                          <Users size={32} />
-                          <p className="title">Select a Patient</p>
-                          <p className="subtitle">Click on a patient from the list to view and verify their appointment details.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+              {/* IPD BED MANAGEMENT WORKSPACE */}
+              {activeTab === 'beds' && (
+                <RecepBedsTab
+                  bedSubTab={bedSubTab}
+                  setBedSubTab={setBedSubTab}
+                  fetchAdmissionHistory={fetchAdmissionHistory}
+                  isLoadingHistory={isLoadingHistory}
+                  fetchBedsData={fetchBedsData}
+                  isLoadingBeds={isLoadingBeds}
+                  pendingAdmissionRequests={pendingAdmissionRequests}
+                  setActiveAdmissionRequestId={setActiveAdmissionRequestId}
+                  setAdmitForm={setAdmitForm}
+                  bedsData={bedsData}
+                  setSelectedBed={setSelectedBed}
+                  setIsAdmitModalOpen={setIsAdmitModalOpen}
+                  showToast={showToast}
+                  bedsError={bedsError}
+                  historySearchQuery={historySearchQuery}
+                  setHistorySearchQuery={setHistorySearchQuery}
+                  admissionHistory={admissionHistory}
+                  fetchHistoryDetails={fetchHistoryDetails}
+                  handleCleanBed={handleCleanBed}
+                  setIsVitalsModalOpen={setIsVitalsModalOpen}
+                  fetchClinicalRecords={fetchClinicalRecords}
+                  setIsMacModalOpen={setIsMacModalOpen}
+                  setIsTransferModalOpen={setIsTransferModalOpen}
+                  setIsCheckoutModalOpen={setIsCheckoutModalOpen}
+                  fetchCheckoutBill={fetchCheckoutBill}
+                />
               )}
 
               {/* TAB: AVAILABILITY SETTINGS MANAGER */}
               {activeTab === 'availability' && (
-                <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px 0', width: '100%' }}>
-                  {/* Top Banner Accent */}
-                  <div style={{
-                    background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
-                    color: '#ffffff',
-                    padding: '24px 28px',
-                    borderRadius: '12px',
-                    marginBottom: '24px',
-                    boxShadow: '0 4px 12px rgba(15, 118, 110, 0.08)'
-                  }}>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Calendar size={22} /> Availability & Schedule Settings
-                    </h2>
-                    <p style={{ margin: '8px 0 0 0', fontSize: '0.85rem', color: '#ccfbf1', lineHeight: 1.4, opacity: 0.9 }}>
-                      Your shift timings are synchronized with branch operating parameters. If you need to take leaves, please click <strong>Request Leave</strong> to submit a leave application to the clinic admin for approval.
-                    </p>
-                    <div style={{ marginTop: '16px' }}>
-                      <button
-                        onClick={() => setIsRequestingChange(true)}
-                        style={{
-                          backgroundColor: '#ffffff',
-                          color: '#0f766e',
-                          border: 'none',
-                          padding: '10px 20px',
-                          borderRadius: '8px',
-                          fontWeight: '700',
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                        }}
-                      >
-                        <Plus size={16} /> Request Leave
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Read-only availability parameters */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginBottom: '24px' }}>
-                    
-                    {/* Working Hours Card */}
-                    <div className="recep-card" style={{ 
-                      padding: '24px', 
-                      marginBottom: 0, 
-                      borderRadius: '16px', 
-                      background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)', 
-                      border: '1px solid #bbf7d0',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      cursor: 'default',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
-                    }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '12px', 
-                          backgroundColor: '#dcfce7', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
-                        }}>
-                          <Clock size={20} color="#16a34a" />
-                        </div>
-                        <span style={{ fontSize: '1rem', fontWeight: '700', color: '#14532d' }}>Working Hours</span>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.8rem', color: '#166534', fontWeight: '500', marginBottom: '4px' }}>Daily Shift Hours</div>
-                        <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#15803d', letterSpacing: '-0.5px' }}>
-                          {(() => {
-                            const userBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
-                            const formatHour = (timeStr: string) => {
-                              if (!timeStr) return '';
-                              return timeStr.slice(0, 5);
-                            };
-                            const start = userBranch ? formatHour(userBranch.opening_hour) : '09:00';
-                            const end = userBranch ? formatHour(userBranch.closing_hour) : '21:00';
-                            return `${start} - ${end}`;
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Operational Breaks Card */}
-                    <div className="recep-card" style={{ 
-                      padding: '24px', 
-                      marginBottom: 0, 
-                      borderRadius: '16px', 
-                      background: 'linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)', 
-                      border: '1px solid #fde68a',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      cursor: 'default',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
-                    }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '12px', 
-                          backgroundColor: '#fef3c7', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
-                        }}>
-                          <Clock size={20} color="#d97706" />
-                        </div>
-                        <span style={{ fontSize: '1rem', fontWeight: '700', color: '#78350f' }}>Operational Breaks</span>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.8rem', color: '#92400e', fontWeight: '500', marginBottom: '4px' }}>Daily Lunch Break</div>
-                        <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#b45309', letterSpacing: '-0.5px' }}>13:00 - 14:00</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Leave Requests History */}
-                  <div className="recep-card" style={{ padding: '24px' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--recep-text-dark)', marginBottom: '12px' }}>
-                      Leave Requests History
-                    </h3>
-                    {myRequests.length === 0 ? (
-                      <p style={{ fontSize: '0.85rem', color: 'var(--recep-text-muted)', margin: 0 }}>You have not submitted any leave requests yet.</p>
-                    ) : (
-                      <div className="recep-table-container" style={{ margin: 0, overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                          <thead>
-                            <tr style={{ borderBottom: '2px solid var(--recep-border)', textAlign: 'left' }}>
-                              <th style={{ padding: '10px 8px' }}>Type</th>
-                              <th style={{ padding: '10px 8px' }}>Requested Dates</th>
-                              <th style={{ padding: '10px 8px' }}>Reason</th>
-                              <th style={{ padding: '10px 8px' }}>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {myRequests.map((req: any) => {
-                              const propStr = `${req.proposed_start_date} to ${req.proposed_end_date}`;
-                              return (
-                                <tr key={req.id} style={{ borderBottom: '1px solid var(--recep-border)' }}>
-                                  <td style={{ padding: '12px 8px', fontWeight: 600 }}>Leave</td>
-                                  <td style={{ padding: '12px 8px' }}>{propStr}</td>
-                                  <td style={{ padding: '12px 8px' }}>{req.reason}</td>
-                                  <td style={{ padding: '12px 8px' }}>
-                                    <span style={{
-                                      display: 'inline-block',
-                                      padding: '4px 8px',
-                                      borderRadius: '6px',
-                                      fontSize: '0.75rem',
-                                      fontWeight: 600,
-                                      textTransform: 'uppercase',
-                                      backgroundColor: 
-                                        req.status === 'approved' ? '#dcfce7' : 
-                                        req.status === 'rejected' ? '#fee2e2' : '#fef3c7',
-                                      color: 
-                                        req.status === 'approved' ? '#15803d' : 
-                                        req.status === 'rejected' ? '#b91c1c' : '#b45309'
-                                    }}>
-                                      {req.status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <RecepAvailabilityTab
+                  setIsRequestingChange={setIsRequestingChange}
+                  branches={branches}
+                  selectedBranchId={selectedBranchId}
+                  myRequests={myRequests}
+                />
               )}
             </>
           )}
@@ -4138,59 +2920,89 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   </tr>
                 </thead>
                 <tbody>
-                  {/* 1. Consultation */}
-                  {selectedInvoiceForPreview.consultation && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>
-                        <div>Consultation Fee</div>
-                        <small style={{ color: 'var(--muted)' }}>{formatDocName(selectedInvoiceForPreview.consultation.doctor?.user?.full_name)}</small>
-                      </td>
-                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                        ₹{(selectedInvoiceForPreview.consultation.doctor?.consultation_fee || 500).toFixed(2)}
-                      </td>
-                    </tr>
-                  )}
+                  {selectedInvoiceForPreview.items_breakdown && selectedInvoiceForPreview.items_breakdown.length > 0 ? (
+                    selectedInvoiceForPreview.items_breakdown.map((item: any, idx: number) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '10px 0', color: item.amount < 0 ? 'var(--success)' : 'var(--text-primary)', fontWeight: item.amount < 0 ? 600 : 500 }}>
+                          {item.description}
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600, color: item.amount < 0 ? 'var(--success)' : 'var(--text-primary)' }}>
+                          {item.amount < 0 ? `- ₹${Math.abs(item.amount).toFixed(2)}` : `₹${item.amount.toFixed(2)}`}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <>
+                      {/* 1. Consultation */}
+                      {selectedInvoiceForPreview.consultation && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>Consultation Fee</div>
+                            <small style={{ color: 'var(--muted)' }}>{formatDocName(selectedInvoiceForPreview.consultation.doctor?.user?.full_name)}</small>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            ₹{(selectedInvoiceForPreview.consultation.doctor?.consultation_fee || 500).toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
 
-                  {/* 2. Prescription Items */}
-                  {selectedInvoiceForPreview.prescription_items && selectedInvoiceForPreview.prescription_items.length > 0 && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>
-                        <div>Dispensed Medicines / Prescriptions</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                          {selectedInvoiceForPreview.prescription_items.map((item: any, idx: number) => (
-                            <span key={idx} style={{ fontSize: '0.75rem', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', color: 'var(--primary-dark)' }}>
-                              {item.medicine_name}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 0', textAlign: 'right', verticalAlign: 'middle' }}>
-                        Included
-                      </td>
-                    </tr>
-                  )}
+                      {/* 2. Prescription Items */}
+                      {selectedInvoiceForPreview.prescription_items && selectedInvoiceForPreview.prescription_items.length > 0 && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>Dispensed Medicines / Prescriptions</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                              {selectedInvoiceForPreview.prescription_items.map((item: any, idx: number) => (
+                                <span key={idx} style={{ fontSize: '0.75rem', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', color: 'var(--primary-dark)' }}>
+                                  {item.medicine_name}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', verticalAlign: 'middle' }}>
+                            Included
+                          </td>
+                        </tr>
+                      )}
 
-                  {/* 3. Treatment Plan */}
-                  {selectedInvoiceForPreview.treatment_plan && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>
-                        <div>Treatment Plan Procedures</div>
-                        <small style={{ color: 'var(--muted)' }}>{selectedInvoiceForPreview.treatment_plan.title}</small>
-                      </td>
-                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                        ₹{(selectedInvoiceForPreview.treatment_plan.procedures?.reduce((sum: number, p: any) => sum + (p.cost || 0), 0) || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  )}
-                  
-                  {/* Default fallback row if no consultation/treatment plan (standard bill) */}
-                  {!selectedInvoiceForPreview.consultation && !selectedInvoiceForPreview.treatment_plan && (
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0' }}>General Consultation & Billed Services</td>
-                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                        ₹{selectedInvoiceForPreview.total_amount.toFixed(2)}
-                      </td>
-                    </tr>
+                      {/* 3. Treatment Plan */}
+                      {selectedInvoiceForPreview.treatment_plan && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>Treatment Plan Procedures</div>
+                            <small style={{ color: 'var(--muted)' }}>{selectedInvoiceForPreview.treatment_plan.title}</small>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            ₹{(selectedInvoiceForPreview.treatment_plan.procedures?.reduce((sum: number, p: any) => sum + (p.cost || 0), 0) || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
+
+                      {/* 4. IPD Admission Stay */}
+                      {selectedInvoiceForPreview.admission && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>
+                            <div>IPD Bed Stay & Rent</div>
+                            <small style={{ color: 'var(--muted)' }}>
+                              {formatBedNumber(selectedInvoiceForPreview.admission.bed?.bed_number || '') || 'N/A'} ({selectedInvoiceForPreview.admission.bed?.category?.name || 'IPD Category'})
+                            </small>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            Included in total
+                          </td>
+                        </tr>
+                      )}
+                      
+                      {/* Default fallback row if no consultation/treatment plan/admission (standard bill) */}
+                      {!selectedInvoiceForPreview.consultation && !selectedInvoiceForPreview.treatment_plan && !selectedInvoiceForPreview.admission && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 0' }}>General Consultation & Billed Services</td>
+                          <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                            ₹{selectedInvoiceForPreview.total_amount.toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -4952,6 +3764,626 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. ADMIT PATIENT MODAL */}
+      <AdmitPatientModal
+        isOpen={isAdmitModalOpen}
+        onClose={() => {
+          setIsAdmitModalOpen(false);
+          setActiveAdmissionRequestId(null);
+        }}
+        selectedBed={selectedBed}
+        setSelectedBed={setSelectedBed}
+        activeAdmissionRequestId={activeAdmissionRequestId}
+        setActiveAdmissionRequestId={setActiveAdmissionRequestId}
+        admitForm={admitForm}
+        setAdmitForm={setAdmitForm}
+        bedsData={bedsData}
+        patients={patients}
+        doctors={doctors}
+        pendingAdmissionRequests={pendingAdmissionRequests}
+        onSubmit={handleAdmitPatient}
+      />
+
+      {/* 2. TRANSFER BED MODAL */}
+      {isTransferModalOpen && selectedBed && (
+        <div className="recep-modal-overlay" onClick={() => setIsTransferModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '500px', maxWidth: '92vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Transfer Patient — From {formatBedNumber(selectedBed.bed_number)}</h3>
+              <button className="close-btn" onClick={() => setIsTransferModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleTransferPatient}>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label>Target Bed (Available beds only)</label>
+                <select
+                  className="recep-select-field"
+                  value={transferForm.to_bed_id}
+                  onChange={(e) => setTransferForm({ ...transferForm, to_bed_id: e.target.value })}
+                  required
+                >
+                  <option value="">-- Choose Available Bed --</option>
+                  {bedsData
+                    .filter((b: any) => b.status === 'available')
+                    .map((b: any) => (
+                      <option key={b.id} value={b.id}>
+                        {formatBedNumber(b.bed_number)} ({b.category?.name} - ₹{b.category?.base_charge_24h}/day)
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label>Transfer Reason</label>
+                <textarea
+                  className="recep-input-field"
+                  rows={3}
+                  value={transferForm.reason}
+                  onChange={(e) => setTransferForm({ ...transferForm, reason: e.target.value })}
+                  placeholder="e.g. Patient requested deluxe room, clinical condition requires ICU monitoring"
+                  required
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                <button type="button" className="btn-cancel" onClick={() => setIsTransferModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-submit">Transfer Patient</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. VITALS ROUNDING LOG MODAL */}
+      {isVitalsModalOpen && selectedBed && selectedBed.active_admission && (
+        <div className="recep-modal-overlay" onClick={() => setIsVitalsModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '850px', maxWidth: '95vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Clinical Rounding: Vitals & Nursing Logs</h3>
+              <button className="close-btn" onClick={() => setIsVitalsModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* Left Side: Vitals History */}
+              <div style={{ borderRight: '1px solid #e2e8f0', paddingRight: '20px', maxHeight: '450px', overflowY: 'auto' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Vitals History</h4>
+                {isLoadingClinical ? (
+                  <RefreshCw size={24} className="spin-animation" />
+                ) : vitalsHistory.length === 0 ? (
+                  <p style={{ fontSize: '0.84rem', color: '#64748b' }}>No clinical logs recorded for this admission yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {vitalsHistory.map((v: any) => (
+                      <div key={v.id} style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: '6px', color: '#0f766e' }}>
+                          <span>Temp: {v.temp}°F | SpO2: {v.spo2}%</span>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>{new Date(v.recorded_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div>Pulse: {v.pulse} bpm | Resp: {v.respiratory_rate}/min</div>
+                        <div>BP: {v.bp} mmHg</div>
+                        <div style={{ color: '#475569', marginTop: '6px', fontStyle: 'italic' }}>Notes: {v.nursing_notes}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Log Vitals Form */}
+              <form onSubmit={handleRecordVitals}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Record Roundings</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div className="form-group">
+                    <label>Temperature (°F)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="recep-input-field"
+                      value={vitalsForm.temp}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, temp: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Pulse Rate (bpm)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.pulse}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, pulse: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>BP Systolic (mmHg)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.systolic_bp}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, systolic_bp: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>BP Diastolic (mmHg)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.diastolic_bp}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, diastolic_bp: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>SpO2 Saturation (%)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.spo2}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, spo2: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Resp Rate (/min)</label>
+                    <input
+                      type="number"
+                      className="recep-input-field"
+                      value={vitalsForm.respiratory_rate}
+                      onChange={(e) => setVitalsForm({ ...vitalsForm, respiratory_rate: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label>Clinical Notes</label>
+                  <textarea
+                    className="recep-input-field"
+                    rows={3}
+                    value={vitalsForm.nursing_notes}
+                    onChange={(e) => setVitalsForm({ ...vitalsForm, nursing_notes: e.target.value })}
+                    placeholder="Enter observation notes, IV status, pain levels, etc."
+                    required
+                    style={{ resize: 'vertical' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                  <button type="button" className="btn-cancel" onClick={() => setIsVitalsModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn-submit">Save Rounding</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. MEDICATION ADMINISTRATION CHART (MAC) MODAL */}
+      {isMacModalOpen && selectedBed && selectedBed.active_admission && (
+        <div className="recep-modal-overlay" onClick={() => setIsMacModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '850px', maxWidth: '95vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Medication Administration Chart (MAC)</h3>
+              <button className="close-btn" onClick={() => setIsMacModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* Left Side: MAC Schedule Grid */}
+              <div style={{ borderRight: '1px solid #e2e8f0', paddingRight: '20px', maxHeight: '480px', overflowY: 'auto' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Medication Schedule</h4>
+                {isLoadingClinical ? (
+                  <RefreshCw size={24} className="spin-animation" />
+                ) : macHistory.length === 0 ? (
+                  <p style={{ fontSize: '0.84rem', color: '#64748b' }}>No medicines scheduled for this stay yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {macHistory.map((m: any) => {
+                      const statusStyles: any = {
+                        scheduled: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+                        administered: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+                        missed: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' }
+                      };
+                      const style = statusStyles[m.status] || statusStyles.scheduled;
+
+                      return (
+                        <div key={m.id} style={{ background: '#ffffff', border: `1px solid ${style.border}`, padding: '12px', borderRadius: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.86rem' }}>{m.medicine_name}</span>
+                            <span style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}`, padding: '2px 8px', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700 }}>
+                              {m.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#475569' }}>Dosage: {m.dosage}</div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Scheduled: {new Date(m.scheduled_time).toLocaleString()}</div>
+
+                          {m.status === 'scheduled' && (
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                              <button
+                                type="button"
+                                className="recep-btn-secondary"
+                                style={{ padding: '3px 8px', fontSize: '0.74rem', color: '#16a34a', borderColor: '#bbf7d0' }}
+                                onClick={() => handleAdministerMedication(m.id, 'administered')}
+                              >
+                                Mark Given
+                              </button>
+                              <button
+                                type="button"
+                                className="recep-btn-secondary"
+                                style={{ padding: '3px 8px', fontSize: '0.74rem', color: '#dc2626', borderColor: '#fecaca' }}
+                                onClick={() => handleAdministerMedication(m.id, 'missed')}
+                              >
+                                Mark Missed
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Schedule New Form */}
+              <form onSubmit={handleScheduleMedication}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Schedule Medication</h4>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label>Medicine Name</label>
+                  <input
+                    type="text"
+                    className="recep-input-field"
+                    value={macForm.medicine_name}
+                    onChange={(e) => setMacForm({ ...macForm, medicine_name: e.target.value })}
+                    placeholder="e.g. Inj. Pantocid 40mg"
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label>Dosage & Route</label>
+                  <input
+                    type="text"
+                    className="recep-input-field"
+                    value={macForm.dosage}
+                    onChange={(e) => setMacForm({ ...macForm, dosage: e.target.value })}
+                    placeholder="e.g. IV twice daily, 1 tab orally"
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label>Scheduled Administer Time</label>
+                  <input
+                    type="datetime-local"
+                    className="recep-input-field"
+                    value={macForm.scheduled_time}
+                    onChange={(e) => setMacForm({ ...macForm, scheduled_time: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                  <button type="button" className="btn-cancel" onClick={() => setIsMacModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn-submit">Add Schedule</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. FINALIZE CHECKOUT / BILLING SUMMARY MODAL */}
+      {isCheckoutModalOpen && selectedBed && selectedBed.active_admission && (
+        <div className="recep-modal-overlay" onClick={() => setIsCheckoutModalOpen(false)}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '600px', maxWidth: '92vw' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0 }}>Final Checkout Invoice Preview</h3>
+              <button className="close-btn" onClick={() => setIsCheckoutModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            {isLoadingCheckoutBill ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
+                <RefreshCw size={28} className="spin-animation" style={{ color: '#0d9488' }} />
+              </div>
+            ) : checkoutBill ? (
+              <div className="invoice-container-premium" style={{ color: '#1e293b', maxHeight: '70vh', overflowY: 'auto' }}>
+                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f766e', marginBottom: '4px' }}>
+                    PATIENT: {checkoutBill.patient_name}
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: '#64748b' }}>
+                    Admitted: {new Date(checkoutBill.admission_date).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: '#64748b' }}>
+                    Stay duration: {checkoutBill.hours_stayed} hours
+                  </div>
+                </div>
+
+                <h4 style={{ margin: '0 0 10px 0', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>
+                  BILLING BREAKDOWN
+                </h4>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', fontSize: '0.86rem' }}>
+                  {checkoutBill.bill_items?.map((item: any, idx: number) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px dashed #f1f5f9' }}>
+                      <div>
+                        <span style={{ fontWeight: 700 }}>{item.item_name}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.78rem', marginLeft: '6px' }}>({item.quantity} units)</span>
+                      </div>
+                      <span style={{ fontWeight: 700 }}>₹{item.total_price}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '2px solid #e2e8f0', paddingTop: '12px', marginBottom: '24px', fontSize: '0.9rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Subtotal:</span>
+                    <span>₹{checkoutBill.subtotal}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+                    <span>Tax (GST):</span>
+                    <span>₹{checkoutBill.tax_amount}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
+                    <span>Grand Total:</span>
+                    <span>₹{checkoutBill.grand_total}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontStyle: 'italic' }}>
+                    <span>Initial Deposit Paid:</span>
+                    <span>- ₹{checkoutBill.initial_deposit}</span>
+                  </div>
+                  {checkoutBill.insurance_approved_amount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2563eb', fontStyle: 'italic' }}>
+                      <span>Insurance Credit:</span>
+                      <span>- ₹{checkoutBill.insurance_approved_amount}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.15rem', color: '#dc2626', borderTop: '1px solid #cbd5e1', paddingTop: '8px' }}>
+                    <span>Outstanding Due:</span>
+                    <span>₹{checkoutBill.balance_due}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
+                  <button type="button" className="btn-cancel" onClick={() => setIsCheckoutModalOpen(false)}>Close Preview</button>
+                  <button
+                    type="button"
+                    className="btn-submit"
+                    style={{ background: '#16a34a', borderColor: '#16a34a', color: '#ffffff' }}
+                    onClick={handleFinalizeCheckout}
+                  >
+                    Confirm Discharge & Checkout
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p>Failed to retrieve checkout summary.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ADMISSION HISTORY FULL SUMMARY MODAL */}
+      {isHistoryDetailsModalOpen && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '850px', width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', padding: '28px' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
+                    {historyDetailsData ? historyDetailsData.patient_name : 'Patient History Case Sheet'}
+                  </h3>
+                  {historyDetailsData && (
+                    <span style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: '20px', fontWeight: 700, background: historyDetailsData.admission_status === 'discharged' ? '#f1f5f9' : '#dcfce7', color: historyDetailsData.admission_status === 'discharged' ? '#475569' : '#15803d', border: historyDetailsData.admission_status === 'discharged' ? '1px solid #cbd5e1' : '1px solid #86efac' }}>
+                      {historyDetailsData.admission_status === 'discharged' ? 'Discharged' : 'Active Stay'}
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: '4px 0 0', fontSize: '0.86rem', color: '#64748b' }}>
+                  Patient Code: <strong>{historyDetailsData?.patient_code || 'N/A'}</strong> | Admission ID: <span style={{ fontFamily: 'monospace' }}>{historyDetailsData?.id?.slice(0, 8)}...</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHistoryDetailsModalOpen(false);
+                  setHistoryDetailsData(null);
+                }}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {isLoadingHistoryDetails ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+                <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
+              </div>
+            ) : historyDetailsData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Key Metric Highlights Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Ward & Bed</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      {formatBedNumber(historyDetailsData.bed_number)}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#0d9488', fontWeight: 600 }}>{historyDetailsData.category_name}</div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Admitting Doctor</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      Dr. {historyDetailsData.admitting_doctor}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Ph: {historyDetailsData.doctor_phone}</div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Stay Duration</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      {historyDetailsData.stay_days > 0 ? `${historyDetailsData.stay_days} Days` : `${historyDetailsData.stay_hours} Hours`}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>({historyDetailsData.stay_hours} Hours Total)</div>
+                  </div>
+
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Initial Deposit</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
+                      ₹{historyDetailsData.initial_deposit.toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#16a34a' }}>Approved Ins: ₹{historyDetailsData.insurance_approved_amount.toLocaleString()}</div>
+                  </div>
+                </div>
+
+                {/* Patient Details & Diagnosis Card */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: '#0f172a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Admission & Clinical Diagnosis
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', fontSize: '0.88rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Patient Contact:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>{historyDetailsData.patient_phone}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Emergency Contact:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>{historyDetailsData.emergency_contact_phone}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Admission Datetime:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>{new Date(historyDetailsData.admission_datetime).toLocaleString()}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Discharge Datetime:</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>
+                        {historyDetailsData.discharge_datetime ? new Date(historyDetailsData.discharge_datetime).toLocaleString() : 'Currently Admitted'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Daily Rate (24h):</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>₹{historyDetailsData.base_charge_24h}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Overtime Rate (hourly):</span>{' '}
+                      <strong style={{ color: '#0f172a' }}>₹{historyDetailsData.hourly_overtime_rate}/hr</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #e2e8f0' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>PRIMARY DIAGNOSIS / REASON FOR ADMISSION</div>
+                    <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', color: '#334155', fontStyle: 'italic' }}>
+                      {historyDetailsData.diagnosis || 'No specific diagnosis notes recorded.'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Vitals History Logs Section */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Recorded Vitals History ({historyDetailsData.vitals_records?.length || 0})</span>
+                  </h4>
+                  {historyDetailsData.vitals_records && historyDetailsData.vitals_records.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>
+                            <th style={{ padding: '8px 10px' }}>Time Recorded</th>
+                            <th style={{ padding: '8px 10px' }}>Recorded By</th>
+                            <th style={{ padding: '8px 10px' }}>Temp (°F)</th>
+                            <th style={{ padding: '8px 10px' }}>Pulse</th>
+                            <th style={{ padding: '8px 10px' }}>BP</th>
+                            <th style={{ padding: '8px 10px' }}>SpO2</th>
+                            <th style={{ padding: '8px 10px' }}>Nursing Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyDetailsData.vitals_records.map((v: any) => (
+                            <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{new Date(v.recorded_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 600 }}>{v.recorded_by}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: v.temp > 100 ? '#dc2626' : '#0f172a' }}>{v.temp}°F</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700 }}>{v.pulse} bpm</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700 }}>{v.bp}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: v.spo2 < 95 ? '#dc2626' : '#059669' }}>{v.spo2}%</td>
+                              <td style={{ padding: '8px 10px', color: '#475569', fontStyle: 'italic' }}>{v.nursing_notes || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.84rem', color: '#94a3b8', fontStyle: 'italic' }}>No vitals logs recorded during this stay.</div>
+                  )}
+                </div>
+
+                {/* MAC Medication Logs Section */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '0.92rem', color: '#0f172a', fontWeight: 700 }}>
+                    Medication Administration Chart (MAC Logs - {historyDetailsData.mac_records?.length || 0})
+                  </h4>
+                  {historyDetailsData.mac_records && historyDetailsData.mac_records.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>
+                            <th style={{ padding: '8px 10px' }}>Medicine Name</th>
+                            <th style={{ padding: '8px 10px' }}>Dosage</th>
+                            <th style={{ padding: '8px 10px' }}>Scheduled Time</th>
+                            <th style={{ padding: '8px 10px' }}>Administered Time</th>
+                            <th style={{ padding: '8px 10px' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyDetailsData.mac_records.map((m: any) => (
+                            <tr key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0f172a' }}>{m.medicine_name}</td>
+                              <td style={{ padding: '8px 10px' }}>{m.dosage}</td>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{new Date(m.scheduled_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{m.administered_time ? new Date(m.administered_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
+                              <td style={{ padding: '8px 10px' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 700, background: m.status === 'given' ? '#dcfce7' : '#fef3c7', color: m.status === 'given' ? '#15803d' : '#b45309' }}>
+                                  {m.status.toUpperCase()}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.84rem', color: '#94a3b8', fontStyle: 'italic' }}>No medication administrations logged.</div>
+                  )}
+                </div>
+
+              </div>
+            ) : null}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                className="recep-btn-secondary"
+                onClick={() => {
+                  setIsHistoryDetailsModalOpen(false);
+                  setHistoryDetailsData(null);
+                }}
+                style={{ padding: '8px 20px', fontSize: '0.88rem', fontWeight: 700 }}
+              >
+                Close Case Sheet Summary
+              </button>
+            </div>
+
           </div>
         </div>
       )}

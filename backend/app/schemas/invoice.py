@@ -21,6 +21,8 @@ class InvoiceCreate(InvoiceBase):
     patient_id: uuid.UUID
     consultation_id: uuid.UUID | None = None
     treatment_plan_id: uuid.UUID | None = None
+    admission_id: uuid.UUID | None = None
+    admission_ids: list[uuid.UUID] = []
 
 
 class InvoiceUpdate(BaseModel):
@@ -30,6 +32,14 @@ class InvoiceUpdate(BaseModel):
     status: str | None = Field(None, max_length=30)
     consultation_id: uuid.UUID | None = None
     treatment_plan_id: uuid.UUID | None = None
+    admission_id: uuid.UUID | None = None
+    admission_ids: list[uuid.UUID] = []
+
+
+class InvoiceLineItem(BaseModel):
+    """Line item for invoice receipt breakdown."""
+    description: str
+    amount: float
 
 
 class InvoicePrescriptionItem(BaseModel):
@@ -48,6 +58,8 @@ class InvoiceOut(InvoiceBase):
     patient_id: uuid.UUID
     consultation_id: uuid.UUID | None
     treatment_plan_id: uuid.UUID | None
+    admission_id: uuid.UUID | None = None
+    admission_ids: list[uuid.UUID] = []
     invoice_number: str
     grand_total: float
     amount_paid: float
@@ -58,6 +70,8 @@ class InvoiceOut(InvoiceBase):
     patient: PatientOut | None = None
     # Medicine items from the linked prescription (for bill breakdown)
     prescription_items: list[InvoicePrescriptionItem] = []
+    # Full itemized breakdown lines (consultation, medicines, procedures, IPD stay, deposits)
+    items_breakdown: list[InvoiceLineItem] = []
 
     class Config:
         from_attributes = True

@@ -9,7 +9,8 @@
 /* Sidebar */
 .pharmacy-sidebar {
   width: 280px;
-  background-color: var(--primary-dark);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -19,6 +20,7 @@
   left: 0;
   top: 0;
   z-index: 10;
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 .pharmacy-sidebar-header {
@@ -105,14 +107,15 @@
 }
 
 .pharmacy-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(22, 185, 212, 0.15);
   color: #ffffff;
 }
 
 .pharmacy-nav-item.active {
-  background-color: var(--primary);
+  background-color: var(--active-nav);
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 4px 12px rgba(11, 142, 171, 0.3);
 }
 
 .pharmacy-sidebar-footer {
