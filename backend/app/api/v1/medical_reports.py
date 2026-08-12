@@ -6,7 +6,7 @@ import shutil
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,7 @@ UPLOAD_DIR = "static/uploads"
     summary="Upload a new patient medical report",
 )
 async def upload_medical_report(
+    request: Request,
     report_type: Annotated[str, Form(...)],
     file: UploadFile = File(...),
     current_user: Annotated[User, Depends(get_current_user)] = None,
@@ -37,20 +38,20 @@ async def upload_medical_report(
 ) -> JSONResponse:
     """
     Upload a medical report file (e.g. PDF, Image) and store metadata.
-    File is stored locally under static/uploads/ folder.
+    Supported backends: local, s3, cloudinary.
     """
     if current_user.role != UserRole.PATIENT:
         from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can upload medical reports.")
 
-    from app.services.cloudinary_service import CloudinaryService
+    from app.services.storage_service import StorageService
     
-    # Upload directly to Cloudinary CDN
+    # Upload via StorageService
     patient_service = PatientService(db)
     patient = await patient_service.get_patient_by_user_id(current_user.id)
     patient_id_str = str(patient.id) if patient is not None else str(current_user.id)
     
-    file_url = await CloudinaryService.upload_medical_report(file, patient_id=patient_id_str)
+    file_url = await StorageService.upload_medical_report(file, patient_id=patient_id_str, request=request)
     report_name = file.filename or "report.pdf"
 
     service = MedicalReportService(db)

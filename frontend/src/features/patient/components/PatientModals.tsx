@@ -728,7 +728,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
 
       {/* ── MODAL: VIEW REPORT ── */}
       {viewingReport && (() => {
-        const fileUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`;
+        const fileUrl = viewingReport.file_url?.startsWith('http') ? viewingReport.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`;
         const isImage = isImageFile(viewingReport.file_url);
 
         return (

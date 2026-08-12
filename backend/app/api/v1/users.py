@@ -5,7 +5,7 @@ Admin-only user management: list, create staff, update, deactivate.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -456,24 +456,25 @@ from fastapi import File, UploadFile
 
 @router.post(
     "/me/avatar",
-    summary="Upload profile picture to Cloudinary",
+    summary="Upload profile picture",
 )
 async def upload_user_avatar(
+    request: Request,
     file: UploadFile = File(...),
     current_user: Annotated[User, Depends(get_current_user)] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> JSONResponse:
-    """Upload user avatar image to Cloudinary and update user profile."""
-    from app.services.cloudinary_service import CloudinaryService
+    """Upload user avatar image to configured storage and update user profile."""
+    from app.services.storage_service import StorageService
     
-    avatar_url = await CloudinaryService.upload_avatar(file, user_id=str(current_user.id))
+    avatar_url = await StorageService.upload_avatar(file, user_id=str(current_user.id), request=request)
     
     repo = UserRepository(db)
     updated_user = await repo.update(current_user, {"avatar_url": avatar_url})
     
     return ApiResponse.success(
         data={"avatar_url": avatar_url, "user": UserOut.model_validate(updated_user)},
-        message="Profile picture uploaded to Cloudinary successfully."
+        message="Profile picture uploaded successfully."
     )
 
 
@@ -485,18 +486,18 @@ async def remove_user_avatar(
     current_user: Annotated[User, Depends(get_current_user)] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> JSONResponse:
-    """Remove user avatar image from Cloudinary CDN and reset profile to default initials avatar."""
-    from app.services.cloudinary_service import CloudinaryService
+    """Remove user avatar image from storage and reset profile to default initials avatar."""
+    from app.services.storage_service import StorageService
     
-    # 1. Delete image file from Cloudinary Cloud Storage
-    await CloudinaryService.delete_avatar(user_id=str(current_user.id))
+    # 1. Delete image file from storage
+    await StorageService.delete_avatar(user_id=str(current_user.id))
 
     # 2. Reset avatar_url in Database
     repo = UserRepository(db)
     updated_user = await repo.update(current_user, {"avatar_url": None})
     return ApiResponse.success(
         data={"avatar_url": None, "user": UserOut.model_validate(updated_user)},
-        message="Profile picture deleted from Cloudinary and removed from profile."
+        message="Profile picture deleted and removed from profile."
     )
 
 # ── POST /users/{user_id}/suspend ────────────────────────────────────────────

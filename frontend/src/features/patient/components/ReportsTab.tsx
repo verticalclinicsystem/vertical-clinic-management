@@ -71,7 +71,6 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
               <th>Title</th>
               <th>Report Type</th>
               <th>Uploaded On</th>
-              <th>File Size</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -81,7 +80,6 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 <td style={{ fontWeight: 600 }}>{report.title}</td>
                 <td>{report.report_type}</td>
                 <td>{new Date(report.uploaded_at || report.created_at).toLocaleDateString()}</td>
-                <td>{report.file_size ? `${(report.file_size / 1024).toFixed(1)} KB` : 'N/A'}</td>
                 <td>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -96,7 +94,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                       View
                     </button>
                     <a
-                      href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`}
+                      href={report.file_url?.startsWith('http') ? report.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`}
                       download
                       target="_blank"
                       rel="noreferrer"
@@ -118,7 +116,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             ))}
             {filteredReports.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {searchTerm ? 'No matching reports found.' : 'No medical reports uploaded yet.'}
                 </td>
               </tr>
