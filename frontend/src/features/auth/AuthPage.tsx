@@ -5,6 +5,7 @@ import {
   Lock, 
   Phone, 
   ArrowRight,
+  ArrowLeft,
   ShieldCheck, 
   AlertCircle, 
   Clock,
@@ -203,15 +204,26 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     if (!registerEmail.trim()) {
       errors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerEmail.trim())) {
-      errors.email = 'Invalid email address';
+      errors.email = 'Please enter a valid email address';
     }
     if (!registerPhone.trim()) {
       errors.phone = 'Phone number is required';
+    } else {
+      const cleanDigits = registerPhone.replace(/\D/g, '');
+      if (cleanDigits.length < 10) {
+        errors.phone = 'Phone number must have at least 10 digits';
+      }
     }
     if (!registerPassword) {
       errors.password = 'Password is required';
     } else if (registerPassword.length < 8) {
       errors.password = 'Password must be at least 8 characters long';
+    } else if (!/[A-Z]/.test(registerPassword)) {
+      errors.password = 'Password must contain at least one uppercase letter (A-Z)';
+    } else if (!/[0-9]/.test(registerPassword)) {
+      errors.password = 'Password must contain at least one number (0-9)';
+    } else if (!/[!@#$%^&*()_+\-=\[\]{}|;':",./<>?`~\\]/.test(registerPassword)) {
+      errors.password = 'Password must contain at least one special character (!@#$%^&* etc.)';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -249,6 +261,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         });
       }
     } catch (err: any) {
+      const serverDetails = err.response?.data?.details;
+      const fieldErrors: { [key: string]: string } = {};
+
+      if (Array.isArray(serverDetails) && serverDetails.length > 0) {
+        serverDetails.forEach((item: any) => {
+          if (item.field) {
+            let fieldKey = item.field;
+            if (fieldKey === 'full_name') fieldKey = 'fullName';
+            if (fieldKey === 'new_password') fieldKey = 'newPassword';
+            fieldErrors[fieldKey] = item.message;
+          }
+        });
+        setValidationErrors(fieldErrors);
+      }
+
       const errorMsg = err.response?.data?.message || 'Registration failed. Please try again.';
       setAlert({
         type: 'error',
@@ -412,6 +439,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     if (newPassword.length < 8) {
       setValidationErrors({ newPassword: 'Password must be at least 8 characters long' });
       return;
+    } else if (!/[A-Z]/.test(newPassword)) {
+      setValidationErrors({ newPassword: 'Password must contain at least one uppercase letter (A-Z)' });
+      return;
+    } else if (!/[0-9]/.test(newPassword)) {
+      setValidationErrors({ newPassword: 'Password must contain at least one number (0-9)' });
+      return;
+    } else if (!/[!@#$%^&*()_+\-=\[\]{}|;':",./<>?`~\\]/.test(newPassword)) {
+      setValidationErrors({ newPassword: 'Password must contain at least one special character (!@#$%^&* etc.)' });
+      return;
     }
 
     setIsLoading(true);
@@ -431,6 +467,19 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         setActiveTab('login');
       }
     } catch (err: any) {
+      const serverDetails = err.response?.data?.details;
+      if (Array.isArray(serverDetails) && serverDetails.length > 0) {
+        const fieldErrors: { [key: string]: string } = {};
+        serverDetails.forEach((item: any) => {
+          if (item.field) {
+            let fieldKey = item.field;
+            if (fieldKey === 'new_password') fieldKey = 'newPassword';
+            fieldErrors[fieldKey] = item.message;
+          }
+        });
+        setValidationErrors(fieldErrors);
+      }
+
       const errorMsg = err.response?.data?.message || 'Failed to reset password. Please request a new code.';
       setAlert({
         type: 'error',
@@ -757,6 +806,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                   <span>Resend code in 0:{timer < 10 ? `0${timer}` : timer}</span>
                 )}
               </div>
+
+              <div className="auth-toggle-text" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
+                <span className="auth-toggle-link" onClick={() => handleTabChange('register')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <ArrowLeft size={16} /> Back to Sign Up
+                </span>
+                <span style={{ color: '#cbd5e1' }}>•</span>
+                <span className="auth-toggle-link" onClick={() => handleTabChange('login')}>
+                  Sign In
+                </span>
+              </div>
             </div>
           )}
 
@@ -793,8 +852,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
               </form>
 
               <div className="auth-toggle-text">
-                <span className="auth-toggle-link" onClick={() => handleTabChange('login')}>
-                  ← Back to Sign In
+                <span className="auth-toggle-link" onClick={() => handleTabChange('login')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <ArrowLeft size={16} /> Back to Sign In
                 </span>
               </div>
             </>
@@ -833,6 +892,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                   </button>
                 </div>
               </form>
+
+              <div className="auth-toggle-text" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+                <span className="auth-toggle-link" onClick={() => handleTabChange('forgot')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <ArrowLeft size={16} /> Change Email / Back
+                </span>
+              </div>
             </div>
           )}
 
@@ -875,6 +940,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                   {isLoading ? 'Saving Password...' : 'Save & Sign In'} <ArrowRight size={18} />
                 </button>
               </form>
+
+              <div className="auth-toggle-text">
+                <span className="auth-toggle-link" onClick={() => handleTabChange('login')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <ArrowLeft size={16} /> Cancel & Back to Sign In
+                </span>
+              </div>
             </>
           )}
         </div>

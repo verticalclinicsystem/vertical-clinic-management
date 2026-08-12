@@ -43,23 +43,33 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         """Handler for Pydantic schema validation errors."""
         formatted_details = []
-        field_names = []
+        clean_messages = []
 
         for err in exc.errors():
             loc = err.get("loc", ())
             field_path = _clean_field_path(loc)
-            field_names.append(field_path)
+            raw_msg = str(err.get("msg", "Invalid value"))
+
+            # Strip Pydantic prefixes like "Value error, "
+            if raw_msg.startswith("Value error, "):
+                raw_msg = raw_msg[len("Value error, "):]
+
+            # Map standard Pydantic messages if needed
+            if raw_msg == "Field required":
+                raw_msg = f"{field_path.replace('_', ' ').capitalize() if field_path else 'Field'} is required"
 
             formatted_details.append({
                 "field": field_path,
-                "message": err.get("msg", "Invalid value"),
+                "message": raw_msg,
                 "type": err.get("type", "value_error"),
             })
+            clean_messages.append(raw_msg)
 
-        summary_msg = "Validation failed"
-        if field_names:
-            unique_fields = list(dict.fromkeys(field_names))
-            summary_msg = f"Validation failed for fields: {', '.join(unique_fields[:3])}"
+        if clean_messages:
+            unique_msgs = list(dict.fromkeys(clean_messages))
+            summary_msg = " | ".join(unique_msgs)
+        else:
+            summary_msg = "Validation failed"
 
         logger.info(f"ValidationError [{request.method} {request.url.path}]: {summary_msg}")
         return ApiResponse.error(

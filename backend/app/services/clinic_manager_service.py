@@ -650,7 +650,7 @@ class ClinicManagerService:
             # Revert discount
             inv.grand_total = float(inv.total_amount or 0)
             inv.discount_amount = 0.0
-            inv.balance_due = max(0.0, float(inv.grand_total) - float(inv.amount_paid or 0))
+            inv.balance_due = max(0.0, inv.grand_total - float(inv.amount_paid or 0))
             await self.db.commit()
             return {"id": str(inv.id), "status": "rejected", "message": "Discount override rejected & reverted by Manager."}
 
