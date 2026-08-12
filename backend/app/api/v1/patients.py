@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Request, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -520,6 +520,82 @@ async def list_my_reports(
     return ApiResponse.success(
         data=[MedicalReportOut.model_validate(r) for r in reports],
         message="Patient medical reports retrieved successfully.",
+    )
+
+
+# ── 2g-post. POST /patients/me/reports ─────────────────────────────────────────
+@router.post(
+    "/me/reports",
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload a new medical report for the logged-in patient",
+)
+async def upload_my_report(
+    request: Request,
+    file: UploadFile = File(...),
+    report_type: str = Form(...),
+    title: str | None = Form(None),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+) -> JSONResponse:
+    """Upload a medical report file and store metadata for the authenticated patient."""
+    if current_user.role != UserRole.PATIENT:
+        from app.core.exceptions import BadRequestError
+        raise BadRequestError("Only patients can upload medical reports.")
+
+    from app.services.storage_service import StorageService
+    from app.services.medical_report_service import MedicalReportService
+    from app.schemas.medical_report import MedicalReportOut
+
+    # Resolve patient ID
+    patient_service = PatientService(db)
+    patient = await patient_service.get_patient_by_user_id(current_user.id)
+    patient_id_str = str(patient.id) if patient is not None else str(current_user.id)
+
+    # Upload using StorageService
+    file_url = await StorageService.upload_medical_report(file, patient_id=patient_id_str, request=request)
+    report_name = title or file.filename or "report.pdf"
+
+    service = MedicalReportService(db)
+    report = await service.create_report(
+        user_id=current_user.id,
+        report_type=report_type,
+        report_name=report_name,
+        file_url=file_url,
+    )
+
+    return ApiResponse.success(
+        data=MedicalReportOut.model_validate(report),
+        message="Medical report uploaded successfully.",
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+# ── 2g-delete. DELETE /patients/me/reports/{report_id} ─────────────────────────
+@router.delete(
+    "/me/reports/{report_id}",
+    summary="Delete a medical report owned by the logged-in patient",
+)
+async def delete_my_report(
+    report_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Delete a medical report if owned by the logged-in patient."""
+    if current_user.role != UserRole.PATIENT:
+        from app.core.exceptions import BadRequestError
+        raise BadRequestError("Only patients can delete their own medical reports.")
+
+    from app.services.medical_report_service import MedicalReportService
+    
+    service = MedicalReportService(db)
+    await service.delete_report(
+        user_id=current_user.id,
+        user_role=current_user.role,
+        report_id=report_id,
+    )
+
+    return ApiResponse.success(
+        message="Medical report deleted successfully.",
     )
 
 

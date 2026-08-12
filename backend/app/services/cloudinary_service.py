@@ -12,15 +12,12 @@ import cloudinary.uploader
 
 logger = logging.getLogger(__name__)
 
-# Initialize Cloudinary Configuration
-CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "ohlztt2b").strip()
-API_KEY = os.getenv("CLOUDINARY_API_KEY", "822696216758164").strip()
-API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "7Q1IvXRvLDFBsYOkzJ_U_UxeRKU").strip()
+from app.config import settings
 
 cloudinary.config(
-    cloud_name=CLOUD_NAME,
-    api_key=API_KEY,
-    api_secret=API_SECRET,
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET,
     secure=True
 )
 
@@ -115,3 +112,28 @@ class CloudinaryService:
         except Exception as e:
             logger.error(f"Cloudinary avatar deletion error: {e}")
             return False
+
+    @staticmethod
+    async def delete_medical_report(file_url: str) -> bool:
+        """
+        Deletes a medical report from Cloudinary using its file URL.
+        """
+        if not file_url:
+            return False
+        try:
+            parts = file_url.split('/')
+            if 'upload' in parts:
+                idx = parts.index('upload')
+                resource_type = parts[idx - 1] if idx > 0 else 'image'
+                remaining = parts[idx + 1:]
+                if remaining and remaining[0].startswith('v') and remaining[0][1:].isdigit():
+                    remaining = remaining[1:]
+                public_id_with_ext = '/'.join(remaining)
+                public_id = os.path.splitext(public_id_with_ext)[0]
+                
+                res = cloudinary.uploader.destroy(public_id, resource_type=resource_type, invalidate=True)
+                logger.info(f"Cloudinary destroy medical report result for {public_id}: {res}")
+                return res.get("result") in ["ok", "not found"]
+        except Exception as e:
+            logger.error(f"Cloudinary medical report deletion error: {e}")
+        return False

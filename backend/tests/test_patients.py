@@ -847,6 +847,64 @@ async def test_staff_can_get_patient_history_profile(client: AsyncClient):
     assert forbidden_response.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_patient_me_reports_endpoints(client: AsyncClient):
+    """Verify patient can upload and delete reports using POST and DELETE /patients/me/reports endpoints."""
+    # 1. Log in as Patient (Priya)
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    assert login_res.status_code == 200
+    token = login_res.json()["data"]["access_token"]
+
+    # 2. Upload medical report via /patients/me/reports
+    file_payload = {"file": ("test_report_me.pdf", b"fake-pdf-content", "application/pdf")}
+    form_payload = {"report_type": "MRI", "title": "My MRI Scan"}
+    upload_res = await client.post(
+        "/api/v1/patients/me/reports",
+        headers={"Authorization": f"Bearer {token}"},
+        data=form_payload,
+        files=file_payload,
+    )
+    assert upload_res.status_code == 201
+    upload_data = upload_res.json()
+    assert upload_data["success"] is True
+    assert upload_data["message"] == "Medical report uploaded successfully."
+    assert upload_data["data"]["report_type"] == "MRI"
+    assert upload_data["data"]["report_name"] == "My MRI Scan"
+    assert "file_url" in upload_data["data"]
+    report_id = upload_data["data"]["id"]
+
+    # 3. GET /patients/me/reports to confirm it is listed
+    list_res = await client.get(
+        "/api/v1/patients/me/reports",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_res.status_code == 200
+    list_data = list_res.json()
+    assert list_data["success"] is True
+    assert any(r["id"] == report_id for r in list_data["data"])
+
+    # 4. DELETE /patients/me/reports/{report_id} to delete it
+    delete_res = await client.delete(
+        f"/api/v1/patients/me/reports/{report_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert delete_res.status_code == 200
+    assert delete_res.json()["success"] is True
+    assert delete_res.json()["message"] == "Medical report deleted successfully."
+
+    # 5. GET /patients/me/reports to confirm it is deleted
+    list_after_delete_res = await client.get(
+        "/api/v1/patients/me/reports",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_after_delete_res.status_code == 200
+    assert not any(r["id"] == report_id for r in list_after_delete_res.json()["data"])
+
+
+
 
 
 

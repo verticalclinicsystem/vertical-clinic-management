@@ -76,6 +76,13 @@ class MedicalReportService:
             if not patient or report.patient_id != patient.id:
                 raise PermissionDeniedError("You do not have permission to delete this report.")
 
+        # Delete actual file from storage
+        try:
+            from app.services.storage_service import StorageService
+            await StorageService.delete_medical_report(report.file_url)
+        except Exception as e:
+            logger.error(f"Failed to delete medical report file {report.file_url}: {e}")
+
         await self.report_repo.delete(report)
         await self.db.commit()
         logger.info(f"Medical report deleted: {report_id}")
