@@ -113,22 +113,31 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         errors = exc.errors()
-        message = "Validation failed"
-        if errors:
-            first_err = errors[0]
-            loc = " -> ".join(str(x) for x in first_err.get("loc", []))
-            message = f"Validation failed: {first_err.get('msg')} at {loc}"
-        
+        clean_msgs = []
+        formatted_details = []
+        for err in errors:
+            raw_msg = str(err.get("msg", "Invalid value"))
+            if raw_msg.startswith("Value error, "):
+                raw_msg = raw_msg[len("Value error, "):]
+            clean_msgs.append(raw_msg)
+            formatted_details.append({
+                "field": " -> ".join(str(x) for x in err.get("loc", []) if str(x) not in ("body", "query", "path")),
+                "message": raw_msg,
+                "type": err.get("type", "value_error"),
+            })
+
+        message = " | ".join(list(dict.fromkeys(clean_msgs))) if clean_msgs else "Validation failed"
+
         logger.warning(
-            "API Failure - RequestValidationError | Path: %s | Status: 422 | Reason: %s | Errors: %s",
+            "API Failure - RequestValidationError | Path: %s | Status: 422 | Reason: %s",
             request.url.path,
             message,
-            errors
         )
         return ApiResponse.error(
             message=message,
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             error_code="VALIDATION_ERROR",
+            details=formatted_details,
         )
 
     @app.exception_handler(StarletteHTTPException)

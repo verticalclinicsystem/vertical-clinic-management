@@ -589,7 +589,7 @@ async def get_admin_reports(
 
         report_data["summary"] = {
             "total_branches": len(branches_list),
-            "total_valuation": round(sum(row["stock_valuation"] for row in rows), 2)
+            "total_valuation": round(sum(float(row["stock_valuation"]) for row in rows), 2)
         }
         report_data["rows"] = rows
 

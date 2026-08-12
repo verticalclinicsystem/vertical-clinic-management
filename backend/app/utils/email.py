@@ -155,40 +155,99 @@ async def send_email(
     attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> None:
     """
-    Low-level async sender using Mailgun HTTP API.
+    Low-level async email sender supporting SMTP (aiosmtplib) and Mailgun API fallback,
+    with graceful dev-mode logging for local testing.
     """
-    if not settings.MAILGUN_API_KEY or not settings.MAILGUN_DOMAIN:
-        raise ValueError("Mailgun API Key and Domain must be configured to send emails.")
+    errors = []
 
-    import httpx
-    url = f"https://api.mailgun.net/v3/{settings.MAILGUN_DOMAIN}/messages"
-    data = {
-        "from": f"{settings.FROM_NAME} <{settings.FROM_EMAIL}>",
-        "to": to,
-        "subject": subject,
-        "text": plain_body,
-        "html": html_body,
-    }
-    files = []
-    if attachments:
-        for filename, content, mime_type in attachments:
-            files.append(("attachment", (filename, content, mime_type)))
+    # 1. Try SMTP if credentials are configured
+    if settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD:
+        try:
+            import aiosmtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            from email.mime.application import MIMEApplication
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            url,
-            auth=("api", settings.MAILGUN_API_KEY),
-            data=data,
-            files=files if files else None,
-            timeout=12.0
-        )
-        if resp.status_code in (200, 201):
-            logger.info("Email sent via Mailgun HTTP API to=%r subject=%r", to, subject)
+            message = MIMEMultipart("alternative")
+            message["From"] = f"{settings.FROM_NAME} <{settings.FROM_EMAIL}>"
+            message["To"] = to
+            message["Subject"] = subject
+
+            message.attach(MIMEText(plain_body, "plain", "utf-8"))
+            message.attach(MIMEText(html_body, "html", "utf-8"))
+
+            if attachments:
+                for filename, content, mime_type in attachments:
+                    att = MIMEApplication(content, Name=filename)
+                    att.add_header('Content-Disposition', 'attachment', filename=filename)
+                    message.attach(att)
+
+            await aiosmtplib.send(
+                message,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT or 587,
+                username=settings.SMTP_USER,
+                password=settings.SMTP_PASSWORD,
+                start_tls=True,
+                timeout=12.0,
+            )
+            logger.info("Email sent via SMTP to=%r subject=%r", to, subject)
             return
-        else:
-            err_msg = f"Mailgun API failed (status={resp.status_code}): {resp.text}"
-            logger.error(err_msg)
-            raise RuntimeError(err_msg)
+        except Exception as e:
+            err = f"SMTP dispatch failed: {e}"
+            logger.warning(err)
+            errors.append(err)
+
+    # 2. Try Mailgun API if configured
+    if settings.MAILGUN_API_KEY and settings.MAILGUN_DOMAIN:
+        try:
+            import httpx
+            url = f"https://api.mailgun.net/v3/{settings.MAILGUN_DOMAIN}/messages"
+            data = {
+                "from": f"{settings.FROM_NAME} <{settings.FROM_EMAIL}>",
+                "to": to,
+                "subject": subject,
+                "text": plain_body,
+                "html": html_body,
+            }
+            files = []
+            if attachments:
+                for filename, content, mime_type in attachments:
+                    files.append(("attachment", (filename, content, mime_type)))
+
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    url,
+                    auth=("api", settings.MAILGUN_API_KEY),
+                    data=data,
+                    files=files if files else None,
+                    timeout=12.0
+                )
+                if resp.status_code in (200, 201):
+                    logger.info("Email sent via Mailgun HTTP API to=%r subject=%r", to, subject)
+                    return
+                else:
+                    err = f"Mailgun API failed (status={resp.status_code}): {resp.text}"
+                    logger.warning(err)
+                    errors.append(err)
+        except Exception as e:
+            err = f"Mailgun dispatch failed: {e}"
+            logger.warning(err)
+            errors.append(err)
+
+    # 3. Dev-mode fallback vs Production error
+    combined_err = " | ".join(errors) if errors else "No email service configured."
+    if settings.DEBUG or settings.APP_ENV == "development":
+        logger.warning(
+            "⚠️ [DEV MODE] Email dispatch skipped/failed (%s). "
+            "To=%r Subject=%r. Plain body preview:\n%s",
+            combined_err, to, subject, plain_body
+        )
+        return
+    else:
+        err_msg = f"Failed to send email to {to}: {combined_err}"
+        logger.error(err_msg)
+        raise RuntimeError(err_msg)
 
 
 
