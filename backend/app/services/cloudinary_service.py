@@ -83,15 +83,24 @@ class CloudinaryService:
         Uploads medical report (PDF / X-Ray / Scan) to vclinic/medical_reports.
         """
         try:
+            import uuid
             contents = await file.read()
             # Determine if PDF or Image
             ext = os.path.splitext(file.filename or "")[1].lower()
-            resource_type = "raw" if ext == ".pdf" else "auto"
+            
+            unique_id = f"report_{uuid.uuid4().hex}"
+            if ext == ".pdf":
+                resource_type = "raw"
+            else:
+                resource_type = "auto"
+            public_id = unique_id
 
             response = cloudinary.uploader.upload(
                 contents,
                 folder=f"vclinic/reports/{patient_id}",
+                public_id=public_id,
                 resource_type=resource_type,
+                type="private",
                 overwrite=True
             )
             return response.get("secure_url", "")
@@ -122,16 +131,38 @@ class CloudinaryService:
             return False
         try:
             parts = file_url.split('/')
-            if 'upload' in parts:
-                idx = parts.index('upload')
+            delivery_type = "upload"
+            idx = -1
+            for t in ["upload", "private", "authenticated"]:
+                if t in parts:
+                    delivery_type = t
+                    idx = parts.index(t)
+                    break
+                    
+            if idx != -1:
                 resource_type = parts[idx - 1] if idx > 0 else 'image'
                 remaining = parts[idx + 1:]
+                
+                # Strip signature (e.g. s--xxx--)
+                if remaining and remaining[0].startswith('s--'):
+                    remaining = remaining[1:]
+                    
+                # Strip version (e.g. v12345678)
                 if remaining and remaining[0].startswith('v') and remaining[0][1:].isdigit():
                     remaining = remaining[1:]
+                    
                 public_id_with_ext = '/'.join(remaining)
-                public_id = os.path.splitext(public_id_with_ext)[0]
+                if resource_type == "raw":
+                    public_id = public_id_with_ext
+                else:
+                    public_id = os.path.splitext(public_id_with_ext)[0]
                 
-                res = cloudinary.uploader.destroy(public_id, resource_type=resource_type, invalidate=True)
+                res = cloudinary.uploader.destroy(
+                    public_id,
+                    resource_type=resource_type,
+                    type=delivery_type,
+                    invalidate=True
+                )
                 logger.info(f"Cloudinary destroy medical report result for {public_id}: {res}")
                 return res.get("result") in ["ok", "not found"]
         except Exception as e:
