@@ -2,7 +2,9 @@
 IPD (In-Patient Department) Router — manages admissions, bed allocations, vitals logs, medication administrations, and dynamic billing checkouts.
 """
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -11,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db
-from app.core.exceptions import PermissionDeniedError
+from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.models.doctor import Doctor
 from app.models.notification import Notification
 from app.models.ipd import (
@@ -387,7 +389,7 @@ async def create_bed(
     existing_stmt = select(Bed).where(Bed.branch_id == request.branch_id, Bed.bed_number == request.bed_number)
     res = await db.execute(existing_stmt)
     if res.scalar_one_or_none():
-        return ApiResponse.error(message=f"Bed '{request.bed_number}' already exists in this branch.", code=400)
+        return ApiResponse.error(message=f"Bed '{request.bed_number}' already exists in this branch.", status_code=400)
     
     # Create bed
     bed = Bed(
@@ -426,10 +428,10 @@ async def delete_bed(
     res = await db.execute(stmt)
     bed = res.scalar_one_or_none()
     if not bed:
-        return ApiResponse.error(message="Bed asset not found.", code=404)
+        return ApiResponse.error(message="Bed asset not found.", status_code=404)
     
     if bed.status != "available":
-        return ApiResponse.error(message=f"Cannot decommission bed in '{bed.status}' state.", code=400)
+        return ApiResponse.error(message=f"Cannot decommission bed in '{bed.status}' state.", status_code=400)
     
     await db.delete(bed)
     await db.flush()

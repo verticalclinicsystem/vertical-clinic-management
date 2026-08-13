@@ -68,7 +68,7 @@ def invoice_to_out(invoice) -> dict:
                         med_price = getattr(getattr(item, "medicine", None), "unit_price", 10.0) or 10.0
                         breakdown.append({
                             "description": f"Medicine: {item.medicine_name} ({qty} units)",
-                            "amount": float(round(qty * med_price, 2))
+                            "amount": round(qty * med_price, 2)
                         })
 
     # 2. Treatment Plan Procedures
@@ -82,8 +82,8 @@ def invoice_to_out(invoice) -> dict:
     # 3. IPD Bed Stay & Charges
     if invoice.admission:
         adm = invoice.admission
-        from datetime import UTC, datetime
-        end_t = adm.discharge_datetime or datetime.now(UTC)
+        from datetime import datetime, timezone
+        end_t = adm.discharge_datetime or datetime.now(timezone.utc)
         hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
         bed = getattr(adm, "bed", None)
         if bed and hasattr(bed, "category") and bed.category:
@@ -111,12 +111,12 @@ def invoice_to_out(invoice) -> dict:
             })
 
     # Check if there is a remaining clinical materials or extra consumables cost in total_amount
-    pos_sum = sum(item["amount"] for item in breakdown if item["amount"] > 0)
+    pos_sum = sum(float(item["amount"]) for item in breakdown if float(item["amount"]) > 0)
     diff = round(float(data.get("total_amount", 0.0)) - pos_sum, 2)
     if diff > 0.01:
         breakdown.append({
             "description": "Clinical Materials & Sterile Consumables",
-            "amount": float(diff)
+            "amount": diff
         })
 
     # Fallback if breakdown is empty but total_amount > 0
@@ -394,12 +394,12 @@ async def calculate_pending_charges(
                 pass
 
     unbilled_admissions = []
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
     for adm in admissions:
         if adm.id in invoiced_adm_ids:
             continue
         
-        end_time = adm.discharge_datetime or datetime.now(UTC)
+        end_time = adm.discharge_datetime or datetime.now(timezone.utc)
         hours_stay = max(0.5, (end_time - adm.admission_datetime).total_seconds() / 3600.0)
         bed = adm.bed
         base_charge_24h = bed.category.base_charge_24h
@@ -561,7 +561,7 @@ async def get_invoice_pdf(
         if completed_count > 0:
             pdf_items.append({
                 "description": "Used Dental Materials & Sterile Consumables",
-                "amount": float(completed_count * 200.0)
+                "amount": completed_count * 200.0
             })
     elif invoice.consultation:
         pdf_items.append({
