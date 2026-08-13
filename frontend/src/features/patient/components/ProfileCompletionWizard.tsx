@@ -24,6 +24,29 @@ interface ProfileCompletionWizardProps {
   triggerToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
+const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
+  const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+  const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+  
+  const fileExt = file.name.split('.').pop()?.toLowerCase();
+  
+  if (!fileExt || !allowedExtensions.includes(fileExt)) {
+    return {
+      isValid: false,
+      message: `Invalid file format (.${fileExt || 'unknown'}). Supported formats are: PDF, PNG, JPG, JPEG, WEBP. Please select a valid document or image scan.`
+    };
+  }
+  
+  if (file.size > maxSizeBytes) {
+    return {
+      isValid: false,
+      message: `File size exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(2)}MB). Please compress the file before uploading.`
+    };
+  }
+  
+  return { isValid: true, message: '' };
+};
+
 export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = ({
   patientProfile,
   branches,
@@ -859,8 +882,21 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                   <div className="file-upload-row-3">
                     <input
                       type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp"
                       className="form-file-input"
-                      onChange={(e) => setPrescriptionFile(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (file) {
+                          const validation = validateMedicalFile(file);
+                          if (!validation.isValid) {
+                            triggerToast('error', validation.message);
+                            e.target.value = '';
+                            setPrescriptionFile(null);
+                            return;
+                          }
+                        }
+                        setPrescriptionFile(file);
+                      }}
                     />
                     <div />
                     <button
@@ -893,8 +929,21 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     <input
                       type="file"
                       id="step2-report-file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp"
                       className="form-file-input"
-                      onChange={(e) => setLatestReportFile(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (file) {
+                          const validation = validateMedicalFile(file);
+                          if (!validation.isValid) {
+                            triggerToast('error', validation.message);
+                            e.target.value = '';
+                            setLatestReportFile(null);
+                            return;
+                          }
+                        }
+                        setLatestReportFile(file);
+                      }}
                     />
                     <button
                       type="button"
@@ -962,8 +1011,21 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                 <input
                   type="file"
                   id="step3-report-file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
                   className="form-file-input"
-                  onChange={(e) => setLifetimeReportFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file) {
+                      const validation = validateMedicalFile(file);
+                      if (!validation.isValid) {
+                        triggerToast('error', validation.message);
+                        e.target.value = '';
+                        setLifetimeReportFile(null);
+                        return;
+                      }
+                    }
+                    setLifetimeReportFile(file);
+                  }}
                 />
                 <button
                   type="button"
