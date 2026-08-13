@@ -386,6 +386,7 @@ async def deactivate_user(
         from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
     updated_user = await repo.update(user, {"is_active": False})
+    await db.commit()
     return ApiResponse.success(
         data=UserOut.model_validate(updated_user),
         message="User deactivated successfully.",
@@ -409,6 +410,7 @@ async def activate_user(
         from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
     updated_user = await repo.update(user, {"is_active": True})
+    await db.commit()
     return ApiResponse.success(
         data=UserOut.model_validate(updated_user),
         message="User activated successfully.",
@@ -471,6 +473,7 @@ async def upload_user_avatar(
     
     repo = UserRepository(db)
     updated_user = await repo.update(current_user, {"avatar_url": avatar_url})
+    await db.commit()
     
     return ApiResponse.success(
         data={"avatar_url": avatar_url, "user": UserOut.model_validate(updated_user)},
@@ -495,6 +498,7 @@ async def remove_user_avatar(
     # 2. Reset avatar_url in Database
     repo = UserRepository(db)
     updated_user = await repo.update(current_user, {"avatar_url": None})
+    await db.commit()
     return ApiResponse.success(
         data={"avatar_url": None, "user": UserOut.model_validate(updated_user)},
         message="Profile picture deleted and removed from profile."
@@ -528,6 +532,7 @@ async def suspend_user(
             "suspended_until": None,
             "suspension_reason": None
         })
+        await db.commit()
         return ApiResponse.success(
             data=UserOut.model_validate(updated_user),
             message="User unsuspended successfully."
@@ -545,6 +550,7 @@ async def suspend_user(
         "suspension_reason": request.reason,
         "token_version": user.token_version + 1  # Force logout immediately
     })
+    await db.commit()
     
     ist_tz = timezone(timedelta(hours=5, minutes=30))
     suspended_until_ist = suspended_until.astimezone(ist_tz)
@@ -570,6 +576,7 @@ async def revoke_my_sessions(
     updated_user = await repo.update(current_user, {
         "token_version": current_user.token_version + 1
     })
+    await db.commit()
     return ApiResponse.success(
         data=UserOut.model_validate(updated_user),
         message="All sessions revoked successfully. Please log in again if needed."
@@ -596,6 +603,7 @@ async def force_revoke_user_sessions(
     updated_user = await repo.update(user, {
         "token_version": user.token_version + 1
     })
+    await db.commit()
     return ApiResponse.success(
         data=UserOut.model_validate(updated_user),
         message="User sessions revoked successfully."
