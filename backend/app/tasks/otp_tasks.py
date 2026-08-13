@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, delete, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 from app.models.otp import OtpRecord
@@ -20,7 +21,7 @@ from app.tasks.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 # ── Synchronous engine (Celery workers are sync) ──────────────────────────────
-_engine = create_engine(settings.SYNC_DATABASE_URL, pool_pre_ping=True)
+_engine = create_engine(settings.SYNC_DATABASE_URL, poolclass=NullPool)
 
 
 @celery_app.task(name="app.tasks.otp_tasks.purge_expired_otps", bind=True)
