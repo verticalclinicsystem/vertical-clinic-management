@@ -5447,9 +5447,17 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       </div>
                     );
                   } else {
+                    if (!blobUrl) {
+                      return (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                          <div style={{ width: '40px', height: '40px', border: '3px solid #cbd5e1', borderTopColor: '#0f766e', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          <span style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600 }}>Loading report preview...</span>
+                        </div>
+                      );
+                    }
                     return (
                       <iframe
-                        src={blobUrl || reportFileUrl}
+                        src={blobUrl}
                         title={viewingReport.report_name}
                         width="100%"
                         height="100%"

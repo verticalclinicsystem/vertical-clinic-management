@@ -874,7 +874,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                       </div>
                     ) : (
                       <iframe
-                        src={blobUrl || fileUrl}
+                        src={blobUrl || ''}
                         style={{ width: '100%', height: '100%', border: 'none' }}
                         title={viewingReport.title}
                       />
