@@ -9,15 +9,22 @@ export const api = axios.create({
   },
 });
 
-// Attach Authorization Token to requests if available
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
-    if (token && config.headers) {
-      if (typeof config.headers.set === 'function') {
-        config.headers.set('Authorization', `Bearer ${token}`);
-      } else {
-        config.headers['Authorization'] = `Bearer ${token}`;
+    const skipAuth = (config as any).skipAuth;
+    
+    if (token && config.headers && !skipAuth) {
+      const url = config.url || '';
+      const isExternal = url.startsWith('http://') || url.startsWith('https://');
+      const isInternalApi = !isExternal || (API_BASE_URL && url.startsWith(API_BASE_URL));
+      
+      if (isInternalApi) {
+        if (typeof config.headers.set === 'function') {
+          config.headers.set('Authorization', `Bearer ${token}`);
+        } else {
+          config.headers['Authorization'] = `Bearer ${token}`;
+        }
       }
     }
     return config;

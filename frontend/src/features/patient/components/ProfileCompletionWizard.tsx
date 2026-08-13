@@ -262,7 +262,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
     setStep(2);
   };
 
-  const handleNextStep2 = () => {
+  const handleNextStep2 = async () => {
     if (underTreatment === null) {
       triggerToast('error', 'Please choose whether you are currently under treatment.');
       return;
@@ -280,6 +280,46 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
         triggerToast('error', 'Please enter when your treatment started.');
         return;
       }
+
+      // Auto upload prescription if selected but not uploaded yet
+      if (prescriptionFile && !prescriptionUploadUrl) {
+        setIsUploadingPrescription(true);
+        try {
+          triggerToast('info', 'Uploading prescription...');
+          const url = await uploadFile(prescriptionFile, 'Prescription');
+          setPrescriptionUploadUrl(url);
+          triggerToast('success', 'Prescription uploaded!');
+        } catch (err) {
+          triggerToast('error', 'Prescription upload failed.');
+          setIsUploadingPrescription(false);
+          return;
+        }
+        setIsUploadingPrescription(false);
+      }
+
+      // Auto upload report if selected but not added yet
+      if (latestReportFile && latestReportTitle) {
+        setIsUploadingReport(true);
+        try {
+          triggerToast('info', `Uploading report: ${latestReportTitle}...`);
+          const url = await uploadFile(latestReportFile, 'Diagnostic Report');
+          const updatedReports = [...latestReports, { title: latestReportTitle, url, name: latestReportFile.name }];
+          setLatestReports(updatedReports);
+          setLatestReportTitle('');
+          setLatestReportFile(null);
+          const fileInput = document.getElementById('step2-report-file') as HTMLInputElement;
+          if (fileInput) fileInput.value = '';
+          triggerToast('success', 'Report document uploaded and added!');
+        } catch (err) {
+          triggerToast('error', 'Report upload failed.');
+          setIsUploadingReport(false);
+          return;
+        }
+        setIsUploadingReport(false);
+      } else if (latestReportFile && !latestReportTitle) {
+        triggerToast('error', 'Please enter a report title for your selected file.');
+        return;
+      }
     }
     setStep(3);
   };
@@ -287,6 +327,30 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
   const handleCompleteProfile = async () => {
     setIsSubmitting(true);
     try {
+      // Auto upload historic report if selected but not added yet
+      let finalLifetimeReports = [...lifetimeReports];
+      if (lifetimeReportFile && lifetimeReportTitle) {
+        try {
+          triggerToast('info', `Uploading historic report: ${lifetimeReportTitle}...`);
+          const url = await uploadFile(lifetimeReportFile, 'Historical Report');
+          finalLifetimeReports.push({ title: lifetimeReportTitle, url, name: lifetimeReportFile.name });
+          setLifetimeReports(finalLifetimeReports);
+          setLifetimeReportTitle('');
+          setLifetimeReportFile(null);
+          const fileInput = document.getElementById('step3-report-file') as HTMLInputElement;
+          if (fileInput) fileInput.value = '';
+          triggerToast('success', 'Historic report uploaded!');
+        } catch (err) {
+          triggerToast('error', 'Failed to upload historic report.');
+          setIsSubmitting(false);
+          return;
+        }
+      } else if (lifetimeReportFile && !lifetimeReportTitle) {
+        triggerToast('error', 'Please enter a report title for your selected file.');
+        setIsSubmitting(false);
+        return;
+      }
+
       // 1. Compile chronic conditions object
       const compiledChronicConditions = JSON.stringify({
         chronicDiseases: chronicConditions || 'None',
