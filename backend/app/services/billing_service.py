@@ -137,8 +137,8 @@ class BillingService:
         # 4. IPD Bed Stay & Charges
         if invoice.admission:
             adm = invoice.admission
-            from datetime import UTC, datetime
-            end_t = adm.discharge_datetime or datetime.now(UTC)
+            from datetime import datetime, timezone
+            end_t = adm.discharge_datetime or datetime.now(timezone.utc)
             hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
             bed = adm.bed
             if bed and bed.category:
@@ -182,7 +182,7 @@ class BillingService:
             if completed_count > 0:
                 pdf_items.append({
                     "description": "Used Dental Materials & Sterile Consumables",
-                    "amount": float(completed_count * 200.0)
+                    "amount": completed_count * 200.0
                 })
         elif invoice.consultation and not invoice.admission:
             pdf_items.append({

@@ -8,7 +8,9 @@ from __future__ import annotations
 import contextlib
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text

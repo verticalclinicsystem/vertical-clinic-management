@@ -859,7 +859,15 @@ async def test_patient_me_reports_endpoints(client: AsyncClient):
     token = login_res.json()["data"]["access_token"]
 
     # 2. Upload medical report via /patients/me/reports
-    file_payload = {"file": ("test_report_me.pdf", b"fake-pdf-content", "application/pdf")}
+    valid_pdf_content = (
+        b"%PDF-1.5\n% \n1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n"
+        b"2 0 obj\n<</Type/Pages/Kids[/3 0 R]/Count 1>>\nendobj\n"
+        b"3 0 obj\n<</Type/Page/Parent 2 0 R/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>/MediaBox[0 0 612 792]/Contents 4 0 R>>\nendobj\n"
+        b"4 0 obj\n<</Length 44>>\nstream\nBT\n/F1 24 Tf\n100 700 Td\n(Test PDF) Tj\nET\nendstream\nendobj\n"
+        b"xref\n0 5\n0000000000 65535 f\n0000000015 00000 n\n0000000062 00000 n\n0000000119 00000 n\n0000000282 00000 n\n"
+        b"trailer\n<</Size 5/Root 1 0 R>>\nstartxref\n377\n%%EOF"
+    )
+    file_payload = {"file": ("test_report_me.pdf", valid_pdf_content, "application/pdf")}
     form_payload = {"report_type": "MRI", "title": "My MRI Scan"}
     upload_res = await client.post(
         "/api/v1/patients/me/reports",

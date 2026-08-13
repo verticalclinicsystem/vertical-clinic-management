@@ -158,6 +158,67 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
   setScreen,
   openRescheduleModal,
 }) => {
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  const [isFetchingPdf, setIsFetchingPdf] = React.useState<boolean>(false);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!viewingReport || !viewingReport.file_url) {
+      setBlobUrl(null);
+      setFetchError(null);
+      return;
+    }
+
+    const isPdf = viewingReport.file_url.toLowerCase().endsWith('.pdf') || viewingReport.file_url.toLowerCase().includes('/raw/');
+    if (!isPdf) {
+      setBlobUrl(null);
+      setFetchError(null);
+      return;
+    }
+
+    let active = true;
+    const url = viewingReport.file_url.startsWith('http') ? viewingReport.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`;
+    
+    setIsFetchingPdf(true);
+    setFetchError(null);
+
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.blob();
+      })
+      .then((blob) => {
+        if (active) {
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+          const objectUrl = URL.createObjectURL(pdfBlob);
+          setBlobUrl(objectUrl);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to fetch PDF blob:", err);
+          setFetchError(err.message || "Failed to load PDF");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsFetchingPdf(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      setBlobUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+    };
+  }, [viewingReport]);
+
   return (
     <>
       {/* ── MODAL: RESCHEDULE APPOINTMENT ── */}
@@ -775,13 +836,49 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                       />
                     </div>
                   </div>
-                ) : viewingReport.file_url?.toLowerCase().endsWith('.pdf') ? (
+                ) : (viewingReport.file_url?.toLowerCase().endsWith('.pdf') || viewingReport.file_url?.toLowerCase().includes('/raw/')) ? (
                   <div style={{ width: '100%', height: '500px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                    <iframe
-                      src={fileUrl}
-                      style={{ width: '100%', height: '100%', border: 'none' }}
-                      title={viewingReport.title}
-                    />
+                    {isFetchingPdf ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          border: '4px solid var(--border)',
+                          borderTop: '4px solid var(--primary)',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                          marginBottom: '12px'
+                        }}></div>
+                        <style>{`
+                          @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                          }
+                        `}</style>
+                        <p>Loading PDF preview...</p>
+                      </div>
+                    ) : fetchError ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '20px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '2.5rem', marginBottom: '12px' }}>⚠️</span>
+                        <p style={{ margin: '0 0 12px', fontWeight: 600 }}>Failed to load preview directly</p>
+                        <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{fetchError}</p>
+                        <a
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-primary"
+                          style={{ textDecoration: 'none' }}
+                        >
+                          Open in New Tab
+                        </a>
+                      </div>
+                    ) : (
+                      <iframe
+                        src={blobUrl || fileUrl}
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        title={viewingReport.title}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--surface-2)', borderRadius: '8px' }}>
@@ -801,16 +898,13 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
               </div>
 
               <footer className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
-                <a
-                  href={fileUrl}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  onClick={() => downloadPdf(fileUrl, `${viewingReport.report_name || 'report'}.pdf`)}
                   className="btn-secondary"
-                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
                 >
                   Download File
-                </a>
+                </button>
                 <button onClick={() => setViewingReport(null)} className="btn-primary" style={{ fontSize: '0.85rem' }}>
                   Close
                 </button>
