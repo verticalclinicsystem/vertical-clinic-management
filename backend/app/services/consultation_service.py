@@ -60,6 +60,8 @@ class ConsultationService:
             "vitals_bp": request.vitals_bp,
             "vitals_pulse": request.vitals_pulse,
             "vitals_temperature": request.vitals_temperature,
+            "followup_advised": request.followup_advised,
+            "followup_after_days": request.followup_after_days,
         }
         
         created = await self.consultation_repo.create(consult_data)
@@ -71,6 +73,17 @@ class ConsultationService:
                 await self.appointment_repo.update(appt, {"status": "completed"})
 
         await self.db.commit()
+
+        # Broadcast queue update
+        try:
+            from app.core.websocket import manager
+            if request.appointment_id and appt:
+                await manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
+            else:
+                await manager.broadcast({"event": "queue_updated"})
+        except Exception as ws_err:
+            logger.warning(f"Failed to broadcast websocket event: {ws_err}")
+
         logger.info(f"Consultation registered: {created.id}")
         return await self.get_consultation(created.id)
 

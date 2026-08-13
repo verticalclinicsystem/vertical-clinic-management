@@ -42,6 +42,29 @@ async def get_doctor_dashboard(
     )
 
 
+# ── GET /doctors/me/follow-ups ───────────────────────────────────────────────
+@router.get(
+    "/me/follow-ups",
+    summary="Get doctor follow-ups list",
+)
+async def get_doctor_followups(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Retrieve lists of advised follow-ups (pending booking) and booked follow-ups for the logged-in doctor."""
+    if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
+        from app.core.exceptions import PermissionDeniedError
+        raise PermissionDeniedError("Only doctors can access follow-ups data.")
+
+    service = DoctorService(db)
+    followups_data = await service.get_doctor_followups(current_user.id)
+    return ApiResponse.success(
+        data=followups_data,
+        message="Doctor follow-ups data retrieved successfully."
+    )
+
+
+
 # ── 1. GET /doctors ───────────────────────────────────────────────────────────
 @router.get(
     "/",

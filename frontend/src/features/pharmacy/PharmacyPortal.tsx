@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, 
   Package, 
@@ -18,7 +18,13 @@ import {
   FileText,
   ShoppingCart,
   Calendar,
-  Clock
+  Clock,
+  Settings,
+  Bell,
+  User,
+  Edit3,
+  Upload,
+  Camera
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './PharmacyPortal.css';
@@ -33,8 +39,41 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
   useEffect(() => {
     localStorage.setItem('pharmacy_portal_tab', activeTab);
   }, [activeTab]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('Satellite');
+  const [selectedBranch] = useState<string>('Satellite');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotiOpen, setIsNotiOpen] = useState(false);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
+  const [profileForm, setProfileForm] = useState({
+    full_name: '',
+    phone: '',
+    email: '',
+    qualification: 'B.Pharm, M.Pharm',
+    experience_years: 5,
+    bio: 'Dedicated pharmacist managing clinic inventory, medicine dispensing, and procurement workflows with high accuracy and compliance.'
+  });
+  
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const notiDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+      if (notiDropdownRef.current && !notiDropdownRef.current.contains(event.target as Node)) {
+        setIsNotiOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   
   // Data State
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
@@ -65,6 +104,14 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
     reorder_level: 20,
     supplier: '',
     hsn_code: ''
+  });
+
+  // Add Purchase Order Modal State
+  const [showPOModal, setShowPOModal] = useState<boolean>(false);
+  const [newPO, setNewPO] = useState({
+    medicine_id: '',
+    change_qty: 100,
+    notes: ''
   });
   
   // Toast notifications state
@@ -199,16 +246,87 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileForm.full_name.trim()) {
+      showToast('Name is required.', 'error');
+      return;
+    }
+    setSubmitLoading(true);
+    try {
+      const res = await api.patch('/auth/profile', {
+        full_name: profileForm.full_name,
+        phone: profileForm.phone
+      });
+      if (res.data?.success) {
+        showToast('Profile updated successfully!', 'success');
+        setCurrentUser(res.data.data);
+        setIsEditingProfile(false);
+      } else {
+        showToast(res.data?.message || 'Failed to update profile.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error updating profile.', 'error');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'availability') {
       fetchMyRequests();
     }
   }, [activeTab]);
 
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get('/notifications');
+      if (res.data?.success) {
+        setNotifications(res.data.data.items || []);
+      }
+    } catch (e) {}
+  };
+
+  const markNotificationRead = async (id: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (e) {}
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (e) {}
+  };
+
+  const clearAllNotifications = async () => {
+    try {
+      await api.delete('/notifications/clear-all');
+      setNotifications([]);
+    } catch (e) {}
+  };
+
   // Fetch initial data
   const fetchData = async () => {
     setLoading(true);
     try {
+      // 0. Fetch logged in user profile
+      try {
+        const userRes = await api.get('/auth/me');
+        if (userRes.data?.success) {
+          const user = userRes.data.data;
+          setCurrentUser(user);
+          setProfileForm(prev => ({
+            ...prev,
+            full_name: user.full_name || '',
+            phone: user.phone || '',
+            email: user.email || ''
+          }));
+        }
+      } catch (e) {}
+
       // 1. Fetch prescriptions
       const rxRes = await api.get('/prescriptions/?limit=100');
       if (rxRes.data?.success) {
@@ -226,6 +344,9 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
       if (branchRes.data?.success) {
         setBranches(branchRes.data.data.items || []);
       }
+
+      // 4. Fetch notifications
+      await fetchNotifications();
     } catch (err: any) {
       showToast('Error loading pharmacy data. Please try again.', 'error');
     } finally {
@@ -287,6 +408,36 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const handlePOSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPO.medicine_id) {
+      showToast('Please select a medicine.', 'error');
+      return;
+    }
+    setSubmitLoading(true);
+    try {
+      const res = await api.post('/inventory/purchase-orders', {
+        medicine_id: newPO.medicine_id,
+        change_qty: newPO.change_qty,
+        notes: newPO.notes
+      });
+      if (res.data?.success) {
+        showToast('Purchase order recorded successfully!', 'success');
+        setShowPOModal(false);
+        setNewPO({ medicine_id: '', change_qty: 100, notes: '' });
+        // Refresh purchase orders and medicines
+        const poRes = await api.get('/inventory/purchase-orders');
+        if (poRes.data?.success) setPurchaseOrders(poRes.data.data.items || []);
+        const medRes = await api.get('/inventory/?limit=200');
+        if (medRes.data?.success) setMedicines(medRes.data.data.items || []);
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error recording purchase order.', 'error');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
   // Filter lists based on search query
   const filteredPrescriptions = prescriptions.filter((r: any) => {
     const patientName = r.patient?.user?.full_name || r.patient_id || '';
@@ -328,6 +479,19 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
       .then(res => { if (res.data?.success) setPurchaseOrders(res.data.data.items || []); })
       .catch(() => {});
   }, []);
+
+  const filteredPurchaseOrders = purchaseOrders.filter((po: any) => {
+    const id = po.id || '';
+    const supplier = po.supplier || '';
+    const items = po.items || po.medicine_name || '';
+    const query = searchQuery.toLowerCase();
+    return (
+      id.toLowerCase().includes(query) ||
+      supplier.toLowerCase().includes(query) ||
+      items.toLowerCase().includes(query)
+    );
+  });
+  const initials = currentUser?.full_name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'PH';
 
   return (
     <div className="pharmacy-layout">
@@ -377,6 +541,14 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
           >
             <Calendar size={18} /> Availability
           </div>
+          
+          <div className="pharmacy-nav-group-label">PROFILE</div>
+          <div 
+            className={`pharmacy-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('profile'); setSelectedRxId(null); }}
+          >
+            <User size={18} /> My Profile
+          </div>
         </nav>
 
         <div className="pharmacy-sidebar-footer">
@@ -402,43 +574,144 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             <p className="pharmacy-page-subtitle">Pharmacist Portal · {selectedBranch} Branch</p>
           </div>
 
-          {activeTab !== 'dispense' && (
-            <div className="pharmacy-search-wrapper">
-              <Search className="pharmacy-search-icon" size={16} />
-              <input 
-                type="text" 
-                className="pharmacy-search-input" 
-                placeholder={
-                  activeTab === 'inventory' 
-                    ? "Search medicines, categories, suppliers..." 
-                    : "Search prescriptions, patients, doctors..."
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="pharmacy-topbar-right">
+          <div className="pharmacy-topbar-right" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <button 
-              className="pharmacy-btn pharmacy-btn-outline" 
+              className="pharmacy-icon-btn" 
               onClick={fetchData} 
               title="Refresh Data"
               disabled={loading}
             >
               <RefreshCw size={16} className={loading ? 'pharmacy-spinner' : ''} />
             </button>
-            <select 
-              className="pharmacy-branch-select"
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-            >
-              <option value="Satellite">Satellite Branch</option>
-              <option value="Bopal">Bopal Branch</option>
-              <option value="Navrangpura">Navrangpura Branch</option>
-            </select>
+
+            <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
+              <button
+                className="pharmacy-icon-btn"
+                title="Notifications"
+                onClick={() => setIsNotiOpen(!isNotiOpen)}
+                style={{ position: 'relative' }}
+              >
+                <Bell size={18} />
+                {notifications.filter(n => !n.is_read).length > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-2px',
+                      right: '-2px',
+                      backgroundColor: '#ef4444',
+                      color: '#fff',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      borderRadius: '50%',
+                      width: '16px',
+                      height: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '2px solid #fff'
+                    }}
+                  >
+                    {notifications.filter(n => !n.is_read).length > 9 ? '9+' : notifications.filter(n => !n.is_read).length}
+                  </span>
+                )}
+              </button>
+
+              {isNotiOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '42px',
+                    width: '320px',
+                    background: '#ffffff',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                    border: '1px solid #e2e8f0',
+                    zIndex: 1000,
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>System Alerts & Notifications</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {notifications.filter(n => !n.is_read).length > 0 && (
+                        <button onClick={markAllNotificationsRead} style={{ border: 'none', background: 'none', color: '#3b82f6', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Mark Read
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button onClick={clearAllNotifications} style={{ border: 'none', background: 'none', color: '#64748b', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '24px', textAlign: 'center', fontSize: '0.82rem', color: '#94a3b8' }}>
+                        No notifications available
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => markNotificationRead(n.id)}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f1f5f9',
+                            background: !n.is_read ? '#f0f9ff' : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.82rem', color: '#0f172a' }}>{n.title}</span>
+                            {!n.is_read && <span style={{ width: '6px', height: '6px', background: '#3b82f6', borderRadius: '50%' }} />}
+                          </div>
+                          <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.35 }}>{n.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+              <div 
+                className="pharmacy-profile-badge" 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="pharmacy-profile-avatar" style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                  {initials}
+                </div>
+                <div className="pharmacy-profile-info">
+                  <span className="pharmacy-profile-name">{currentUser?.full_name || 'Pharmacist'}</span>
+                  <span className="pharmacy-profile-role">Pharmacist</span>
+                </div>
+              </div>
+
+              {isProfileDropdownOpen && (
+                <div className="profile-dropdown-menu">
+                  <button onClick={() => { setShowProfileModal(true); setIsProfileDropdownOpen(false); }}>
+                    <User size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> My Profile
+                  </button>
+                  <button onClick={() => { setActiveTab('availability'); setIsProfileDropdownOpen(false); }}>
+                    <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Availability
+                  </button>
+                  <div className="profile-dropdown-divider"></div>
+                  <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Log Out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
+
+        <div className="pharmacy-content">
 
         {loading ? (
           <div className="pharmacy-card pharmacy-loading-state">
@@ -571,6 +844,32 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             {/* Rx Queue View */}
             {activeTab === 'rxqueue' && (
               <div className="pharmacy-card">
+                <div className="pharmacy-card-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+                  <h3 className="pharmacy-card-title" style={{ margin: 0 }}>Prescription Queue</h3>
+                  <div className="pharmacy-search-wrapper" style={{ margin: 0, width: '280px', position: 'relative' }}>
+                    <Search className="pharmacy-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                    <input 
+                      type="text" 
+                      className="pharmacy-search-input" 
+                      style={{ paddingLeft: '36px', height: '38px', width: '100%', fontSize: '0.85rem' }} 
+                      placeholder="Search prescriptions, patients..." 
+                      list="pharmacy-prescriptions-suggestions"
+                      value={searchQuery} 
+                      onChange={e => setSearchQuery(e.target.value)} 
+                    />
+                    <datalist id="pharmacy-prescriptions-suggestions">
+                      {Array.from(new Set(
+                        (prescriptions || []).flatMap((r: any) => {
+                          const patientName = r.patient?.user?.full_name || '';
+                          const doctorName = r.doctor?.user?.full_name || '';
+                          return [patientName, doctorName].filter(Boolean);
+                        })
+                      )).map((name: any) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
                 <div className="pharmacy-table-wrap">
                   <table className="pharmacy-table">
                     <thead>
@@ -866,14 +1165,35 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             {/* Inventory View */}
             {activeTab === 'inventory' && (
               <div className="pharmacy-card">
-                <div className="pharmacy-card-header">
-                  <h3 className="pharmacy-card-title">Medicine Catalogue</h3>
-                  <button 
-                    className="pharmacy-btn pharmacy-btn-primary"
-                    onClick={() => setShowAddModal(true)}
-                  >
-                    <Plus size={16} /> Add Medicine
-                  </button>
+                <div className="pharmacy-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 className="pharmacy-card-title" style={{ margin: 0 }}>Medicine Catalogue</h3>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div className="pharmacy-search-wrapper" style={{ margin: 0, width: '280px', position: 'relative' }}>
+                      <Search className="pharmacy-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                      <input 
+                        type="text" 
+                        className="pharmacy-search-input" 
+                        style={{ paddingLeft: '36px', height: '38px', width: '100%', fontSize: '0.85rem' }} 
+                        placeholder="Search medicines, categories..." 
+                        list="pharmacy-medicines-suggestions"
+                        value={searchQuery} 
+                        onChange={e => setSearchQuery(e.target.value)} 
+                      />
+                      <datalist id="pharmacy-medicines-suggestions">
+                        {Array.from(new Set(
+                          (medicines || []).flatMap((m: any) => [m.name, m.category].filter(Boolean))
+                        )).map((val: any) => (
+                          <option key={val} value={val} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <button 
+                      className="pharmacy-btn pharmacy-btn-primary"
+                      onClick={() => setShowAddModal(true)}
+                    >
+                      <Plus size={16} /> Add Medicine
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pharmacy-table-wrap">
@@ -925,6 +1245,37 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
             {/* Purchase Orders View */}
             {activeTab === 'purchase' && (
               <div className="pharmacy-card">
+                <div className="pharmacy-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 className="pharmacy-card-title" style={{ margin: 0 }}>Stock Purchase Logs</h3>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div className="pharmacy-search-wrapper" style={{ margin: 0, width: '280px', position: 'relative' }}>
+                      <Search className="pharmacy-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                      <input 
+                        type="text" 
+                        className="pharmacy-search-input" 
+                        style={{ paddingLeft: '36px', height: '38px', width: '100%', fontSize: '0.85rem' }} 
+                        placeholder="Search by PO, supplier, medicine..." 
+                        list="pharmacy-purchase-suggestions"
+                        value={searchQuery} 
+                        onChange={e => setSearchQuery(e.target.value)} 
+                      />
+                      <datalist id="pharmacy-purchase-suggestions">
+                        {Array.from(new Set(
+                          (purchaseOrders || []).flatMap((po: any) => [po.supplier, po.medicine_name].filter(Boolean))
+                        )).map((val: any) => (
+                          <option key={val} value={val} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <button 
+                      className="pharmacy-btn pharmacy-btn-primary"
+                      onClick={() => setShowPOModal(true)}
+                    >
+                      <Plus size={16} /> Record Purchase
+                    </button>
+                  </div>
+                </div>
+
                 <div className="pharmacy-table-wrap">
                   <table className="pharmacy-table">
                     <thead>
@@ -938,26 +1289,34 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {purchaseOrders.map((po) => (
-                        <tr key={po.id}>
-                          <td>
-                            <span className="pharmacy-id-code">{po.id}</span>
-                          </td>
-                          <td>
-                            <div className="pharmacy-cell-primary">{po.supplier}</div>
-                          </td>
-                          <td>{po.date}</td>
-                          <td>{po.items}</td>
-                          <td>₹{po.amount.toLocaleString()}</td>
-                          <td>
-                            {po.status === 'Received' ? (
-                              <span className="pharmacy-badge pharmacy-badge-completed">Received</span>
-                            ) : (
-                              <span className="pharmacy-badge pharmacy-badge-waiting">Ordered</span>
-                            )}
+                      {filteredPurchaseOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
+                            No purchase orders found. Record a new purchase transaction.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredPurchaseOrders.map((po) => (
+                          <tr key={po.id}>
+                            <td>
+                              <span className="pharmacy-id-code">PO-{po.id.slice(0, 8).toUpperCase()}</span>
+                            </td>
+                            <td>
+                              <div className="pharmacy-cell-primary">{po.supplier}</div>
+                            </td>
+                            <td>{po.date}</td>
+                            <td>{po.items || `${po.medicine_name} (+${po.quantity} ${po.unit})`}</td>
+                            <td>₹{po.amount.toFixed(2)}</td>
+                            <td>
+                              {po.status === 'Received' ? (
+                                <span className="pharmacy-badge pharmacy-badge-completed">Received</span>
+                              ) : (
+                                <span className="pharmacy-badge pharmacy-badge-waiting">Ordered</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1160,8 +1519,248 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
                 </div>
               </div>
             )}
+
+            {/* My Profile Tab Workspace */}
+            {activeTab === 'profile' && (
+              <div className="tab-fade-in" style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 0', width: '100%' }}>
+                <div style={{
+                  background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
+                  color: '#ffffff',
+                  padding: '28px 32px',
+                  borderRadius: '12px',
+                  marginBottom: '24px',
+                  boxShadow: '0 4px 12px rgba(15, 118, 110, 0.08)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <User size={24} /> Pharmacist Profile Workspace
+                    </h2>
+                    <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#ccfbf1', opacity: 0.9 }}>
+                      Manage your professional credentials, registration details, and contact profile.
+                    </p>
+                  </div>
+                  <div>
+                    {!isEditingProfile ? (
+                      <button
+                        onClick={() => setIsEditingProfile(true)}
+                        className="pharmacy-btn"
+                        style={{ padding: '10px 20px', fontSize: '0.88rem', backgroundColor: '#ffffff', color: '#0f766e', border: '1px solid #ffffff', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Edit3 size={16} /> Edit Profile
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button
+                          onClick={() => {
+                            setIsEditingProfile(false);
+                            setProfileForm({
+                              full_name: currentUser?.full_name || '',
+                              phone: currentUser?.phone || '',
+                              email: currentUser?.email || '',
+                              qualification: 'B.Pharm, M.Pharm',
+                              experience_years: 5,
+                              bio: 'Dedicated pharmacist managing clinic inventory, medicine dispensing, and procurement workflows with high accuracy and compliance.'
+                            });
+                          }}
+                          className="pharmacy-btn pharmacy-btn-outline"
+                          style={{ padding: '10px 18px', fontSize: '0.88rem', borderColor: 'rgba(255,255,255,0.4)', backgroundColor: 'transparent', color: '#ffffff' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveProfile}
+                          className="pharmacy-btn"
+                          style={{ padding: '10px 18px', fontSize: '0.88rem', backgroundColor: '#14b8a6', color: '#ffffff', border: 'none' }}
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '24px' }}>
+                  {/* Left Column: Photo Upload Card */}
+                  <div className="pharmacy-card" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 20px', borderRadius: '12px' }}>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '0.9rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+                      Profile Picture
+                    </h4>
+                    <div 
+                      style={{ 
+                        position: 'relative', 
+                        width: '130px', 
+                        height: '130px', 
+                        borderRadius: '50%', 
+                        border: '4px solid #f1f5f9', 
+                        overflow: 'hidden', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        backgroundColor: '#e2e8f0', 
+                        marginBottom: '20px'
+                      }}
+                    >
+                      <span style={{ fontSize: '2.5rem', fontWeight: 700, color: '#475569' }}>
+                        {initials}
+                      </span>
+                      <div 
+                        style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                          color: '#ffffff',
+                          padding: '4px 0',
+                          fontSize: '0.7rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '2px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Camera size={14} />
+                        <span>Add Photo</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="pharmacy-btn pharmacy-btn-outline"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.82rem' }}
+                      onClick={() => {
+                        showToast('Photo upload simulated successfully!', 'success');
+                      }}
+                    >
+                      <Upload size={14} /> Upload Photo
+                    </button>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: '8px' }}>
+                      Supports JPG, PNG (Max 5MB)
+                    </span>
+                  </div>
+
+                  {/* Right Column: Credentials & General Information */}
+                  <div className="pharmacy-card" style={{ padding: '30px', borderRadius: '12px' }}>
+                    <h3 style={{ margin: '0 0 24px 0', fontSize: '1.1rem', fontWeight: 700, color: 'var(--ink)' }}>
+                      Credentials & General Information
+                    </h3>
+
+                    <form onSubmit={handleSaveProfile} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Full Name</label>
+                        <input 
+                          type="text" 
+                          className="pharmacy-input"
+                          value={profileForm.full_name}
+                          onChange={(e) => setProfileForm({ ...profileForm, full_name: e.target.value })}
+                          disabled={!isEditingProfile}
+                          style={!isEditingProfile ? { backgroundColor: '#f8fafc', color: '#64748b' } : {}}
+                          required
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Registration / Pharmacist Code</label>
+                        <input 
+                          type="text" 
+                          className="pharmacy-input"
+                          value="RPH-SATELLITE-07"
+                          disabled
+                          style={{ backgroundColor: '#f8fafc', color: '#64748b' }}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Primary Specialization / Role</label>
+                        <input 
+                          type="text" 
+                          className="pharmacy-input"
+                          value="Clinical Pharmacist"
+                          disabled
+                          style={{ backgroundColor: '#f8fafc', color: '#64748b' }}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Qualifications</label>
+                        <input 
+                          type="text" 
+                          className="pharmacy-input"
+                          value={profileForm.qualification}
+                          onChange={(e) => setProfileForm({ ...profileForm, qualification: e.target.value })}
+                          disabled={!isEditingProfile}
+                          style={!isEditingProfile ? { backgroundColor: '#f8fafc', color: '#64748b' } : {}}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Experience (Years)</label>
+                        <input 
+                          type="number" 
+                          className="pharmacy-input"
+                          value={profileForm.experience_years}
+                          onChange={(e) => setProfileForm({ ...profileForm, experience_years: parseInt(e.target.value) || 0 })}
+                          disabled={!isEditingProfile}
+                          style={!isEditingProfile ? { backgroundColor: '#f8fafc', color: '#64748b' } : {}}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Assigned Branch</label>
+                        <input 
+                          type="text" 
+                          className="pharmacy-input"
+                          value="Satellite Branch"
+                          disabled
+                          style={{ backgroundColor: '#f8fafc', color: '#64748b' }}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Email Address</label>
+                        <input 
+                          type="email" 
+                          className="pharmacy-input"
+                          value={profileForm.email}
+                          disabled
+                          style={{ backgroundColor: '#f8fafc', color: '#64748b' }}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group">
+                        <label className="pharmacy-label">Contact Phone</label>
+                        <input 
+                          type="text" 
+                          className="pharmacy-input"
+                          value={profileForm.phone}
+                          onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                          disabled={!isEditingProfile}
+                          style={!isEditingProfile ? { backgroundColor: '#f8fafc', color: '#64748b' } : {}}
+                        />
+                      </div>
+
+                      <div className="pharmacy-form-group full-width" style={{ gridColumn: 'span 2' }}>
+                        <label className="pharmacy-label">Professional Biography</label>
+                        <textarea 
+                          rows={3}
+                          className="pharmacy-input"
+                          value={profileForm.bio}
+                          onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
+                          disabled={!isEditingProfile}
+                          style={!isEditingProfile ? { backgroundColor: '#f8fafc', color: '#64748b', resize: 'none' } : { resize: 'none' }}
+                        />
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
+        </div>
       </main>
 
       {/* Leave Request Modal */}
@@ -1359,6 +1958,107 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
           </div>
         </div>
       )}
+      {/* Add Medicine Modal End */}
+      {showPOModal && (
+        <div className="pharmacy-modal-overlay">
+          <div className="pharmacy-modal-card">
+            <header className="pharmacy-modal-header">
+              <h3 className="pharmacy-modal-title">Record Purchase Order</h3>
+              <button className="pharmacy-modal-close" onClick={() => setShowPOModal(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            
+            <form onSubmit={handlePOSubmit}>
+              <div className="pharmacy-modal-body">
+                <div className="pharmacy-form-grid">
+                  <div className="pharmacy-form-group full-width">
+                    <label className="pharmacy-label">Select Medicine (Type to search suggestions) *</label>
+                    <input 
+                      type="text" 
+                      className="pharmacy-input"
+                      placeholder="Type medicine name..."
+                      list="po-medicines-suggestions"
+                      required
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const found = medicines.find(m => m.name.toLowerCase() === val.toLowerCase());
+                        setNewPO(prev => ({ ...prev, medicine_id: found ? found.id : '' }));
+                      }}
+                    />
+                    <datalist id="po-medicines-suggestions">
+                      {medicines.map((m) => (
+                        <option key={m.id} value={m.name}>{m.category || 'General'} · Stock: {m.stock_qty} {m.unit}</option>
+                      ))}
+                    </datalist>
+                    {!newPO.medicine_id && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '4px', display: 'block' }}>
+                        Please type and select a registered medicine name from the suggestions list.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="pharmacy-form-group">
+                    <label className="pharmacy-label">Stock Quantity to Add *</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      className="pharmacy-input"
+                      value={newPO.change_qty}
+                      onChange={(e) => setNewPO({ ...newPO, change_qty: parseInt(e.target.value) || 0 })}
+                      required
+                    />
+                  </div>
+
+                  <div className="pharmacy-form-group">
+                    <label className="pharmacy-label">Supplier / Brand</label>
+                    <input 
+                      type="text"
+                      className="pharmacy-input"
+                      disabled
+                      placeholder="Auto-resolved from Medicine metadata"
+                      value={
+                        newPO.medicine_id 
+                          ? (medicines.find(m => m.id === newPO.medicine_id)?.supplier || 'N/A')
+                          : 'N/A'
+                      }
+                    />
+                  </div>
+
+                  <div className="pharmacy-form-group full-width">
+                    <label className="pharmacy-label">Transaction Notes / Reference *</label>
+                    <textarea 
+                      className="pharmacy-input"
+                      style={{ height: '80px', padding: '10px', resize: 'none' }}
+                      placeholder="e.g. Purchase Invoice Ref #1024, restocking"
+                      value={newPO.notes}
+                      onChange={(e) => setNewPO({ ...newPO, notes: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <footer className="pharmacy-modal-footer">
+                <button 
+                  type="button" 
+                  className="pharmacy-btn pharmacy-btn-outline" 
+                  onClick={() => setShowPOModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="pharmacy-btn pharmacy-btn-primary"
+                  disabled={submitLoading || !newPO.medicine_id}
+                >
+                  {submitLoading ? 'Recording...' : 'Record Purchase'}
+                </button>
+              </footer>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Floating Toast Notification */}
       {toast && (
@@ -1383,6 +2083,76 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
           <span>{toast.message}</span>
         </div>
       )}
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div className="pharmacy-modal-overlay">
+          <div className="pharmacy-modal-card" style={{ maxWidth: '450px' }}>
+            <header className="pharmacy-modal-header">
+              <h3 className="pharmacy-modal-title">My Profile</h3>
+              <button className="pharmacy-modal-close" onClick={() => setShowProfileModal(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className="pharmacy-modal-body" style={{ padding: '2rem 1.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', textAlign: 'center' }}>
+                <div style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '50%',
+                  backgroundColor: '#e0f2fe',
+                  color: '#0369a1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '2rem',
+                  fontWeight: 700,
+                  marginBottom: '1rem',
+                  border: '3px solid #bae6fd'
+                }}>
+                  {initials}
+                </div>
+                <h4 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 700, color: 'var(--ink)' }}>
+                  {currentUser?.full_name || 'Pharmacist Staff'}
+                </h4>
+                <span className="pharmacy-badge pharmacy-badge-completed" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}>
+                  Active Status
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Email Address:</span>
+                  <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{currentUser?.email || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Phone Number:</span>
+                  <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{currentUser?.phone || '+91 98765 43210'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Assigned Role:</span>
+                  <span style={{ color: 'var(--ink)', fontWeight: 600 }}>Pharmacist</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Clinic Branch:</span>
+                  <span style={{ color: 'var(--ink)', fontWeight: 600 }}>Satellite Branch</span>
+                </div>
+              </div>
+            </div>
+            <footer className="pharmacy-modal-footer">
+              <button 
+                type="button" 
+                className="pharmacy-btn pharmacy-btn-primary" 
+                onClick={() => setShowProfileModal(false)}
+                style={{ minWidth: '100px' }}
+              >
+                Close
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes slideIn {
           from { transform: translateY(1rem); opacity: 0; }

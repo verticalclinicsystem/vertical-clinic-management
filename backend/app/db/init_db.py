@@ -5,32 +5,35 @@ No dummy/static data — everything goes into PostgreSQL.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import AsyncSessionLocal, engine
-from app.core.security import hash_password
-
-from app.models.branch import Branch
-from app.models.user import User
-from app.models.doctor import Doctor, DoctorSlot
-from app.models.patient import Patient
-from app.models.receptionist import Receptionist
-from app.models.inventory import Medicine
 from app.models.appointment import Appointment
+from app.models.branch import Branch
 from app.models.consultation import Consultation
-from app.models.prescription import Prescription, PrescriptionItem
-from app.models.medical_report import MedicalReport
+from app.models.doctor import Doctor, DoctorSlot
+from app.models.inventory import Medicine
 from app.models.invoice import Invoice
-from app.models.payment import Payment
+from app.models.medical_report import MedicalReport
 from app.models.notification import Notification
-from app.models.treatment import TreatmentPlan, TreatmentProcedure
+from app.models.patient import Patient
+from app.models.payment import Payment
+from app.models.prescription import Prescription, PrescriptionItem
+from app.models.receptionist import Receptionist
 from app.models.teleconsult import TeleConsultation
+from app.models.treatment import TreatmentPlan, TreatmentProcedure
+from app.models.user import User
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -40,26 +43,39 @@ async def create_tables() -> None:
     # Register all models with Base
     from app.models import (  # noqa: F401
         appointment,
+        availability_request,
         branch,
+        chat,
         consultation,
         doctor,
         inventory,
         invoice,
+        ipd,
         medical_report,
         notification,
         patient,
         payment,
         pharmacy,
         prescription,
+        receptionist,
         teleconsult,
         treatment,
         user,
-        receptionist,
-        availability_request,
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("✅ Database tables created")
+        # Non-destructively ensure columns added in model updates exist in database
+        alter_statements = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1 NOT NULL;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS admission_id UUID REFERENCES admissions(id) ON DELETE SET NULL;"
+        ]
+        for stmt in alter_statements:
+            with contextlib.suppress(Exception):
+                await conn.execute(text(stmt))
+    logger.info("✅ Database tables and column migrations synchronized")
 
 
 async def check_db_connection() -> bool:
@@ -77,30 +93,37 @@ async def check_db_connection() -> bool:
 async def seed_database() -> None:
     """
     Seed the database with branches, users, slots, clinical history, and medicines.
-    Idempotent — checks existence before inserting.
+    Idempotent — checks existence before inserting. Preserves all existing data.
     """
     async with AsyncSessionLocal() as db:
-        already_seeded = await _is_seeded(db)
-        if already_seeded:
-            logger.info("⏭️  Database already seeded (Admin exists), skipping")
-            return
+        try:
+            already_seeded = await _is_seeded(db)
+            if already_seeded:
+                logger.info("⏭️  Database already seeded (Admin exists), skipping")
+                return
 
-        logger.info("🌱 Seeding database with all clinic records...")
+            logger.info("🌱 Seeding database with all clinic records...")
 
-        # Seed the three branches (Satellite, Bopal, Navrangpura)
-        branch_ids = await _seed_branches(db)
+            # Seed the three branches (Satellite, Bopal, Navrangpura)
+            branch_ids = await _seed_branches(db)
 
-        # Seed users and profiles
-        doctor_ids, patient_ids = await _seed_users_and_profiles(db, branch_ids)
+            # Seed IPD Beds
+            await _seed_beds(db, branch_ids)
 
-        # Seed clinical records (appointments, consultations, prescriptions, invoices, payments, plans)
-        await _seed_clinical_records(db, branch_ids, doctor_ids, patient_ids)
+            # Seed users and profiles
+            doctor_ids, patient_ids = await _seed_users_and_profiles(db, branch_ids)
 
-        # Seed medicines / inventory
-        await _seed_medicines(db)
+            # Seed clinical records (appointments, consultations, prescriptions, invoices, payments, plans)
+            await _seed_clinical_records(db, branch_ids, doctor_ids, patient_ids)
 
-        await db.commit()
-        logger.info("✅ Database fully seeded successfully")
+            # Seed medicines / inventory
+            await _seed_medicines(db)
+
+            await db.commit()
+            logger.info("✅ Database fully seeded successfully")
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"⚠️ Database seed skipped or partially executed safely without deleting existing data: {e}")
 
 
 async def _is_seeded(db: AsyncSession) -> bool:
@@ -111,11 +134,14 @@ async def _is_seeded(db: AsyncSession) -> bool:
         admin = result.scalar_one_or_none()
         return admin is not None
     except Exception:
+        await db.rollback()
         return False
 
 
 async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
-    """Create the 3 clinic branches. Returns {code: uuid}."""
+    """Create the 3 clinic branches if not existing. Returns {code: uuid}."""
+    from sqlalchemy import select
+
     branches_data = [
         {
             "id": uuid.uuid4(),
@@ -158,14 +184,19 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
         },
     ]
 
-    branch_ids: dict[str, uuid.UUID] = {}
+    branch_ids: dict[str, Any] = {}
     for data in branches_data:
-        branch = Branch(**data)
-        db.add(branch)
-        branch_ids[data["code"]] = data["id"]
+        existing = await db.execute(select(Branch).where(Branch.code == data["code"]))
+        b_obj = existing.scalar_one_or_none()
+        if b_obj:
+            branch_ids[str(data["code"])] = b_obj.id
+        else:
+            branch = Branch(**data)
+            db.add(branch)
+            branch_ids[str(data["code"])] = data["id"]
 
     await db.flush()
-    logger.info(f"  ✅ {len(branches_data)} branches created")
+    logger.info(f"  ✅ Branches checked/created ({len(branch_ids)} active)")
     return branch_ids
 
 
@@ -173,36 +204,65 @@ async def _seed_users_and_profiles(
     db: AsyncSession, branch_ids: dict[str, uuid.UUID], test_mode: bool = False
 ) -> tuple[dict[str, uuid.UUID], dict[str, tuple[uuid.UUID, uuid.UUID]]]:
     """Create admins, doctors, receptionists, pharmacists, patients, and doctor slots."""
-    # Create Admin
-    admin_user = User(
-        id=uuid.uuid4(),
-        full_name="Admin User",
-        email="admin@verticalclinic.com",
-        phone="+919820000001",
-        hashed_password=hash_password("Admin@verticalclinic.com"),
-        role="admin",
-        branch_id=None,
-        is_active=True,
-        is_verified=True,
-    )
-    db.add(admin_user)
+    from sqlalchemy import select
+
+    # Create Admin if not existing
+    res = await db.execute(select(User).where(User.email == "admin@verticalclinic.com"))
+    if not res.scalar_one_or_none():
+        admin_user = User(
+            id=uuid.uuid4(),
+            full_name="Admin User",
+            email="admin@verticalclinic.com",
+            phone="+919820000001",
+            hashed_password=hash_password("Admin@verticalclinic.com"),
+            role="admin",
+            branch_id=None,
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(admin_user)
+
+    # Create Clinic Manager if not existing
+    res = await db.execute(select(User).where(User.email == "manager@verticalclinic.com"))
+    if not res.scalar_one_or_none():
+        manager_user = User(
+            id=uuid.uuid4(),
+            full_name="Clinic Operational Manager",
+            email="manager@verticalclinic.com",
+            phone="+919820000005",
+            hashed_password=hash_password("ManagerPassword123!"),
+            role="clinic_manager",
+            branch_id=branch_ids.get("SAT"),
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(manager_user)
 
     if test_mode:
         doctors_to_seed = [
-            ("Dr. Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "Orthodontist", "BDS, MDS (Orthodontics)", 12, 900.0, "Specialist in braces, aligners, and bite correction."),
-            ("Dr. Aarav Patel", "doctor2_sat@verticalclinic.com", "+919820011112", "SAT", "Pediatric Dentist", "BDS, MDS (Pedodontics)", 8, 700.0, "Specialist in pediatric dentistry and preventative care."),
-            ("Dr. Vikram Shah", "doctor1_bop@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma."),
-            ("Dr. Sneha Rao", "doctor2_bop@verticalclinic.com", "+919820022222", "BOP", "Periodontist", "BDS, MDS (Periodontics)", 9, 750.0, "Specializes in gum health, implants, and laser gum therapy."),
-            ("Dr. Rajesh Nair", "doctor1_nav@verticalclinic.com", "+919820033331", "NAV", "General Dentist", "BDS", 6, 500.0, "Comprehensive dental care, cleanings, fillings, and extractions."),
-            ("Dr. Anjali Desai", "doctor2_nav@verticalclinic.com", "+919820033332", "NAV", "Prosthodontist", "BDS, MDS (Prosthodontics)", 11, 850.0, "Specialist in crowns, bridges, dentures, and cosmetic restorations.")
+            ("Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "Orthodontist", "BDS, MDS (Orthodontics)", 12, 900.0, "Specialist in braces, aligners, and bite correction."),
+            ("Aarav Patel", "doctor2_sat@verticalclinic.com", "+919820011112", "SAT", "Pediatric Dentist", "BDS, MDS (Pedodontics)", 8, 700.0, "Specialist in pediatric dentistry and preventative care."),
+            ("Vikram Shah", "doctor1_bop@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma."),
+            ("Sneha Rao", "doctor2_bop@verticalclinic.com", "+919820022222", "BOP", "Periodontist", "BDS, MDS (Periodontics)", 9, 750.0, "Specializes in gum health, implants, and laser gum therapy."),
+            ("Rajesh Nair", "doctor1_nav@verticalclinic.com", "+919820033331", "NAV", "General Dentist", "BDS", 6, 500.0, "Comprehensive dental care, cleanings, fillings, and extractions."),
+            ("Anjali Desai", "doctor2_nav@verticalclinic.com", "+919820033332", "NAV", "Prosthodontist", "BDS, MDS (Prosthodontics)", 11, 850.0, "Specialist in crowns, bridges, dentures, and cosmetic restorations.")
         ]
     else:
         doctors_to_seed = [
-            ("Dr. Vikram Shah", "doctor1_bopal@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma.")
+            ("Vikram Shah", "doctor1_bopal@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma.")
         ]
 
     doctor_ids: dict[str, uuid.UUID] = {}
     for name, email, phone, branch_code, spec, qual, exp, fee, bio in doctors_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        user = res.scalar_one_or_none()
+        if user:
+            doc_res = await db.execute(select(Doctor).where(Doctor.user_id == user.id))
+            doc_profile = doc_res.scalar_one_or_none()
+            if doc_profile:
+                doctor_ids[email] = doc_profile.id
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -289,6 +349,10 @@ async def _seed_users_and_profiles(
             ("Preeti Sharma", "receptionist1_bopal@verticalclinic.com", "+919820088889", "BOP", "RC-10002", "Senior receptionist with 5+ years of clinical scheduling experience.")
         ]
     for name, email, phone, branch_code, emp_id, bio in receptionists_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        if res.scalar_one_or_none():
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -326,6 +390,10 @@ async def _seed_users_and_profiles(
             ("Ravi Kumar", "pharma1_bopal@verticalclinic.com", "+919820066667", "BOP")
         ]
     for name, email, phone, branch_code in pharmacists_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        if res.scalar_one_or_none():
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -356,6 +424,15 @@ async def _seed_users_and_profiles(
 
     patient_ids: dict[str, tuple[uuid.UUID, uuid.UUID]] = {}
     for name, email, phone, branch_code, pat_code, gender, blood, allergies in patients_to_seed:
+        res = await db.execute(select(User).where(User.email == email))
+        user = res.scalar_one_or_none()
+        if user:
+            pat_res = await db.execute(select(Patient).where(Patient.user_id == user.id))
+            pat_profile = pat_res.scalar_one_or_none()
+            if pat_profile:
+                patient_ids[email] = (pat_profile.id, user.id)
+            continue
+
         user = User(
             id=uuid.uuid4(),
             full_name=name,
@@ -395,7 +472,15 @@ async def _seed_clinical_records(
     patient_ids: dict[str, tuple[uuid.UUID, uuid.UUID]]
 ) -> None:
     """Seed appointments, consultations, prescriptions, treatment plans, medical reports, invoices, and payments."""
-    today = datetime.now(timezone.utc)
+    from sqlalchemy import select
+
+    # Skip if clinical records are already seeded
+    existing_appt = await db.execute(select(Appointment).limit(1))
+    if existing_appt.scalar_one_or_none() is not None:
+        logger.info("  ⏭️ Clinical records already exist in database, skipping")
+        return
+
+    today = datetime.now(UTC)
     today_date = today.date()
 
     # Define primary mappings for comprehensive clinical records
@@ -439,7 +524,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_1,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=9, minutes=30),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=9, minutes=30),
                 "treatment_type": "Routine Checkup",
                 "consultation_type": "in_person",
                 "status": "checked_in",
@@ -449,7 +534,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_2,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=11, minutes=0),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=11, minutes=0),
                 "treatment_type": "Consultation",
                 "consultation_type": "in_person",
                 "status": "confirmed",
@@ -459,7 +544,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_1,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=14, minutes=30),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=14, minutes=30),
                 "treatment_type": "Scaling & Polishing",
                 "consultation_type": "teleconsultation",
                 "status": "checked_in",
@@ -469,7 +554,7 @@ async def _seed_clinical_records(
                 "patient_id": pat_id_2,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
-                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=16, minutes=0),
+                "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=16, minutes=0),
                 "treatment_type": "Tooth Extraction",
                 "consultation_type": "in_person",
                 "status": "pending",
@@ -679,7 +764,6 @@ async def _seed_clinical_records(
 
 async def _seed_medicines(db: AsyncSession) -> None:
     """Seed initial medicine/inventory catalogue."""
-    from app.models.inventory import Medicine
 
     medicines = [
         {
@@ -754,9 +838,68 @@ async def _seed_medicines(db: AsyncSession) -> None:
         },
     ]
 
+    from sqlalchemy import select
     for med in medicines:
+        res = await db.execute(select(Medicine).where(Medicine.name == med["name"]))
+        if res.scalar_one_or_none():
+            continue
         m = Medicine(id=uuid.uuid4(), **med)
         db.add(m)
 
     await db.flush()
     logger.info(f"  ✅ {len(medicines)} medicines seeded")
+
+
+async def _seed_beds(db: AsyncSession, branch_ids: dict[str, uuid.UUID]) -> None:
+    """Seed bed categories and physical beds for each branch."""
+    from sqlalchemy import select, update
+
+    from app.models.ipd import Bed, BedCategory
+
+    categories = [
+        {"name": "General Ward", "base_charge_24h": 1200.0, "hourly_overtime_rate": 50.0, "tax_rate": 0.05},
+        {"name": "Private Deluxe", "base_charge_24h": 3500.0, "hourly_overtime_rate": 150.0, "tax_rate": 0.05},
+        {"name": "ICU", "base_charge_24h": 5000.0, "hourly_overtime_rate": 250.0, "tax_rate": 0.12},
+    ]
+
+    cat_map = {}
+    for cat_data in categories:
+        res = await db.execute(select(BedCategory).where(BedCategory.name == cat_data["name"]))
+        cat = res.scalar_one_or_none()
+        if not cat:
+            cat = BedCategory(id=uuid.uuid4(), **cat_data)
+            db.add(cat)
+            await db.flush()
+        cat_map[cat_data["name"]] = cat.id
+
+    for _code, branch_id in branch_ids.items():
+        # Pre-migration: rename old default names if they exist to the new abbreviated format
+        # This keeps integrity with existing transactions/admissions
+        rename_pairs = [
+            ("Bed-01", "GW-01"),
+            ("Bed-02", "GW-02"),
+            ("Bed-03", "DL-101"),
+            ("Bed-04", "ICU-101"),
+        ]
+        for old_num, new_num in rename_pairs:
+            await db.execute(
+                update(Bed)
+                .where(Bed.branch_id == branch_id, Bed.bed_number == old_num)
+                .values(bed_number=new_num)
+            )
+        await db.flush()
+
+        beds = [
+            {"bed_number": "GW-01", "category_id": cat_map["General Ward"]},
+            {"bed_number": "GW-02", "category_id": cat_map["General Ward"]},
+            {"bed_number": "DL-101", "category_id": cat_map["Private Deluxe"]},
+            {"bed_number": "ICU-101", "category_id": cat_map["ICU"]},
+        ]
+        for bed_data in beds:
+            res = await db.execute(select(Bed).where(Bed.branch_id == branch_id, Bed.bed_number == bed_data["bed_number"]))
+            bed = res.scalar_one_or_none()
+            if not bed:
+                bed = Bed(id=uuid.uuid4(), branch_id=branch_id, status="available", **bed_data)
+                db.add(bed)
+    await db.flush()
+    logger.info("  ✅ IPD Bed categories and Bed assets seeded")

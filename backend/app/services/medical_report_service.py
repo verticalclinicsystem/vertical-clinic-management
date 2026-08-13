@@ -35,6 +35,20 @@ class MedicalReportService:
         })
         await self.db.commit()
         logger.info(f"Medical report created for patient {patient.patient_code}: {report.id}")
+
+        # Send Medical Report notification
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            await noti_service.send_multichannel_notification(
+                user_id=user_id,
+                title="Medical Report Uploaded",
+                message=f"Your new medical report ({report_name}) has been uploaded and is ready to view.",
+                type="report"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send medical report notification: {e}")
+
         return report
 
     async def get_reports_by_user_id(self, user_id: uuid.UUID) -> list[MedicalReport]:
@@ -61,6 +75,13 @@ class MedicalReportService:
             patient = await self.patient_repo.get_by_user_id(user_id)
             if not patient or report.patient_id != patient.id:
                 raise PermissionDeniedError("You do not have permission to delete this report.")
+
+        # Delete actual file from storage
+        try:
+            from app.services.storage_service import StorageService
+            await StorageService.delete_medical_report(report.file_url)
+        except Exception as e:
+            logger.error(f"Failed to delete medical report file {report.file_url}: {e}")
 
         await self.report_repo.delete(report)
         await self.db.commit()

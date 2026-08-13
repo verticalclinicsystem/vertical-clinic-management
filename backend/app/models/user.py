@@ -5,7 +5,7 @@ Every person in the system (patient, doctor, receptionist, etc.) has a User reco
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +18,7 @@ class UserRole(str):
     DOCTOR = "doctor"
     PHARMACIST = "pharmacist"
     ADMIN = "admin"
+    CLINIC_MANAGER = "clinic_manager"
 
 
 class User(Base):
@@ -42,7 +43,7 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[str] = mapped_column(
         Enum(
-            "patient", "receptionist", "doctor", "pharmacist", "admin",
+            "patient", "receptionist", "doctor", "pharmacist", "admin", "clinic_manager",
             name="userrole"
         ),
         nullable=False,
@@ -57,6 +58,9 @@ class User(Base):
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    suspended_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspension_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

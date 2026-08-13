@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int
 
     # ── OTP ──────────────────────────────────────────────────────────────────
-    OTP_LENGTH: int
-    OTP_EXPIRE_MINUTES: int
-    OTP_MAX_ATTEMPTS: int
-    RESET_TOKEN_EXPIRE_MINUTES: int
+    OTP_LENGTH: int = 6
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_MAX_ATTEMPTS: int = 5
+    RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str                       # asyncpg URL for async ops
@@ -63,9 +63,13 @@ class Settings(BaseSettings):
     STRIPE_CURRENCY: str
 
     # ── File Storage ─────────────────────────────────────────────────────────
-    STORAGE_BACKEND: Literal["local", "s3"]
+    STORAGE_BACKEND: Literal["local", "s3", "cloudinary"]
     UPLOAD_DIR: str
     MAX_UPLOAD_SIZE_MB: int
+
+    CLOUDINARY_CLOUD_NAME: str = "ohlztt2b"
+    CLOUDINARY_API_KEY: str = "822696216758164"
+    CLOUDINARY_API_SECRET: str = "7Q1IvXRvLDFBsYOkzJ_U_UxeRKU"
 
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
@@ -79,6 +83,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     FROM_EMAIL: str
     FROM_NAME: str
+    MAILGUN_API_KEY: str = ""
+    MAILGUN_DOMAIN: str = ""
 
     # ── SMS ──────────────────────────────────────────────────────────────────
     SMS_PROVIDER: Literal["twilio", "fast2sms"]

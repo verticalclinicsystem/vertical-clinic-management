@@ -65,6 +65,60 @@ class PrescriptionService:
         await self.db.commit()
         presc_id = created.id
         logger.info(f"Prescription created successfully: {presc_id}")
+
+        # Generate Prescription PDF
+        pdf_bytes = b""
+        try:
+            from app.utils.pdf_generator import generate_prescription_pdf
+            full_presc = await self.get_prescription(presc_id)
+            doctor_obj = full_presc.doctor
+
+            pdf_data = {
+                "branch_name": doctor_obj.branch.name if (doctor_obj and doctor_obj.branch) else "Vertical Clinic System",
+                "branch_address": doctor_obj.branch.address if (doctor_obj and doctor_obj.branch) else "Ahmedabad Branch",
+                "branch_phone": doctor_obj.branch.phone if (doctor_obj and doctor_obj.branch) else "+91 99999 88888",
+                "doctor_name": doctor_obj.user.full_name if (doctor_obj and doctor_obj.user) else "Doctor",
+                "doctor_specialization": doctor_obj.specialization if doctor_obj else "General Dentist",
+                "doctor_reg_no": doctor_obj.registration_number if doctor_obj else "N/A",
+                "patient_name": patient.user.full_name,
+                "patient_code": patient.patient_code,
+                "date": full_presc.created_at.strftime("%Y-%m-%d"),
+                "notes": full_presc.notes,
+                "items": [
+                    {
+                        "medicine_name": item.medicine_name,
+                        "dosage": item.dosage,
+                        "duration": item.duration,
+                        "instructions": item.instructions
+                    }
+                    for item in full_presc.items
+                ]
+            }
+            pdf_bytes = generate_prescription_pdf(pdf_data)
+        except Exception as pdf_err:
+            logger.error(f"Failed to generate prescription PDF on create: {pdf_err}")
+
+        # Send Prescription Created notification to patient
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            download_link = f"https://vclinic.com/api/v1/prescriptions/{presc_id}/pdf"
+            msg = f"Dr. {doctor.user.full_name} has prescribed new medications for you. Download PDF: {download_link}"
+            
+            attachments = None
+            if pdf_bytes:
+                attachments = [(f"prescription_{patient.patient_code}.pdf", pdf_bytes, "application/pdf")]
+                
+            await noti_service.send_multichannel_notification(
+                user_id=patient.user_id,
+                title="New Prescription Added",
+                message=msg,
+                type="prescription",
+                attachments=attachments
+            )
+        except Exception as e:
+            logger.error(f"Failed to send prescription notification: {e}")
+
         return await self.get_prescription(presc_id)
 
     async def dispense_prescription(self, prescription_id: uuid.UUID, performed_by_id: uuid.UUID | None = None) -> Prescription:
@@ -97,6 +151,31 @@ class PrescriptionService:
                 # If we have stock, reduce it; handle negative limits
                 medicine.stock_qty = max(0, medicine.stock_qty - qty_to_dispense)
                 
+                # Check for low stock notification trigger
+                if medicine.stock_qty <= medicine.reorder_level:
+                    try:
+                        from app.services.notification_service import NotificationService
+                        from app.models.user import User, UserRole
+                        noti_service = NotificationService(self.db)
+
+                        # Broadcast notification to Admins, Clinic Managers, and Pharmacists
+                        users_res = await self.db.execute(
+                            select(User).where(
+                                User.role.in_([UserRole.ADMIN, UserRole.CLINIC_MANAGER, UserRole.PHARMACIST]),
+                                User.is_active == True
+                            )
+                        )
+                        target_users = users_res.scalars().all()
+                        for target_user in target_users:
+                            await noti_service.create_notification(
+                                user_id=target_user.id,
+                                title=f"Low Stock Alert: {medicine.name}",
+                                message=f"Stock for '{medicine.name}' has dropped to {medicine.stock_qty} {medicine.unit} (reorder level: {medicine.reorder_level}). Please initiate reorder.",
+                                type="inventory_alert"
+                            )
+                    except Exception as noti_err:
+                        logger.error(f"Failed to create low stock notification: {noti_err}")
+
                 # Log stock transaction audit trail
                 txn = StockTransaction(
                     medicine_id=medicine.id,

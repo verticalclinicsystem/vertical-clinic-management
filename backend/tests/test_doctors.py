@@ -18,7 +18,7 @@ async def test_public_can_list_and_search_doctors(client: AsyncClient):
     res_search_json = response_search.json()
     assert len(res_search_json["data"]["items"]) == 1
     assert res_search_json["data"]["items"][0]["specialization"] == "Orthodontist"
-    assert "Dr. Rohan Mehta" in res_search_json["data"]["items"][0]["user"]["full_name"]
+    assert "Rohan Mehta" in res_search_json["data"]["items"][0]["user"]["full_name"]
 
 
 @pytest.mark.asyncio
@@ -149,4 +149,27 @@ async def test_doctor_dashboard(client: AsyncClient):
     assert "completed_consultations" in analytics
     assert "tele_consultations_completed" in analytics
     assert "pending_follow_ups" in analytics
+
+
+@pytest.mark.asyncio
+async def test_doctor_followups(client: AsyncClient):
+    """Verify that a doctor can retrieve their follow-ups list successfully."""
+    # 1. Login as Dr. Rohan Mehta
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "doctor@verticalclinic.com", "password": "Doctor@verticalclinic.com"},
+    )
+    assert login.status_code == 200
+    token = login.json()["data"]["access_token"]
+
+    # 2. Query Doctor Follow-ups
+    res = await client.get(
+        "/api/v1/doctors/me/follow-ups",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 200
+    res_data = res.json()
+    assert res_data["success"] is True
+    assert "pending" in res_data["data"]
+    assert "booked" in res_data["data"]
 

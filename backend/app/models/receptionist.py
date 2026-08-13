@@ -27,6 +27,7 @@ class Receptionist(Base):
         index=True,
     )
 
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Employee identity
     employee_id: Mapped[str] = mapped_column(
         String(20), unique=True, nullable=False, index=True

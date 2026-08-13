@@ -16,6 +16,15 @@ class DoctorRepository(BaseRepository[Doctor]):
     def __init__(self, db: AsyncSession) -> None:
         super().__init__(Doctor, db)
 
+    async def create(self, obj_in: dict) -> Doctor:
+        if "user_id" in obj_in and obj_in.get("name") is None:
+            from app.models.user import User
+            user_res = await self.db.execute(select(User).where(User.id == obj_in["user_id"]))
+            user_obj = user_res.scalar_one_or_none()
+            if user_obj:
+                obj_in["name"] = user_obj.full_name
+        return await super().create(obj_in)
+
     async def get_by_user_id(self, user_id: uuid.UUID) -> Doctor | None:
         """Fetch doctor profile by associated user ID."""
         stmt = (

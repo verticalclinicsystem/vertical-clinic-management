@@ -52,6 +52,8 @@ class Appointment(Base):
         String(50), default="pending", index=True
     )  # "pending" | "confirmed" | "completed" | "cancelled" | "no_show"
     
+    token_number: Mapped[int | None] = mapped_column(default=None, nullable=True)
+
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Reschedule & Cancellation Tracking
@@ -62,6 +64,7 @@ class Appointment(Base):
 
     # Reminder Tracking
     reminder_sent_24h: Mapped[bool] = mapped_column(default=False, nullable=False)
+    reminder_sent_2h: Mapped[bool] = mapped_column(default=False, nullable=False)
     reminder_sent_1h: Mapped[bool] = mapped_column(default=False, nullable=False)
     reminder_sent_10m: Mapped[bool] = mapped_column(default=False, nullable=False)
 

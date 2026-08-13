@@ -536,7 +536,7 @@ async def test_patient_can_reschedule_appointment_via_patch(client: AsyncClient,
     await clear_doctor_slots(client, doctor)
 
     # 3. Create appointment directly in DB
-    tomorrow = get_next_weekday_slot(hour_offset=5)
+    tomorrow = get_next_weekday_slot(hour_offset=1)
     appt_id = uuid.uuid4()
     appt = Appointment(
         id=appt_id,
@@ -593,7 +593,8 @@ async def test_sunday_working_hours_validation(client: AsyncClient):
     times = [s["time"] for s in slots_data]
     assert "09:00" in times
     assert "12:30" in times
-    assert "13:30" not in times
+    assert "13:30" in times
+    assert next(s for s in slots_data if s["time"] == "13:30")["status"] == "lunch_break"
     assert "14:00" not in times
     assert "15:00" not in times
 
@@ -628,3 +629,60 @@ async def test_sunday_working_hours_validation(client: AsyncClient):
     )
     assert res_invalid.status_code == 400
     assert "working hours on Sunday" in res_invalid.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_receptionist_booking_flexibility_override(client: AsyncClient, db_session):
+    """Verify that a receptionist can bypass scheduling constraints such as lead time, Sunday working hours, double bookings, etc."""
+    # 1. Login as Priya (Patient) to get patient profile id
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token_patient = login_res.json()["data"]["access_token"]
+    p_res = await client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {token_patient}"})
+    patient_id = p_res.json()["data"]["id"]
+
+    # 2. Login as receptionist (acting as staff)
+    login_recep = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "receptionist@verticalclinic.com", "password": "Receptionist@123"},
+    )
+    assert login_recep.status_code == 200
+    token_recep = login_recep.json()["data"]["access_token"]
+
+    # 3. Get doctor details
+    docs_res = await client.get("/api/v1/doctors/")
+    doctor = docs_res.json()["data"]["items"][0]
+    doctor_id = doctor["id"]
+    branch_id = doctor["branch_id"]
+
+    # Try to book a Sunday slot outside clinic hours for this patient as a receptionist
+    # This should be allowed and return 201 Created (normally fails for patient)
+    sunday_invalid_dt = datetime(2026, 7, 19, 12, 30, tzinfo=timezone.utc) # 6 PM IST Sunday
+    res_recep_booking = await client.post(
+        "/api/v1/appointments/",
+        json={
+            "patient_id": patient_id,
+            "doctor_id": doctor_id,
+            "branch_id": branch_id,
+            "appointment_datetime": sunday_invalid_dt.isoformat(),
+            "treatment_type": "Emergency Checkup",
+            "consultation_type": "in_person",
+        },
+        headers={"Authorization": f"Bearer {token_recep}"},
+    )
+    assert res_recep_booking.status_code == 201
+    appt_id = res_recep_booking.json()["data"]["id"]
+
+    # Now reschedule the appointment to a time less than 2 hours away or reschedule multiple times
+    # A receptionist should be able to reschedule without 2-hour buffer error or count constraints
+    now_dt = datetime.now(timezone.utc) + timedelta(minutes=45)
+    res_recep_resched = await client.put(
+        f"/api/v1/appointments/{appt_id}",
+        json={"appointment_datetime": now_dt.isoformat()},
+        headers={"Authorization": f"Bearer {token_recep}"},
+    )
+    assert res_recep_resched.status_code == 200
+    assert res_recep_resched.json()["data"]["reschedule_count"] == 1
+

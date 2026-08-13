@@ -2,41 +2,43 @@
 RBAC (Role-Based Access Control) permission matrix.
 Defines what each role can do throughout the system.
 """
-from enum import StrEnum
-
+from enum import Enum
 from fastapi import Depends
-
 from app.core.exceptions import PermissionDeniedError
 
 
-class UserRole(StrEnum):
+class UserRole(str, Enum):
     PATIENT = "patient"
     RECEPTIONIST = "receptionist"
     DOCTOR = "doctor"
     PHARMACIST = "pharmacist"
     ADMIN = "admin"
+    CLINIC_MANAGER = "clinic_manager"
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 # ── Permission Registry ───────────────────────────────────────────────────────
 # Each permission is a string key; roles that hold it are listed in the set.
 PERMISSIONS: dict[str, set[UserRole]] = {
     # Appointments
-    "appointment:create": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN},
+    "appointment:create": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
     "appointment:read_own": {UserRole.PATIENT},
-    "appointment:read_all": {UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.ADMIN},
-    "appointment:update": {UserRole.RECEPTIONIST, UserRole.ADMIN},
-    "appointment:cancel": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN},
-    "appointment:reschedule": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN},
+    "appointment:read_all": {UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
+    "appointment:update": {UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
+    "appointment:cancel": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
+    "appointment:reschedule": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
 
     # Queue
-    "queue:read": {UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.ADMIN},
-    "queue:update": {UserRole.RECEPTIONIST, UserRole.ADMIN},
+    "queue:read": {UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
+    "queue:update": {UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
 
     # Patients
-    "patient:register": {UserRole.RECEPTIONIST, UserRole.ADMIN},
+    "patient:register": {UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
     "patient:read_own": {UserRole.PATIENT},
-    "patient:read_all": {UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.ADMIN},
-    "patient:update": {UserRole.RECEPTIONIST, UserRole.ADMIN},
+    "patient:read_all": {UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
+    "patient:update": {UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
 
     # Consultation
     "consultation:write": {UserRole.DOCTOR},
@@ -62,24 +64,24 @@ PERMISSIONS: dict[str, set[UserRole]] = {
     "inventory:write": {UserRole.PHARMACIST, UserRole.ADMIN},
     "inventory:manage": {UserRole.ADMIN},
 
-    # Billing & Invoices
+    # Billing & Invoices (RESTRICTED FOR CLINIC MANAGER)
     "invoice:create": {UserRole.RECEPTIONIST, UserRole.ADMIN},
     "invoice:read_own": {UserRole.PATIENT},
     "invoice:read_all": {UserRole.RECEPTIONIST, UserRole.ADMIN},
     "invoice:update": {UserRole.RECEPTIONIST, UserRole.ADMIN},
 
-    # Payments
+    # Payments (RESTRICTED FOR CLINIC MANAGER)
     "payment:initiate": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN},
     "payment:read": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN},
 
     # Medical Reports
     "report:upload": {UserRole.PATIENT},
     "report:read_own": {UserRole.PATIENT},
-    "report:read_all": {UserRole.DOCTOR, UserRole.ADMIN},
+    "report:read_all": {UserRole.DOCTOR, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
     "report:ai_summarize": {UserRole.PATIENT, UserRole.DOCTOR},
 
     # Tele-consultation
-    "tele:create": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN},
+    "tele:create": {UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER},
     "tele:join": {UserRole.PATIENT, UserRole.DOCTOR},
     "tele:analyze": {UserRole.DOCTOR},
 
@@ -90,19 +92,22 @@ PERMISSIONS: dict[str, set[UserRole]] = {
         UserRole.DOCTOR,
         UserRole.PHARMACIST,
         UserRole.ADMIN,
+        UserRole.CLINIC_MANAGER,
     },
 
     # Staff & Branch Management
-    "staff:manage": {UserRole.ADMIN},
+    "staff:manage": {UserRole.ADMIN, UserRole.CLINIC_MANAGER},
+    "staff:approve_schedule": {UserRole.ADMIN, UserRole.CLINIC_MANAGER},
     "branch:manage": {UserRole.ADMIN},
     "branch:read": {
         UserRole.ADMIN,
         UserRole.RECEPTIONIST,
         UserRole.DOCTOR,
         UserRole.PHARMACIST,
+        UserRole.CLINIC_MANAGER,
     },
 
-    # Analytics & Reports
+    # Analytics & Reports (Financial analytics restricted to ADMIN only)
     "analytics:read": {UserRole.ADMIN},
     "analytics:export": {UserRole.ADMIN},
 

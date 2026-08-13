@@ -35,6 +35,7 @@ stripe==11.4.0
 
 # ── File Storage ─────────────────────────────────────────────────────────────
 boto3==1.35.90                      # AWS S3
+cloudinary==1.45.0                  # Cloudinary CDN storage
 Pillow==11.0.0                      # image validation
 
 # ── PDF Generation ───────────────────────────────────────────────────────────

@@ -1,24 +1,24 @@
 /* AdminPortal.css — High-Fidelity Styling for Clinic OS Admin Dashboard */
 
 :root {
-  --admin-primary: var(--primary);
-  --admin-primary-dark: var(--primary-dark);
-  --admin-primary-light: var(--primary-light);
-  --admin-sidebar-bg: var(--primary-dark);
-  --admin-sidebar-hover: rgba(255, 255, 255, 0.1);
-  --admin-sidebar-active: var(--primary);
-  --admin-bg-light: #f8fafc;
-  --admin-text-dark: #0f172a;
-  --admin-text-muted: #64748b;
-  --admin-border: #e2e8f0;
+  --admin-primary: var(--primary-teal);
+  --admin-primary-dark: var(--dark-sidebar);
+  --admin-primary-light: var(--bright-cyan);
+  --admin-sidebar-bg: var(--dark-sidebar);
+  --admin-sidebar-hover: rgba(22, 185, 212, 0.15);
+  --admin-sidebar-active: var(--active-nav);
+  --admin-bg-light: #EAF6FA;
+  --admin-text-dark: #102A43;
+  --admin-text-muted: #58758A;
+  --admin-border: #D6E7ED;
   
   /* Color system matching cards */
-  --revenue-green: #10b981;
-  --patients-blue: #3b82f6;
-  --doctors-teal: #14b8a6;
-  --appt-orange: #f97316;
-  --inv-red: #ef4444;
-  --branch-indigo: #6366f1;
+  --revenue-green: #18B981;
+  --patients-blue: #3B82F6;
+  --doctors-teal: #16B9D4;
+  --appt-orange: #F59E0B;
+  --inv-red: #EF4444;
+  --branch-indigo: #0B7894;
 }
 
 .admin-layout {
@@ -32,7 +32,8 @@
 /* ── SIDEBAR ── */
 .admin-sidebar {
   width: 260px;
-  background-color: var(--admin-sidebar-bg);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -42,7 +43,7 @@
   left: 0;
   z-index: 100;
   padding: 24px 0;
-  box-shadow: 4px 0 20px rgba(14, 95, 118, 0.08);
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 .admin-sidebar-header {
@@ -638,7 +639,22 @@
   color: #374151;
 }
 
+.admin-status-badge.suspended {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
 .admin-status-badge.low {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.admin-status-badge.leave {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.admin-status-badge.absent {
   background-color: #fee2e2;
   color: #991b1b;
 }
@@ -901,5 +917,90 @@
 @keyframes scaleIn {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+/* ── Profile Dropdown ── */
+.profile-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.profile-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 180px;
+  background-color: var(--bg-white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  padding: 6px 0;
+  animation: scaleIn 0.15s ease-out;
+}
+
+.profile-dropdown-menu button {
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.profile-dropdown-menu button:hover {
+  background-color: #f8fafc;
+  color: var(--primary-teal, #0c6e8c);
+}
+
+.profile-dropdown-menu .profile-dropdown-divider {
+  height: 1px;
+  background-color: #f1f5f9;
+  margin: 6px 0;
+}
+
+.profile-dropdown-menu button.logout-item {
+  color: #dc2626;
+}
+
+.profile-dropdown-menu button.logout-item:hover {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+/* ── Back Navigation Button ── */
+.admin-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--admin-border);
+  background-color: #ffffff;
+  color: var(--admin-primary);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.admin-back-btn:hover {
+  background-color: #f0fdf4;
+  border-color: var(--admin-primary);
+  transform: translateX(-2px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.admin-back-btn:active {
+  transform: scale(0.95) translateX(-2px);
 }
 

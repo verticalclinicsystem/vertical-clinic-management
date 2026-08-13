@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Any
+from pydantic import BaseModel, field_validator
 from app.schemas.auth import UserOut
 
 
@@ -14,6 +15,8 @@ class PatientBase(BaseModel):
     date_of_birth: datetime | None = None
     gender: str | None = None
     blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
     allergies: str | None = None
     chronic_conditions: str | None = None
     address: str | None = None
@@ -23,6 +26,8 @@ class PatientBase(BaseModel):
     insurance_provider: str | None = None
     insurance_policy_no: str | None = None
     preferred_payment_method: str | None = None
+    is_profile_completed: bool = False
+    current_treatment_details: str | None = None
 
 
 class PatientCreate(BaseModel):
@@ -32,6 +37,8 @@ class PatientCreate(BaseModel):
     date_of_birth: datetime | None = None
     gender: str | None = None
     blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
     allergies: str | None = None
     chronic_conditions: str | None = None
     address: str | None = None
@@ -50,6 +57,8 @@ class PatientUpdate(BaseModel):
     date_of_birth: datetime | None = None
     gender: str | None = None
     blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
     chronic_conditions: str | None = None
     allergies: str | None = None
     address: str | None = None
@@ -60,6 +69,8 @@ class PatientUpdate(BaseModel):
     insurance_policy_no: str | None = None
     preferred_payment_method: str | None = None
     preferred_branch_id: uuid.UUID | None = None
+    is_profile_completed: bool | None = None
+    current_treatment_details: str | None = None
 
 
 
@@ -112,5 +123,29 @@ class PatientPreferencesUpdate(BaseModel):
     preferred_doctor_id: uuid.UUID | None = None
     preferred_branch_id: uuid.UUID | None = None
     consultation_preference: str | None = None
+
+    @field_validator(
+        "notification_email",
+        "notification_sms",
+        "notification_whatsapp",
+        "notification_push",
+        mode="before"
+    )
+    @classmethod
+    def validate_notification_boolean(cls, v: Any) -> bool | None:
+        if v is None:
+            raise ValueError("Notification preferences cannot be null/None. Must be a boolean value.")
+        if isinstance(v, str):
+            if v.lower() in ("true", "1", "yes", "on"):
+                return True
+            if v.lower() in ("false", "0", "no", "off"):
+                return False
+            raise ValueError(f"Invalid boolean value: {v}")
+        if isinstance(v, bool):
+            return v
+        try:
+            return bool(v)
+        except Exception:
+            raise ValueError(f"Could not convert to boolean: {v}")
 
 

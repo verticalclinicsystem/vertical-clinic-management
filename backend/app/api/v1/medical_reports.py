@@ -6,7 +6,7 @@ import shutil
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from app.core.rbac import UserRole, require_roles
 from app.models.user import User
 from app.schemas.medical_report import MedicalReportOut
 from app.services.medical_report_service import MedicalReportService
+from app.services.patient_service import PatientService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -29,6 +30,7 @@ UPLOAD_DIR = "static/uploads"
     summary="Upload a new patient medical report",
 )
 async def upload_medical_report(
+    request: Request,
     report_type: Annotated[str, Form(...)],
     file: UploadFile = File(...),
     current_user: Annotated[User, Depends(get_current_user)] = None,
@@ -36,25 +38,20 @@ async def upload_medical_report(
 ) -> JSONResponse:
     """
     Upload a medical report file (e.g. PDF, Image) and store metadata.
-    File is stored locally under static/uploads/ folder.
+    Supported backends: local, s3, cloudinary.
     """
     if current_user.role != UserRole.PATIENT:
         from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can upload medical reports.")
 
-    # Create static uploads directory
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    # Unique file name
-    file_ext = os.path.splitext(file.filename or "")[1]
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    dest_path = os.path.join(UPLOAD_DIR, unique_filename)
-
-    # Save to disk
-    with open(dest_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    file_url = f"/static/uploads/{unique_filename}"
+    from app.services.storage_service import StorageService
+    
+    # Upload via StorageService
+    patient_service = PatientService(db)
+    patient = await patient_service.get_patient_by_user_id(current_user.id)
+    patient_id_str = str(patient.id) if patient is not None else str(current_user.id)
+    
+    file_url = await StorageService.upload_medical_report(file, patient_id=patient_id_str, request=request)
     report_name = file.filename or "report.pdf"
 
     service = MedicalReportService(db)

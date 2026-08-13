@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Home, BarChart2, Package, Users, Layers,
-  Settings, LogOut, Search, Bell, Plus,
+  Settings, ArrowLeft, LogOut, Search, Bell, Plus,
   RefreshCw, Edit, X, Calendar, Check, AlertCircle,
-  Eye, EyeOff, Building
+  Eye, EyeOff, Building, Shield, Clock, Bed
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './AdminPortal.css';
@@ -50,15 +50,663 @@ function DonutChart({ segments, total, label }: { segments: { value: number; col
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('admin_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('admin_portal_tab') || 'dashboard');
+  const [tabHistory, setTabHistory] = useState<string[]>([]);
+
+  const changeTab = (newTab: string, pushToHistory = true) => {
+    if (newTab === activeTab) return;
+    if (pushToHistory) {
+      setTabHistory(prev => {
+        const next = [...prev, activeTab];
+        if (next.length > 10) return next.slice(1);
+        return next;
+      });
+    }
+    setActiveTabInternal(newTab);
+    localStorage.setItem('admin_portal_tab', newTab);
+  };
+
+  const goBackTab = () => {
+    if (tabHistory.length === 0) return;
+    const prevTab = tabHistory[tabHistory.length - 1];
+    setTabHistory(prev => prev.slice(0, -1));
+    setActiveTabInternal(prevTab);
+    localStorage.setItem('admin_portal_tab', prevTab);
+  };
+
+  const handleRootTabChange = (newTab: string) => {
+    setTabHistory([]);
+    changeTab(newTab, false);
+  };
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('admin_portal_tab', activeTab);
   }, [activeTab]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDashboardBranch, setSelectedDashboardBranch] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // ── Bed Assets & Categories States ──
+  const [adminBeds, setAdminBeds] = useState<any[]>([]);
+  const [adminBedCategories, setAdminBedCategories] = useState<any[]>([]);
+  const [isLoadingBeds, setIsLoadingBeds] = useState(false);
+  const [bedsError, setBedsError] = useState<string | null>(null);
+
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isBedModalOpen, setIsBedModalOpen] = useState(false);
+
+  const [newCategoryForm, setNewCategoryForm] = useState({
+    name: '',
+    base_charge_24h: '',
+    hourly_overtime_rate: '',
+    tax_rate: '0.05'
+  });
+
+  const [newBedForm, setNewBedForm] = useState({
+    bed_number: '',
+    category_id: '',
+    branch_id: ''
+  });
+
+  // ── Notifications System State & Listeners ──
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotiOpen, setIsNotiOpen] = useState(false);
+  const notiDropdownRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get('/notifications');
+      if (res.data?.success) {
+        setNotifications(res.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to load admin notifications", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const markNotificationRead = async (id: string, actionTarget?: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      if (actionTarget) handleRootTabChange(actionTarget);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const clearAllNotifications = async () => {
+    try {
+      await api.delete('/notifications/clear-all');
+      setNotifications([]);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutsideNoti = (event: MouseEvent) => {
+      if (notiDropdownRef.current && !notiDropdownRef.current.contains(event.target as Node)) {
+        setIsNotiOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutsideNoti);
+    return () => document.removeEventListener('mousedown', handleClickOutsideNoti);
+  }, []);
+
+  // ── Reports Analytics System State & Handlers ──
+  const [reportType, setReportType] = useState<'financial' | 'doctor_revenue' | 'staff_performance' | 'pharmacy_branch' | 'clinical' | 'inventory'>('financial');
+  const [activePreset, setActivePreset] = useState<'today' | '7days' | 'month' | 'all'>('month');
+  const [reportStartDate, setReportStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [reportEndDate, setReportEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [reportBranchId, setReportBranchId] = useState<string>('');
+  const [reportData, setReportData] = useState<any>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const [doctorReportSearchQuery, setDoctorReportSearchQuery] = useState('');
+  const [doctorReportSpecFilter, setDoctorReportSpecFilter] = useState('');
+
+  const doctorSpecializations = useMemo(() => {
+    if (reportType !== 'doctor_revenue' || !reportData?.rows) return [];
+    const specs = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.specialization) {
+        specs.add(row.specialization);
+      }
+    });
+    return Array.from(specs).sort();
+  }, [reportType, reportData]);
+
+  const filteredDoctorRevenueRows = useMemo(() => {
+    if (reportType !== 'doctor_revenue' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      const matchesSearch = row.doctor_name.toLowerCase().includes(doctorReportSearchQuery.toLowerCase());
+      const matchesSpec = !doctorReportSpecFilter || row.specialization === doctorReportSpecFilter;
+      return matchesSearch && matchesSpec;
+    });
+  }, [reportType, reportData, doctorReportSearchQuery, doctorReportSpecFilter]);
+
+  const filteredDoctorRevenueSummary = useMemo(() => {
+    if (reportType !== 'doctor_revenue' || !reportData?.summary) return { total_doctors: 0, total_revenue: 0, avg_revenue_per_doctor: 0 };
+    if (!doctorReportSearchQuery && !doctorReportSpecFilter) {
+      return {
+        total_doctors: reportData.summary.total_doctors || 0,
+        total_revenue: reportData.summary.total_revenue || 0,
+        avg_revenue_per_doctor: reportData.summary.avg_revenue_per_doctor || 0
+      };
+    }
+    const total_doctors = filteredDoctorRevenueRows.length;
+    const total_revenue = filteredDoctorRevenueRows.reduce((acc: number, row: any) => acc + (Number(row.total_revenue) || 0), 0);
+    const avg_revenue_per_doctor = total_doctors > 0 ? total_revenue / total_doctors : 0;
+    return { total_doctors, total_revenue, avg_revenue_per_doctor };
+  }, [reportType, reportData, filteredDoctorRevenueRows, doctorReportSearchQuery, doctorReportSpecFilter]);
+
+  const [staffReportSearchQuery, setStaffReportSearchQuery] = useState('');
+  const [staffReportBranchFilter, setStaffReportBranchFilter] = useState('');
+  const [staffReportRoleFilter, setStaffReportRoleFilter] = useState('');
+
+  const staffReportBranchesList = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.rows) return [];
+    const branchesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.branch_name) {
+        branchesSet.add(row.branch_name);
+      }
+    });
+    return Array.from(branchesSet).sort();
+  }, [reportType, reportData]);
+
+  const staffReportRolesList = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.rows) return [];
+    const rolesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.role) {
+        rolesSet.add(row.role);
+      }
+    });
+    return Array.from(rolesSet).sort();
+  }, [reportType, reportData]);
+
+  const filteredStaffPerformanceRows = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      const matchesSearch = row.staff_name.toLowerCase().includes(staffReportSearchQuery.toLowerCase());
+      const matchesBranch = !staffReportBranchFilter || row.branch_name === staffReportBranchFilter;
+      const matchesRole = !staffReportRoleFilter || row.role === staffReportRoleFilter;
+      return matchesSearch && matchesBranch && matchesRole;
+    });
+  }, [reportType, reportData, staffReportSearchQuery, staffReportBranchFilter, staffReportRoleFilter]);
+
+  const filteredStaffPerformanceSummary = useMemo(() => {
+    if (reportType !== 'staff_performance' || !reportData?.summary) return { total_staff: 0, active_staff: 0 };
+    if (!staffReportSearchQuery && !staffReportBranchFilter && !staffReportRoleFilter) {
+      return {
+        total_staff: reportData.summary.total_staff || 0,
+        active_staff: reportData.summary.active_staff || 0
+      };
+    }
+    const total_staff = filteredStaffPerformanceRows.length;
+    const active_staff = filteredStaffPerformanceRows.filter((row: any) => row.status.toLowerCase() === 'active').length;
+    return { total_staff, active_staff };
+  }, [reportType, reportData, filteredStaffPerformanceRows, staffReportSearchQuery, staffReportBranchFilter, staffReportRoleFilter]);
+
+  const [financialReportSearchQuery, setFinancialReportSearchQuery] = useState('');
+  const [financialReportBranchFilter, setFinancialReportBranchFilter] = useState('');
+  const [financialReportPaymentFilter, setFinancialReportPaymentFilter] = useState('');
+
+  const financialReportBranchesList = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.rows) return [];
+    const branchesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.branch_name) {
+        branchesSet.add(row.branch_name);
+      }
+    });
+    return Array.from(branchesSet).sort();
+  }, [reportType, reportData]);
+
+  const financialReportPaymentModesList = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.rows) return [];
+    const modesSet = new Set<string>();
+    reportData.rows.forEach((row: any) => {
+      if (row.payment_mode) {
+        modesSet.add(row.payment_mode);
+      }
+    });
+    return Array.from(modesSet).sort();
+  }, [reportType, reportData]);
+
+  const filteredFinancialRows = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      const matchesSearch = 
+        row.invoice_number.toLowerCase().includes(financialReportSearchQuery.toLowerCase()) ||
+        row.patient_name.toLowerCase().includes(financialReportSearchQuery.toLowerCase());
+      const matchesBranch = !financialReportBranchFilter || row.branch_name === financialReportBranchFilter;
+      const matchesPayment = !financialReportPaymentFilter || row.payment_mode === financialReportPaymentFilter;
+      return matchesSearch && matchesBranch && matchesPayment;
+    });
+  }, [reportType, reportData, financialReportSearchQuery, financialReportBranchFilter, financialReportPaymentFilter]);
+
+  const filteredFinancialSummary = useMemo(() => {
+    if (reportType !== 'financial' || !reportData?.summary) return { total_revenue: 0, total_invoices: 0, avg_invoice_value: 0 };
+    if (!financialReportSearchQuery && !financialReportBranchFilter && !financialReportPaymentFilter) {
+      return {
+        total_revenue: reportData.summary.total_revenue || 0,
+        total_invoices: reportData.summary.total_invoices || 0,
+        avg_invoice_value: reportData.summary.avg_invoice_value || 0
+      };
+    }
+    const total_invoices = filteredFinancialRows.length;
+    const total_revenue = filteredFinancialRows.reduce((acc: number, row: any) => acc + (Number(row.amount) || 0), 0);
+    const avg_invoice_value = total_invoices > 0 ? total_revenue / total_invoices : 0;
+    return { total_revenue, total_invoices, avg_invoice_value };
+  }, [reportType, reportData, filteredFinancialRows, financialReportSearchQuery, financialReportBranchFilter, financialReportPaymentFilter]);
+
+  const [inventoryReportSearchQuery, setInventoryReportSearchQuery] = useState('');
+
+  const filteredInventoryRows = useMemo(() => {
+    if (reportType !== 'inventory' || !reportData?.rows) return [];
+    return reportData.rows.filter((row: any) => {
+      return row.name.toLowerCase().includes(inventoryReportSearchQuery.toLowerCase());
+    });
+  }, [reportType, reportData, inventoryReportSearchQuery]);
+
+  const filteredInventorySummary = useMemo(() => {
+    if (reportType !== 'inventory' || !reportData?.summary) return { total_valuation: 0, total_skus: 0, low_stock_skus: 0 };
+    if (!inventoryReportSearchQuery) {
+      return {
+        total_valuation: reportData.summary.total_valuation || 0,
+        total_skus: reportData.summary.total_skus || 0,
+        low_stock_skus: reportData.summary.low_stock_skus || 0
+      };
+    }
+    const total_skus = filteredInventoryRows.length;
+    const total_valuation = filteredInventoryRows.reduce((acc: number, row: any) => acc + (Number(row.valuation) || 0), 0);
+    const low_stock_skus = filteredInventoryRows.filter((row: any) => row.status.toLowerCase() === 'low stock').length;
+    return { total_valuation, total_skus, low_stock_skus };
+  }, [reportType, reportData, filteredInventoryRows, inventoryReportSearchQuery]);
+
+  const fetchReports = async (startOverride?: string, endOverride?: string, typeOverride?: string, branchOverride?: string) => {
+    setReportLoading(true);
+    try {
+      const sDate = startOverride !== undefined ? startOverride : reportStartDate;
+      const eDate = endOverride !== undefined ? endOverride : reportEndDate;
+      const rType = typeOverride !== undefined ? typeOverride : reportType;
+      const rBranch = branchOverride !== undefined ? branchOverride : reportBranchId;
+
+      let url = `/admin/reports?report_type=${rType}`;
+      if (sDate) url += `&start_date=${sDate}`;
+      if (eDate) url += `&end_date=${eDate}`;
+      if (rBranch) url += `&branch_id=${rBranch}`;
+      const res = await api.get(url);
+      if (res.data?.success) {
+        setReportData(res.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch reports:", err);
+    }
+    setReportLoading(false);
+  };
+
+  const setDatePreset = (preset: 'today' | '7days' | 'month' | 'all') => {
+    setActivePreset(preset);
+    const today = new Date().toISOString().split('T')[0];
+    let start = today;
+    let end = today;
+
+    if (preset === 'today') {
+      start = today;
+      end = today;
+    } else if (preset === '7days') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      start = d.toISOString().split('T')[0];
+      end = today;
+    } else if (preset === 'month') {
+      const d = new Date();
+      d.setDate(1);
+      start = d.toISOString().split('T')[0];
+      end = today;
+    } else if (preset === 'all') {
+      start = '';
+      end = '';
+    }
+
+    setReportStartDate(start);
+    setReportEndDate(end);
+    fetchReports(start, end, reportType, reportBranchId);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReports();
+    }
+  }, [activeTab, reportType, reportStartDate, reportEndDate, reportBranchId]);
+
+  const exportToCSV = () => {
+    if (!reportData || !reportData.rows || reportData.rows.length === 0) {
+      alert("No report data available to export as CSV.");
+      return;
+    }
+
+    const titleText = reportType === 'financial' ? 'Financial & Revenue Report' : reportType === 'clinical' ? 'Patient Visits & Clinical Report' : 'Pharmacy Inventory Report';
+    const dateRangeText = `${reportStartDate || 'All Time'} to ${reportEndDate || 'All Time'}`;
+
+    const metadataHeader = [
+      `"VERTICAL CLINIC MANAGEMENT SYSTEM — ADMINISTRATIVE ANALYTICS REPORT"`,
+      `"Report Category: ${titleText}"`,
+      `"Date Filter Period: ${dateRangeText}"`,
+      `"Generated On: ${new Date().toLocaleString()}"`,
+      `""`
+    ].join('\n');
+
+    const headers = Object.keys(reportData.rows[0]).map(h => `"${h.toUpperCase()}"`).join(',');
+    const rows = reportData.rows.map((row: any) => Object.values(row).map(val => `"${val}"`).join(','));
+    
+    const csvContent = "data:text/csv;charset=utf-8," + metadataHeader + '\n' + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `vertical_clinic_${reportType}_report_${reportStartDate || 'all'}_to_${reportEndDate || 'all'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToPDF = () => {
+    if (!reportData || !reportData.rows || reportData.rows.length === 0) {
+      alert("No report data available to export as PDF.");
+      return;
+    }
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      alert("Please allow popups to export PDF.");
+      return;
+    }
+
+    const titleText = 
+      reportType === 'financial' ? 'Financial & Revenue Analytics Report' : 
+      reportType === 'doctor_revenue' ? 'Doctor-wise Revenue & Performance Report' :
+      reportType === 'staff_performance' ? 'Staff Performance Analytics Report' :
+      reportType === 'pharmacy_branch' ? 'Pharmacy Sales by Clinic Branch Report' :
+      reportType === 'clinical' ? 'Patient Visits & Clinical Report' : 
+      'Pharmacy & Inventory Stock Report';
+
+    const dateRangeText = `${reportStartDate || 'All Time'} to ${reportEndDate || 'All Time'}`;
+
+    let summaryCardsHtml = '';
+    if (reportType === 'financial') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Period Revenue</div>
+          <div class="card-val green">₹${(reportData.summary?.total_revenue || 0).toLocaleString()}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Total Invoices</div>
+          <div class="card-val blue">${reportData.summary?.total_invoices || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Average Invoice Value</div>
+          <div class="card-val purple">₹${(reportData.summary?.avg_invoice_value || 0).toLocaleString()}</div>
+        </div>
+      `;
+    } else if (reportType === 'doctor_revenue') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Doctors</div>
+          <div class="card-val blue">${reportData.summary?.total_doctors || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Doctor Generated Revenue</div>
+          <div class="card-val green">₹${(reportData.summary?.total_revenue || 0).toLocaleString()}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Average Revenue / Doctor</div>
+          <div class="card-val purple">₹${(reportData.summary?.avg_revenue_per_doctor || 0).toLocaleString()}</div>
+        </div>
+      `;
+    } else if (reportType === 'staff_performance') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Staff Members</div>
+          <div class="card-val blue">${reportData.summary?.total_staff || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Active Personnel</div>
+          <div class="card-val green">${reportData.summary?.active_staff || 0}</div>
+        </div>
+      `;
+    } else if (reportType === 'pharmacy_branch') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Operating Branches</div>
+          <div class="card-val blue">${reportData.summary?.total_branches || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Branch Pharmacy Valuation</div>
+          <div class="card-val green">₹${(reportData.summary?.total_valuation || 0).toLocaleString()}</div>
+        </div>
+      `;
+    } else if (reportType === 'clinical') {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Appointments</div>
+          <div class="card-val blue">${reportData.summary?.total_appointments || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Completed Consultations</div>
+          <div class="card-val green">${reportData.summary?.completed || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Completion Rate</div>
+          <div class="card-val cyan">${reportData.summary?.completion_rate || 0}%</div>
+        </div>
+      `;
+    } else {
+      summaryCardsHtml = `
+        <div class="summary-card">
+          <div class="card-label">Total Stock Valuation</div>
+          <div class="card-val green">₹${(reportData.summary?.total_valuation || 0).toLocaleString()}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Total Medicine SKUs</div>
+          <div class="card-val blue">${reportData.summary?.total_skus || 0}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Low Stock Warnings</div>
+          <div class="card-val red">${reportData.summary?.low_stock_skus || 0}</div>
+        </div>
+      `;
+    }
+
+    let tableHeadersHtml = '';
+    let tableRowsHtml = '';
+
+    if (reportType === 'financial') {
+      tableHeadersHtml = '<th>Invoice #</th><th>Date</th><th>Patient Name</th><th>Payment Method</th><th>Status</th><th style="text-align:right">Amount</th>';
+      tableRowsHtml = reportData.rows.map((r: any) => `
+        <tr>
+          <td><strong>${r.invoice_number}</strong></td>
+          <td>${r.date}</td>
+          <td>${r.patient_name}</td>
+          <td>${r.payment_mode}</td>
+          <td><span class="badge active">${r.status}</span></td>
+          <td style="text-align:right; font-weight:700; color:#059669">₹${r.amount?.toLocaleString()}</td>
+        </tr>
+      `).join('');
+    } else if (reportType === 'doctor_revenue') {
+      tableHeadersHtml = '<th>Doctor Name</th><th>Specialization</th><th>Completed Consultations</th><th>Consultation Fee</th><th style="text-align:right">Total Revenue</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.doctor_name}</strong></td>
+          <td>${r.specialization}</td>
+          <td>${r.completed_consultations}</td>
+          <td>₹${r.consultation_fee?.toLocaleString()}</td>
+          <td style="text-align:right; font-weight:700; color:#059669">₹${r.total_revenue?.toLocaleString()}</td>
+        </tr>
+      `).join('');
+    } else if (reportType === 'staff_performance') {
+      tableHeadersHtml = '<th>Staff Member</th><th>Role</th><th>Assigned Branch</th><th>Last Login</th><th>Status</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.staff_name}</strong></td>
+          <td style="text-transform:capitalize">${r.role}</td>
+          <td>${r.branch_name}</td>
+          <td>${r.last_login}</td>
+          <td><span class="badge active">${r.status}</span></td>
+        </tr>
+      `).join('');
+    } else if (reportType === 'pharmacy_branch') {
+      tableHeadersHtml = '<th>Branch Location</th><th>City</th><th>SKUs Available</th><th style="text-align:right">Allocated Valuation</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.branch_name}</strong></td>
+          <td>${r.city || '-'}</td>
+          <td>${r.skus_available}</td>
+          <td style="text-align:right; font-weight:700; color:#2563eb">₹${r.stock_valuation?.toLocaleString()}</td>
+        </tr>
+      `).join('');
+    } else if (reportType === 'clinical') {
+      tableHeadersHtml = '<th>Appointment Date</th><th>Treatment</th><th>Consultation Type</th><th>Status</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.date}</strong></td>
+          <td>${r.treatment}</td>
+          <td style="text-transform:capitalize">${r.type}</td>
+          <td><span class="badge ${r.status === 'completed' ? 'active' : 'warning'}">${r.status}</span></td>
+        </tr>
+      `).join('');
+    } else {
+      tableHeadersHtml = '<th>Medicine Name</th><th>Category</th><th>Current Stock</th><th>Reorder Level</th><th>Unit Price</th><th style="text-align:right">Total Valuation</th>';
+      tableRowsHtml = (reportData.rows || []).map((r: any) => `
+        <tr>
+          <td><strong>${r.name}</strong></td>
+          <td>${r.category}</td>
+          <td>${r.stock}</td>
+          <td>${r.reorder_level}</td>
+          <td>₹${r.unit_price}</td>
+          <td style="text-align:right; font-weight:700">₹${r.valuation?.toLocaleString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Vertical Clinic Report — ${titleText}</title>
+        <style>
+          body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: #fff; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0c6e8c; padding-bottom: 16px; margin-bottom: 20px; }
+          .brand-title { font-size: 1.6rem; font-weight: 800; color: #0c6e8c; margin: 0; letter-spacing: -0.5px; }
+          .brand-subtitle { font-size: 0.85rem; color: #64748b; margin-top: 2px; }
+          .report-meta { text-align: right; font-size: 0.8rem; color: #475569; }
+          .report-title-section { background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+          .report-name { font-size: 1.1rem; font-weight: 700; color: #0f172a; margin: 0; }
+          .report-dates { font-size: 0.82rem; color: #64748b; font-weight: 500; }
+          .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+          .summary-card { background: #fff; border: 1px solid #cbd5e1; padding: 14px; border-radius: 8px; text-align: center; }
+          .card-label { font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+          .card-val { font-size: 1.4rem; font-weight: 800; margin-top: 4px; }
+          .green { color: #059669; } .blue { color: #2563eb; } .purple { color: #7c3aed; } .cyan { color: #0891b2; } .red { color: #dc2626; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+          th { background: #0c6e8c; color: #fff; text-align: left; padding: 10px 12px; font-weight: 600; font-size: 0.8rem; }
+          td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+          tr:nth-child(even) { background: #f8fafc; }
+          .badge { padding: 3px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+          .badge.active { background: #d1fae5; color: #065f46; }
+          .badge.warning { background: #fef3c7; color: #92400e; }
+          .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="brand-title">🏥 VERTICAL CLINIC</h1>
+            <div class="brand-subtitle">Smart Healthcare & Multi-Branch Clinic System</div>
+          </div>
+          <div class="report-meta">
+            <div><strong>Generated:</strong> ${new Date().toLocaleString()}</div>
+            <div><strong>Issued By:</strong> Clinic Administration</div>
+          </div>
+        </div>
+
+        <div class="report-title-section">
+          <div>
+            <h2 class="report-name">${titleText}</h2>
+            <div class="report-dates">Filter Period: <strong>${dateRangeText}</strong></div>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          ${summaryCardsHtml}
+        </div>
+
+        <table style="width:100%">
+          <thead><tr>${tableHeadersHtml}</tr></thead>
+          <tbody>${tableRowsHtml}</tbody>
+        </table>
+
+        <div class="footer">
+          <div>Report generated automatically from Vertical Clinic System</div>
+          <div>Page 1 of 1</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+            setTimeout(function() {
+              window.close();
+            }, 100);
+          }
+          window.onafterprint = function() {
+            window.close();
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWin.document.write(htmlContent);
+    printWin.document.close();
+  };
 
   const [editingBranch, setEditingBranch] = useState<any>(null);
   const [branchForm, setBranchForm] = useState<any>({
@@ -109,6 +757,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     branch_id: '',
     is_active: true
   });
+  const [staffStatus, setStaffStatus] = useState<'active' | 'inactive' | 'suspended'>('active');
+  const [suspensionUntilDate, setSuspensionUntilDate] = useState<string>('');
+  const [suspensionReason, setSuspensionReason] = useState('Disruptive behavior');
 
   const [availabilityRequests, setAvailabilityRequests] = useState<any[]>([]);
   const [resolvingRequest, setResolvingRequest] = useState<any | null>(null);
@@ -126,11 +777,209 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const [systemSettings, setSystemSettings] = useState({
+    gst_rate: 18,
+    default_teleconsultation_fee: 500,
+    currency_symbol: '₹',
+    clinic_name: 'Vertical Clinic'
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const fetchSystemSettings = async () => {
+    try {
+      const res = await api.get('/admin/settings');
+      if (res.data?.success && res.data.data) {
+        setSystemSettings({
+          gst_rate: res.data.data.gst_rate ?? 18,
+          default_teleconsultation_fee: res.data.data.default_teleconsultation_fee ?? 500,
+          currency_symbol: res.data.data.currency_symbol || '₹',
+          clinic_name: res.data.data.clinic_name || 'Vertical Clinic'
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching settings:', err);
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await api.put('/admin/settings', systemSettings);
+      if (res.data?.success) {
+        alert('System settings updated successfully!');
+      } else {
+        alert(res.data?.message || 'Failed to update settings');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error saving system settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const [sessionsData, setSessionsData] = useState<any[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  const fetchActiveSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const res = await api.get('/admin/sessions');
+      if (res.data?.success) {
+        setSessionsData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching active sessions:', err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  const handleForceLogout = async (userId: string, userName: string) => {
+    if (!window.confirm(`Are you sure you want to force logout ${userName}? This will invalidate their current active session immediately.`)) {
+      return;
+    }
+    try {
+      const res = await api.post(`/admin/sessions/${userId}/revoke`);
+      if (res.data?.success) {
+        alert(res.data.message || `Revoked session for ${userName}`);
+        fetchActiveSessions();
+      } else {
+        alert(res.data?.message || 'Failed to revoke session');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error revoking session');
+    }
+  };
+
+  const [attendanceData, setAttendanceData] = useState<any>({ summary: null, records: [] });
+  const [attendanceDateFilter, setAttendanceDateFilter] = useState('');
+  const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
+  const [attendanceBranchFilter, setAttendanceBranchFilter] = useState('');
+  const [attendanceRoleFilter, setAttendanceRoleFilter] = useState('');
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  const fetchStaffAttendance = async (dateStr?: string, branchId?: string) => {
+    setLoadingAttendance(true);
+    try {
+      let url = '/admin/attendance';
+      const params = [];
+      if (dateStr) params.push(`attendance_date=${dateStr}`);
+      if (branchId) params.push(`branch_id=${branchId}`);
+      if (params.length > 0) {
+        url += `?${params.join('&')}`;
+      }
+      const res = await api.get(url);
+      if (res.data?.success) {
+        setAttendanceData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching attendance:', err);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
+
+  const fetchBedsAdminData = async () => {
+    setIsLoadingBeds(true);
+    setBedsError(null);
+    try {
+      const [bedsRes, catsRes] = await Promise.all([
+        api.get('/ipd/dashboard/beds'),
+        api.get('/ipd/categories')
+      ]);
+      if (bedsRes.data?.success) {
+        setAdminBeds(bedsRes.data.data);
+      }
+      if (catsRes.data?.success) {
+        setAdminBedCategories(catsRes.data.data);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setBedsError('Failed to fetch bed assets and categories.');
+    } finally {
+      setIsLoadingBeds(false);
+    }
+  };
+
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/ipd/categories', {
+        name: newCategoryForm.name,
+        base_charge_24h: parseFloat(newCategoryForm.base_charge_24h),
+        hourly_overtime_rate: parseFloat(newCategoryForm.hourly_overtime_rate),
+        tax_rate: parseFloat(newCategoryForm.tax_rate)
+      });
+      if (res.data?.success) {
+        alert(res.data.message || 'Bed Category saved successfully.');
+        setIsCategoryModalOpen(false);
+        setNewCategoryForm({ name: '', base_charge_24h: '', hourly_overtime_rate: '', tax_rate: '0.05' });
+        await fetchBedsAdminData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error occurred while saving category.');
+    }
+  };
+
+  const handleCreateBed = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBedForm.category_id || !newBedForm.branch_id || !newBedForm.bed_number) {
+      alert('Please fill in all bed asset fields.');
+      return;
+    }
+    try {
+      const res = await api.post('/ipd/beds', {
+        bed_number: newBedForm.bed_number,
+        category_id: newBedForm.category_id,
+        branch_id: newBedForm.branch_id
+      });
+      if (res.data?.success) {
+        alert(res.data.message || 'Bed asset registered successfully.');
+        setIsBedModalOpen(false);
+        setNewBedForm({ bed_number: '', category_id: '', branch_id: '' });
+        await fetchBedsAdminData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error occurred while registering bed.');
+    }
+  };
+
+  const handleDeleteBed = async (id: string) => {
+    if (!window.confirm('Are you sure you want to decommission this bed? This cannot be undone.')) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/ipd/beds/${id}`);
+      if (res.data?.success) {
+        alert(res.data.message || 'Bed decommissioned successfully.');
+        await fetchBedsAdminData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Error occurred while decommissioning bed.');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'availability-requests') {
       fetchAvailabilityRequests();
     }
-  }, [activeTab]);
+    if (activeTab === 'settings') {
+      fetchSystemSettings();
+    }
+    if (activeTab === 'active-sessions') {
+      fetchActiveSessions();
+    }
+    if (activeTab === 'attendance') {
+      fetchStaffAttendance(attendanceDateFilter, attendanceBranchFilter);
+    }
+    if (activeTab === 'beds') {
+      fetchBedsAdminData();
+    }
+  }, [activeTab, attendanceDateFilter, attendanceBranchFilter]);
 
   const handleEditBranchClick = (br: any) => {
     setEditingBranch(br);
@@ -190,6 +1039,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       };
       const res = await api.post('/users/', payload);
       if (res.data?.success) {
+        alert('Staff member created successfully!');
         setIsAddingStaff(false);
         setShowPassword(false);
         setNewStaffForm({ full_name: '', email: '', phone: '', password: '', role: 'doctor', branch_id: '' });
@@ -199,7 +1049,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       }
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.message || 'Error occurred while creating staff member.');
+      const errMsg = err.response?.data?.detail || err.response?.data?.message || 'Error occurred while creating staff member.';
+      alert(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
     }
   };
 
@@ -213,20 +1064,54 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       password: '',
       role: s.role || 'doctor',
       branch_id: s.branch_id || '',
-      is_active: s.status === 'active'
+      is_active: s.status === 'active' || s.status === 'suspended'
     });
+    setStaffStatus(s.status as 'active' | 'inactive' | 'suspended');
+    if (s.suspended_until) {
+      setSuspensionUntilDate(s.suspended_until.split('T')[0]);
+    } else {
+      const d = new Date();
+      d.setDate(d.getDate() + 3);
+      const month = '' + (d.getMonth() + 1);
+      const day = '' + d.getDate();
+      const year = d.getFullYear();
+      setSuspensionUntilDate([year, month.padStart(2, '0'), day.padStart(2, '0')].join('-'));
+    }
+    setSuspensionReason(s.suspension_reason || 'Disruptive behavior');
   };
 
   const handleSaveStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (staffStatus === 'suspended') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const selected = new Date(suspensionUntilDate);
+        selected.setHours(0, 0, 0, 0);
+        const diffTime = selected.getTime() - today.getTime();
+        let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (isNaN(diffDays) || diffDays < 1) {
+          diffDays = 1;
+        }
+
+        await api.post(`/users/${editingStaff.id}/suspend`, {
+          action: 'suspend',
+          duration_days: diffDays,
+          reason: suspensionReason
+        });
+      } else if (editingStaff.status === 'suspended') {
+        await api.post(`/users/${editingStaff.id}/suspend`, {
+          action: 'unsuspend'
+        });
+      }
+
       const payload: any = {
         full_name: staffForm.full_name,
         email: staffForm.email,
         phone: staffForm.phone || null,
         role: staffForm.role,
         branch_id: staffForm.branch_id || null,
-        is_active: staffForm.is_active
+        is_active: staffStatus === 'active' || staffStatus === 'suspended'
       };
       if (staffForm.password) {
         payload.password = staffForm.password;
@@ -267,11 +1152,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
   };
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = async (branchIdOverride?: string) => {
     setLoading(true);
     try {
+      const targetBranch = branchIdOverride !== undefined ? branchIdOverride : selectedDashboardBranch;
+      const url = targetBranch ? `/admin/dashboard?branch_id=${targetBranch}` : '/admin/dashboard';
       const [dashRes, meRes] = await Promise.all([
-        api.get('/admin/dashboard'),
+        api.get(url),
         api.get('/auth/me'),
       ]);
       if (dashRes.data?.success) setData(dashRes.data.data);
@@ -317,17 +1204,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const branches = data?.branches || [];
   const staff = data?.staff || [];
   const inventory = data?.inventory || [];
+  const workflow = data?.workflow || { reception: [], consultation: [], billing: [], dispensary: [] };
+  const recentActivities = data?.recent_activities || [];
 
-  const fmtCurrency = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  const fmtCurrency = (n?: number | null) => `₹${(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
   const initials = currentUser?.full_name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'AD';
 
+  const revGrowth = kpis.revenue_growth_pct;
+  const apptGrowth = kpis.appointments_growth_pct;
+
   const stats = [
-    { id: 'revenue', label: 'Total Revenue (MTD)', value: fmtCurrency(kpis.total_revenue_mtd || 0), trend: 'MTD', trendType: 'up', color: 'var(--revenue-green)' },
+    {
+      id: 'revenue',
+      label: 'Total Revenue (MTD)',
+      value: fmtCurrency(kpis.total_revenue_mtd || 0),
+      trend: revGrowth !== undefined ? `${revGrowth >= 0 ? '+' : ''}${revGrowth}%` : 'MTD',
+      trendType: revGrowth !== undefined && revGrowth >= 0 ? 'up' : revGrowth < 0 ? 'warning' : 'neutral',
+      color: 'var(--revenue-green)'
+    },
     { id: 'patients', label: 'Total Patients', value: String(kpis.total_patients || 0), trend: 'Registered', trendType: 'neutral', color: 'var(--patients-blue)' },
-    { id: 'doctors', label: 'Doctors', value: String(kpis.active_doctors || 0), trend: 'Active', trendType: 'neutral', color: 'var(--doctors-teal)' },
-    { id: 'appointments', label: 'Appointments Today', value: String(kpis.appointments_today || 0), trend: 'Today', trendType: 'neutral', color: 'var(--appt-orange)' },
+    { id: 'doctors', label: 'Doctors Available', value: String(kpis.active_doctors || 0), trend: 'Active', trendType: 'neutral', color: 'var(--doctors-teal)' },
+    {
+      id: 'appointments',
+      label: 'Appointments Today',
+      value: String(kpis.appointments_today || 0),
+      trend: apptGrowth !== undefined ? `${apptGrowth >= 0 ? '+' : ''}${apptGrowth}% vs yesterday` : 'Today',
+      trendType: apptGrowth !== undefined && apptGrowth >= 0 ? 'up' : apptGrowth < 0 ? 'warning' : 'neutral',
+      color: 'var(--appt-orange)'
+    },
     { id: 'inventory', label: 'Inventory SKUs', value: String(kpis.total_skus || 0), trend: kpis.low_stock_count > 0 ? `${kpis.low_stock_count} low` : 'OK', trendType: kpis.low_stock_count > 0 ? 'warning' : 'neutral', color: 'var(--inv-red)' },
-    { id: 'branches', label: 'Active Branches', value: String(kpis.active_branches || 0), trend: 'All OK', trendType: 'neutral', color: 'var(--branch-indigo)' },
+    { id: 'branches', label: 'Active Branches', value: String(kpis.active_branches || 0), trend: 'Operational', trendType: 'neutral', color: 'var(--branch-indigo)' },
   ];
 
   const apptSegments = [
@@ -357,6 +1263,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     b.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const filteredAttendanceRecords = (attendanceData.records || []).filter((r: any) => {
+    const matchesSearch = r.staff_name.toLowerCase().includes(attendanceSearchQuery.toLowerCase());
+    const matchesRole = !attendanceRoleFilter || r.role.toLowerCase() === attendanceRoleFilter.toLowerCase();
+    return matchesSearch && matchesRole;
+  });
+
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
@@ -375,18 +1287,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             { id: 'reports', icon: <BarChart2 size={18} />, label: 'Reports' },
             { id: 'inventory', icon: <Package size={18} />, label: 'Inventory Reports' },
           ].map(tab => (
-            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => handleRootTabChange(tab.id)}>
               {tab.icon} {tab.label}
             </div>
           ))}
           <div className="admin-nav-group-label">Manage</div>
           {[
             { id: 'staff', icon: <Users size={18} />, label: 'Staff Management' },
+            { id: 'attendance', icon: <Clock size={18} />, label: 'Staff Attendance' },
             { id: 'branches', icon: <Layers size={18} />, label: 'Branch Management' },
+            { id: 'beds', icon: <Bed size={18} />, label: 'Bed Assets & Registry' },
             { id: 'availability-requests', icon: <Calendar size={18} />, label: 'Availability Requests' },
+            { id: 'active-sessions', icon: <Shield size={18} />, label: 'Active Sessions & Security' },
             { id: 'settings', icon: <Settings size={18} />, label: 'Settings' },
           ].map(tab => (
-            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => handleRootTabChange(tab.id)}>
               {tab.icon} {tab.label}
             </div>
           ))}
@@ -400,33 +1315,154 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
       <main className="admin-main">
         <header className="admin-topbar">
-          <div className="admin-title-area">
-            <h1 className="admin-page-title">
-              {activeTab === 'dashboard' && 'Dashboard'}
-              {activeTab === 'reports' && 'Reports'}
-              {activeTab === 'inventory' && 'Inventory Reports'}
-              {activeTab === 'staff' && 'Staff Management'}
-              {activeTab === 'branches' && 'Branch Management'}
-              {activeTab === 'availability-requests' && 'Availability Change Requests'}
-              {activeTab === 'settings' && 'Settings'}
-            </h1>
-            <p className="admin-page-subtitle">Admin Portal · Vertical Clinic</p>
-          </div>
-          <div className="admin-search-wrapper">
-            <Search className="admin-search-icon" size={16} />
-            <input type="text" className="admin-search-input" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          <div className="admin-title-area" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px' }}>
+            {tabHistory.length > 0 && (
+              <button 
+                onClick={goBackTab} 
+                className="admin-back-btn" 
+                title="Go Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <div>
+              <h1 className="admin-page-title" style={{ margin: 0 }}>
+                {activeTab === 'dashboard' && 'Dashboard'}
+                {activeTab === 'reports' && 'Reports'}
+                {activeTab === 'inventory' && 'Inventory Reports'}
+                {activeTab === 'staff' && 'Staff Management'}
+                {activeTab === 'attendance' && 'Staff Attendance Dashboard'}
+                {activeTab === 'branches' && 'Branch Management'}
+                {activeTab === 'beds' && 'Bed Assets & Category Registry'}
+                {activeTab === 'availability-requests' && 'Availability Change Requests'}
+                {activeTab === 'active-sessions' && 'Active Sessions & Security Controls'}
+                {activeTab === 'settings' && 'Settings'}
+              </h1>
+              <p className="admin-page-subtitle" style={{ marginTop: '2px', margin: 0 }}>Admin Portal · Vertical Clinic</p>
+            </div>
           </div>
           <div className="admin-topbar-right">
-            <button className="admin-icon-btn" title="Refresh" onClick={fetchDashboard}>
+            <button className="admin-icon-btn" title="Refresh" onClick={() => fetchDashboard()}>
               <RefreshCw size={16} className={loading ? 'spin' : ''} />
             </button>
-            <button className="admin-icon-btn"><Bell size={18} /></button>
-            <div className="admin-profile-badge">
-              <div className="admin-profile-avatar">{initials}</div>
-              <div className="admin-profile-info">
-                <span className="admin-profile-name">{currentUser?.full_name || 'Admin'}</span>
-                <span className="admin-profile-role">Admin</span>
+            <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
+              <button
+                className="admin-icon-btn"
+                title="Notifications"
+                onClick={() => setIsNotiOpen(!isNotiOpen)}
+                style={{ position: 'relative' }}
+              >
+                <Bell size={18} />
+                {notifications.filter(n => !n.is_read).length > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-2px',
+                      right: '-2px',
+                      backgroundColor: '#ef4444',
+                      color: '#fff',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      borderRadius: '50%',
+                      width: '16px',
+                      height: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '2px solid #fff'
+                    }}
+                  >
+                    {notifications.filter(n => !n.is_read).length > 9 ? '9+' : notifications.filter(n => !n.is_read).length}
+                  </span>
+                )}
+              </button>
+
+              {isNotiOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '42px',
+                    width: '320px',
+                    background: '#ffffff',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                    border: '1px solid #e2e8f0',
+                    zIndex: 1000,
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>System Alerts & Notifications</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {notifications.filter(n => !n.is_read).length > 0 && (
+                        <button onClick={markAllNotificationsRead} style={{ border: 'none', background: 'none', color: '#3b82f6', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Mark Read
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button onClick={clearAllNotifications} style={{ border: 'none', background: 'none', color: '#64748b', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '24px', textAlign: 'center', fontSize: '0.82rem', color: '#94a3b8' }}>
+                        No notifications available
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => markNotificationRead(n.id, n.target_tab || 'availability-requests')}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f1f5f9',
+                            background: !n.is_read ? '#f0f9ff' : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.82rem', color: '#0f172a' }}>{n.title}</span>
+                            {!n.is_read && <span style={{ width: '6px', height: '6px', background: '#3b82f6', borderRadius: '50%' }} />}
+                          </div>
+                          <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.35 }}>{n.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
+              <div 
+                className="admin-profile-badge" 
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-profile-avatar">{initials}</div>
+                <div className="admin-profile-info">
+                  <span className="admin-profile-name">{currentUser?.full_name || 'Admin'}</span>
+                  <span className="admin-profile-role">Admin</span>
+                </div>
               </div>
+
+              {isProfileDropdownOpen && (
+                <div className="profile-dropdown-menu">
+                  <button onClick={() => { handleRootTabChange('settings'); setIsProfileDropdownOpen(false); }}>
+                    <Settings size={14} style={{ color: 'var(--primary-teal, #0c6e8c)' }} /> Settings
+                  </button>
+                  <div className="profile-dropdown-divider"></div>
+                  <button className="logout-item" onClick={() => { onLogout(); setIsProfileDropdownOpen(false); }}>
+                    <LogOut size={14} style={{ color: '#dc2626' }} /> Switch Role
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -436,6 +1472,50 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           {/* ── DASHBOARD ── */}
           {activeTab === 'dashboard' && (
             <>
+              {/* Branch Selection & Quick Actions Bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', background: '#ffffff', padding: '14px 20px', borderRadius: '12px', border: '1px solid var(--admin-border)', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Building size={18} style={{ color: 'var(--admin-primary)' }} />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>Location Filter:</span>
+                  <select
+                    value={selectedDashboardBranch}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedDashboardBranch(val);
+                      fetchDashboard(val);
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                      background: '#f8fafc',
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="">🌐 All Clinic Branches</option>
+                    {branches.map((br: any) => (
+                      <option key={br.id} value={br.id}>{br.name} Branch ({br.city})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button className="admin-btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={() => handleRootTabChange('staff')}>
+                    <Plus size={14} /> Add Staff
+                  </button>
+                  <button className="admin-btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={() => handleRootTabChange('branches')}>
+                    <Building size={14} /> Add Branch
+                  </button>
+                  <button className="admin-btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={() => handleRootTabChange('inventory')}>
+                    <Package size={14} /> View Inventory
+                  </button>
+                </div>
+              </div>
+
               {loading ? (
                 <div style={{ textAlign: 'center', padding: '60px', color: 'var(--admin-text-muted)' }}>Loading dashboard data…</div>
               ) : (
@@ -479,15 +1559,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     </div>
                   </div>
 
-                  <div className="admin-charts-grid">
-                    {/* Revenue placeholder — real invoices will populate */}
+                  <div className="admin-charts-grid" style={{ marginTop: '20px' }}>
+                    {/* Revenue This Month */}
                     <div className="admin-card">
                       <div className="admin-card-header">
                         <h2 className="admin-card-title">Revenue This Month</h2>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '160px', flexDirection: 'column', gap: '8px' }}>
                         <span style={{ fontSize: '2.2rem', fontWeight: 700, color: 'var(--revenue-green)' }}>{fmtCurrency(kpis.total_revenue_mtd || 0)}</span>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>Month-to-date from invoices</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>
+                          Month-to-date total from clinic invoices {revGrowth !== undefined ? `(${revGrowth >= 0 ? '+' : ''}${revGrowth}% vs last month)` : ''}
+                        </span>
                       </div>
                     </div>
 
@@ -499,20 +1581,750 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       <DonutChart segments={stockSegments} total={stockHealth.total || 0} label="total" />
                     </div>
                   </div>
+
+                  {/* Today's Live Patient Queue Kanban Board */}
+                  <div className="admin-card" style={{ marginTop: '20px' }}>
+                    <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h2 className="admin-card-title">Today's Live Patient Workflow Queue</h2>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>Real-time patient progression across clinic operational stages</p>
+                      </div>
+                      <span style={{ fontSize: '0.78rem', background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                        🟢 Live Tracking
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '16px' }}>
+                      {/* Stage 1: Reception */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155' }}>🚪 Reception / Waiting</span>
+                          <span style={{ background: '#3b82f6', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                            {workflow.reception?.length || 0}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {workflow.reception?.map((c: any) => (
+                            <div key={c.id} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#0f172a' }}>{c.title}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{c.desc}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#3b82f6', marginTop: '6px', fontWeight: 600 }}>🕒 {c.time}</div>
+                            </div>
+                          ))}
+                          {(!workflow.reception || workflow.reception.length === 0) && (
+                            <div style={{ textAlign: 'center', padding: '16px', fontSize: '0.78rem', color: '#94a3b8' }}>No patients waiting</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stage 2: Consultation */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155' }}>🩺 In Consultation</span>
+                          <span style={{ background: '#f59e0b', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                            {workflow.consultation?.length || 0}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {workflow.consultation?.map((c: any) => (
+                            <div key={c.id} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#0f172a' }}>{c.title}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{c.desc}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#d97706', marginTop: '6px', fontWeight: 600 }}>🕒 {c.time}</div>
+                            </div>
+                          ))}
+                          {(!workflow.consultation || workflow.consultation.length === 0) && (
+                            <div style={{ textAlign: 'center', padding: '16px', fontSize: '0.78rem', color: '#94a3b8' }}>No active consultations</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stage 3: Billing */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155' }}>💳 Billing & Payment</span>
+                          <span style={{ background: '#10b981', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                            {workflow.billing?.length || 0}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {workflow.billing?.map((c: any) => (
+                            <div key={c.id} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#0f172a' }}>{c.title}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{c.desc}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '6px', fontWeight: 600 }}>🕒 {c.time}</div>
+                            </div>
+                          ))}
+                          {(!workflow.billing || workflow.billing.length === 0) && (
+                            <div style={{ textAlign: 'center', padding: '16px', fontSize: '0.78rem', color: '#94a3b8' }}>No pending invoices</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stage 4: Dispensary */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155' }}>💊 Dispensary / Pharmacy</span>
+                          <span style={{ background: '#8b5cf6', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                            {workflow.dispensary?.length || 0}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {workflow.dispensary?.map((c: any) => (
+                            <div key={c.id} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#0f172a' }}>{c.title}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{c.desc}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#7c3aed', marginTop: '6px', fontWeight: 600 }}>🕒 {c.time}</div>
+                            </div>
+                          ))}
+                          {(!workflow.dispensary || workflow.dispensary.length === 0) && (
+                            <div style={{ textAlign: 'center', padding: '16px', fontSize: '0.78rem', color: '#94a3b8' }}>No pending dispensary items</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Activity Feed */}
+                  <div className="admin-card" style={{ marginTop: '20px' }}>
+                    <div className="admin-card-header">
+                      <h2 className="admin-card-title">Recent Activity Feed</h2>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '8px 0' }}>
+                      {recentActivities.map((act: any) => (
+                        <div key={act.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '1.2rem' }}>📅</span>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#0f172a' }}>{act.title}</div>
+                              <div style={{ fontSize: '0.76rem', color: '#64748b' }}>{act.detail}</div>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 500 }}>{act.time}</span>
+                        </div>
+                      ))}
+                      {recentActivities.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontSize: '0.82rem' }}>No recent system activities</div>
+                      )}
+                    </div>
+                  </div>
                 </>
               )}
             </>
           )}
 
-          {/* ── REPORTS (placeholder — no static data) ── */}
+          {/* ── REPORTS TAB ── */}
           {activeTab === 'reports' && (
-            <div className="admin-card">
-              <div className="admin-card-actions">
-                <h2 className="admin-card-title">Clinical & Financial Reports</h2>
-                <button className="admin-btn-primary"><Plus size={16} /> Generate Custom Report</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Filter Bar */}
+              <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid var(--admin-border)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>Clinical & Financial Analytics Reports</h2>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Generate detailed financial revenue, patient visits, and medicine inventory usage reports.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="admin-btn-primary"
+                      onClick={exportToCSV}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.86rem', background: '#0284c7', border: 'none' }}
+                    >
+                      📊 Export CSV
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn-primary"
+                      onClick={exportToPDF}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.86rem', background: '#0c6e8c', border: 'none' }}
+                    >
+                      📄 Export PDF / Print
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  {/* Report Type Selector */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Report Category:</label>
+                    <select
+                      value={reportType}
+                      onChange={(e: any) => {
+                        setReportData(null);
+                        setReportType(e.target.value);
+                      }}
+                      style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, color: '#0f172a', background: '#fff' }}
+                    >
+                      <option value="financial">💵 Financial & Revenue Report</option>
+                      <option value="doctor_revenue">👨‍⚕️ Doctor-wise Revenue & Performance</option>
+                      <option value="staff_performance">👥 Staff Performance Analytics</option>
+                      <option value="pharmacy_branch">💊 Pharmacy Sales by Clinic Branch</option>
+                      <option value="clinical">🩺 Patient Visits & Clinical Report</option>
+                      <option value="inventory">📦 Pharmacy & Inventory Stock Report</option>
+                    </select>
+                  </div>
+
+                  {/* Start Date */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Start Date:</label>
+                    <input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={(e) => setReportStartDate(e.target.value)}
+                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                    />
+                  </div>
+
+                  {/* End Date */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>End Date:</label>
+                    <input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={(e) => setReportEndDate(e.target.value)}
+                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                    />
+                  </div>
+
+                  {/* Branch Filter */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Branch Location:</label>
+                    <select
+                      value={reportBranchId}
+                      onChange={(e) => setReportBranchId(e.target.value)}
+                      style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                    >
+                      <option value="">🌐 All Clinic Locations</option>
+                      {branches.map((b: any) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: 'auto' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Quick Presets:</label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setDatePreset('today')}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: activePreset === 'today' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                          background: activePreset === 'today' ? '#2563eb' : '#fff',
+                          color: activePreset === 'today' ? '#fff' : '#334155',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          boxShadow: activePreset === 'today' ? '0 2px 4px rgba(37,99,235,0.2)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDatePreset('7days')}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: activePreset === '7days' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                          background: activePreset === '7days' ? '#2563eb' : '#fff',
+                          color: activePreset === '7days' ? '#fff' : '#334155',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          boxShadow: activePreset === '7days' ? '0 2px 4px rgba(37,99,235,0.2)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        Last 7 Days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDatePreset('month')}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: activePreset === 'month' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                          background: activePreset === 'month' ? '#2563eb' : '#fff',
+                          color: activePreset === 'month' ? '#fff' : '#334155',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          boxShadow: activePreset === 'month' ? '0 2px 4px rgba(37,99,235,0.2)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        This Month
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDatePreset('all')}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: activePreset === 'all' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                          background: activePreset === 'all' ? '#2563eb' : '#fff',
+                          color: activePreset === 'all' ? '#fff' : '#334155',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          boxShadow: activePreset === 'all' ? '0 2px 4px rgba(37,99,235,0.2)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        🌐 All Time
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--admin-text-muted)' }}>
-                Report generation is handled via the billing and consultation APIs. No pre-generated reports exist yet.
+
+              {/* Summary Metric Cards */}
+              {reportData?.summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  {reportType === 'financial' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Period Revenue</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(filteredFinancialSummary.total_revenue || 0)}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Invoices Generated</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredFinancialSummary.total_invoices || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Average Invoice Value</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(filteredFinancialSummary.avg_invoice_value || 0)}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {reportType === 'clinical' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Appointments</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_appointments || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Completed Consultations</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{reportData.summary.completed || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Completion Rate</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#06b6d4', marginTop: '4px' }}>{reportData.summary.completion_rate || 0}%</div>
+                      </div>
+                    </>
+                  )}
+
+                  {reportType === 'inventory' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Inventory Valuation</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(filteredInventorySummary.total_valuation || 0)}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Medicine SKUs</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredInventorySummary.total_skus || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Low Stock Warnings</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#ef4444', marginTop: '4px' }}>{filteredInventorySummary.low_stock_skus || 0}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {reportType === 'doctor_revenue' && (
+                    <>
+                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Doctors</div>
+                         <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredDoctorRevenueSummary.total_doctors || 0}</div>
+                       </div>
+                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Doctor Generated Revenue</div>
+                         <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(filteredDoctorRevenueSummary.total_revenue || 0)}</div>
+                       </div>
+                       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                         <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Average Revenue / Doctor</div>
+                         <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8b5cf6', marginTop: '4px' }}>{fmtCurrency(filteredDoctorRevenueSummary.avg_revenue_per_doctor || 0)}</div>
+                       </div>
+                    </>
+                  )}
+
+                  {reportType === 'staff_performance' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Staff Members</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{filteredStaffPerformanceSummary.total_staff || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Active Personnel</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{filteredStaffPerformanceSummary.active_staff || 0}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {reportType === 'pharmacy_branch' && (
+                    <>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Total Operating Branches</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>{reportData.summary.total_branches || 0}</div>
+                      </div>
+                      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Branch Pharmacy Valuation</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>{fmtCurrency(reportData.summary.total_valuation || 0)}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Detailed Data Table */}
+              <div className="admin-card">
+                <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 className="admin-card-title">
+                    Report Detail Records ({
+                      reportType === 'doctor_revenue' ? filteredDoctorRevenueRows.length :
+                      reportType === 'staff_performance' ? filteredStaffPerformanceRows.length :
+                      reportType === 'financial' ? filteredFinancialRows.length :
+                      reportType === 'inventory' ? filteredInventoryRows.length :
+                      (reportData?.rows?.length || 0)
+                    })
+                  </h2>
+
+                  {reportType === 'inventory' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Medicine Name */}
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search medicine name..."
+                          list="reports-medicine-suggestions"
+                          value={inventoryReportSearchQuery}
+                          onChange={e => setInventoryReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-medicine-suggestions">
+                          {Array.from(new Set((reportData?.rows || []).map((row: any) => row.name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      {inventoryReportSearchQuery && (
+                        <button
+                          onClick={() => setInventoryReportSearchQuery('')}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {reportType === 'financial' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Invoice/Patient Name */}
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search patient or invoice..."
+                          list="reports-patient-suggestions"
+                          value={financialReportSearchQuery}
+                          onChange={e => setFinancialReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-patient-suggestions">
+                          {Array.from(new Set(
+                            (reportData?.rows || []).flatMap((row: any) => [row.patient_name, row.invoice_number].filter(Boolean))
+                          )).map((val: any) => (
+                            <option key={val} value={val} />
+                          ))}
+                        </datalist>
+                      </div>
+                      
+                      {/* Filter by Branch */}
+                      <div style={{ width: '180px' }}>
+                        <select
+                          value={financialReportBranchFilter}
+                          onChange={e => setFinancialReportBranchFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Branches</option>
+                          {financialReportBranchesList.map((branch: string) => (
+                            <option key={branch} value={branch}>{branch}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filter by Payment Method */}
+                      <div style={{ width: '180px' }}>
+                        <select
+                          value={financialReportPaymentFilter}
+                          onChange={e => setFinancialReportPaymentFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Payment Methods</option>
+                          {financialReportPaymentModesList.map((mode: string) => (
+                            <option key={mode} value={mode}>{mode}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(financialReportSearchQuery || financialReportBranchFilter || financialReportPaymentFilter) && (
+                        <button
+                          onClick={() => {
+                            setFinancialReportSearchQuery('');
+                            setFinancialReportBranchFilter('');
+                            setFinancialReportPaymentFilter('');
+                          }}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {reportType === 'doctor_revenue' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Doctor Name */}
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search doctor..."
+                          list="reports-doctor-suggestions"
+                          value={doctorReportSearchQuery}
+                          onChange={e => setDoctorReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-doctor-suggestions">
+                          {Array.from(new Set((reportData?.rows || []).map((row: any) => row.doctor_name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+                      
+                      {/* Filter by Specialization */}
+                      <div style={{ width: '180px' }}>
+                        <select
+                          value={doctorReportSpecFilter}
+                          onChange={e => setDoctorReportSpecFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Specializations</option>
+                          {doctorSpecializations.map((spec: string) => (
+                            <option key={spec} value={spec}>{spec}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(doctorReportSearchQuery || doctorReportSpecFilter) && (
+                        <button
+                          onClick={() => {
+                            setDoctorReportSearchQuery('');
+                            setDoctorReportSpecFilter('');
+                          }}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {reportType === 'staff_performance' && !reportLoading && reportData?.rows && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      {/* Search Staff Name */}
+                      <div style={{ position: 'relative', width: '200px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search staff..."
+                          list="reports-staff-suggestions"
+                          value={staffReportSearchQuery}
+                          onChange={e => setStaffReportSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <datalist id="reports-staff-suggestions">
+                          {Array.from(new Set((reportData?.rows || []).map((row: any) => row.staff_name))).map((name: any) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+                      
+                      {/* Filter by Branch */}
+                      <div style={{ width: '150px' }}>
+                        <select
+                          value={staffReportBranchFilter}
+                          onChange={e => setStaffReportBranchFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">All Branches</option>
+                          {staffReportBranchesList.map((branch: string) => (
+                            <option key={branch} value={branch}>{branch}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filter by Role */}
+                      <div style={{ width: '150px' }}>
+                        <select
+                          value={staffReportRoleFilter}
+                          onChange={e => setStaffReportRoleFilter(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#fff', outline: 'none', cursor: 'pointer', textTransform: 'capitalize' }}
+                        >
+                          <option value="">All Roles</option>
+                          {staffReportRolesList.map((role: string) => (
+                            <option key={role} value={role}>{role}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(staffReportSearchQuery || staffReportBranchFilter || staffReportRoleFilter) && (
+                        <button
+                          onClick={() => {
+                            setStaffReportSearchQuery('');
+                            setStaffReportBranchFilter('');
+                            setStaffReportRoleFilter('');
+                          }}
+                          className="admin-btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {reportLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Generating report data…</div>
+                ) : (
+                  <div className="admin-table-container">
+                    <table className="admin-table">
+                      {reportType === 'financial' && (
+                        <>
+                          <thead><tr><th>Invoice #</th><th>Date</th><th>Patient</th><th>Branch</th><th>Payment Method</th><th>Status</th><th>Amount</th></tr></thead>
+                          <tbody>
+                            {filteredFinancialRows.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.invoice_number}</td>
+                                <td>{row.date}</td>
+                                <td>{row.patient_name}</td>
+                                <td>{row.branch_name || "Central Branch"}</td>
+                                <td>{row.payment_mode}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
+                                <td style={{ fontWeight: 700, color: '#10b981' }}>{fmtCurrency(row.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'clinical' && (
+                        <>
+                          <thead><tr><th>Appointment Date</th><th>Treatment</th><th>Consultation Type</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {reportData?.rows?.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.date}</td>
+                                <td>{row.treatment}</td>
+                                <td style={{ textTransform: 'capitalize' }}>{row.type}</td>
+                                <td><span className={`admin-status-badge ${row.status === 'completed' ? 'active' : 'suspended'}`}>{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'inventory' && (
+                        <>
+                          <thead><tr><th>Medicine Name</th><th>Category</th><th>Current Stock</th><th>Reorder Level</th><th>Unit Price</th><th>Valuation</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {filteredInventoryRows.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.name}</td>
+                                <td>{row.category}</td>
+                                <td>{row.stock}</td>
+                                <td>{row.reorder_level}</td>
+                                <td>₹{row.unit_price}</td>
+                                <td style={{ fontWeight: 700 }}>₹{row.valuation}</td>
+                                <td><span className={`admin-status-badge ${row.status === 'Low Stock' ? 'low' : 'active'}`}>{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'doctor_revenue' && (
+                        <>
+                          <thead><tr><th>Doctor Name</th><th>Specialization</th><th>Completed Consultations</th><th>Consultation Fee</th><th>Total Revenue</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {filteredDoctorRevenueRows.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.doctor_name}</td>
+                                <td>{row.specialization}</td>
+                                <td>{row.completed_consultations}</td>
+                                <td>₹{row.consultation_fee}</td>
+                                <td style={{ fontWeight: 700, color: '#10b981' }}>{fmtCurrency(row.total_revenue)}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'staff_performance' && (
+                        <>
+                          <thead><tr><th>Staff Member</th><th>Role</th><th>Assigned Branch</th><th>Last Login</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {filteredStaffPerformanceRows.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.staff_name}</td>
+                                <td style={{ textTransform: 'capitalize' }}>{row.role}</td>
+                                <td>{row.branch_name}</td>
+                                <td>{row.last_login}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+
+                      {reportType === 'pharmacy_branch' && (
+                        <>
+                          <thead><tr><th>Branch Location</th><th>City</th><th>SKUs Available</th><th>Allocated Valuation</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {reportData?.rows?.map((row: any) => (
+                              <tr key={row.id}>
+                                <td style={{ fontWeight: 600 }}>{row.branch_name}</td>
+                                <td>{row.city}</td>
+                                <td>{row.skus_available}</td>
+                                <td style={{ fontWeight: 700, color: '#2563eb' }}>{fmtCurrency(row.stock_valuation)}</td>
+                                <td><span className="admin-status-badge active">{row.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
+                    </table>
+
+                    {(!reportData?.rows || reportData.rows.length === 0) && (
+                      <div style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '0.86rem' }}>
+                        No report records found for the selected date range and branch filter.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -520,8 +2332,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           {/* ── INVENTORY ── */}
           {activeTab === 'inventory' && (
             <div className="admin-card">
-              <div className="admin-card-actions">
+              <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="admin-card-title">Pharmacy Medicine Stock</h2>
+                <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
+                  <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
+                  <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search medicines..." list="management-medicine-suggestions" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  <datalist id="management-medicine-suggestions">
+                    {Array.from(new Set((inventory || []).map((item: any) => item.name))).map((name: any) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
                 <div className="admin-table-container">
@@ -545,14 +2366,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </div>
           )}
 
-          {/* ── STAFF ── */}
           {activeTab === 'staff' && (
             <div className="admin-card">
-              <div className="admin-card-actions">
+              <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="admin-card-title">Clinic Staff Directory</h2>
-                <button className="admin-btn-primary" onClick={() => { setIsAddingStaff(true); setShowPassword(false); }}>
-                  <Plus size={16} /> Add Staff Member
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
+                    <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
+                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search staff..." list="management-staff-suggestions" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                    <datalist id="management-staff-suggestions">
+                      {Array.from(new Set((staff || []).map((s: any) => s.name))).map((name: any) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <button className="admin-btn-primary" onClick={() => { setIsAddingStaff(true); setShowPassword(false); }}>
+                    <Plus size={16} /> Add Staff Member
+                  </button>
+                </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
                 <div className="admin-table-container">
@@ -598,9 +2429,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="admin-card-title" style={{ margin: 0 }}>Active Branches</h2>
-                <button className="admin-btn-primary" onClick={() => setIsAddingBranch(true)}>
-                  <Plus size={16} /> Add Branch
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div className="admin-search-wrapper" style={{ margin: 0, width: '250px', position: 'relative' }}>
+                    <Search className="admin-search-icon" size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--admin-text-muted)' }} />
+                    <input type="text" className="admin-search-input" style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem' }} placeholder="Search branches..." list="management-branch-suggestions" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                    <datalist id="management-branch-suggestions">
+                      {Array.from(new Set((branches || []).map((b: any) => b.name))).map((name: any) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <button className="admin-btn-primary" onClick={() => setIsAddingBranch(true)}>
+                    <Plus size={16} /> Add Branch
+                  </button>
+                </div>
               </div>
               {loading ? <div style={{ padding: '40px', textAlign: 'center' }}>Loading…</div> : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
@@ -699,21 +2541,423 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </div>
           )}
 
-          {/* ── SETTINGS ── */}
-          {activeTab === 'settings' && (
-            <div className="admin-card" style={{ gap: '20px' }}>
-              <h2 className="admin-card-title">System Settings</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                <div style={{ border: '1px solid var(--admin-border)', padding: '20px', borderRadius: '8px' }}>
-                  <h3 style={{ fontSize: '0.92rem', marginBottom: '12px' }}>Financial Settings</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>GST Rate (%)</label>
-                    <input type="number" defaultValue="18" style={{ padding: '8px', border: '1px solid var(--admin-border)', borderRadius: '6px' }} />
-                    <label style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>Default Teleconsultation Fee (₹)</label>
-                    <input type="number" defaultValue="500" style={{ padding: '8px', border: '1px solid var(--admin-border)', borderRadius: '6px' }} />
-                  </div>
+          {/* ── BED ASSETS & REGISTRY ── */}
+          {activeTab === 'beds' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="beds-workspace-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px', color: '#0f172a', fontWeight: 800 }}>
+                    <Bed size={22} className="text-teal-600" style={{ color: '#0d9488' }} /> Bed Assets & Categories Configuration
+                  </h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.86rem', color: '#64748b' }}>
+                    Configure ward categories, base pricing, hourly overtime proration rates, and deploy physical bed assets.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    type="button"
+                    className="admin-btn-secondary"
+                    onClick={fetchBedsAdminData}
+                    disabled={isLoadingBeds}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <RefreshCw size={14} className={isLoadingBeds ? 'spin' : ''} /> Refresh Registry
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn-primary"
+                    onClick={() => {
+                      setNewCategoryForm({ name: '', base_charge_24h: '', hourly_overtime_rate: '', tax_rate: '0.05' });
+                      setIsCategoryModalOpen(true);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Plus size={14} /> Configure Category
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn-primary"
+                    onClick={() => {
+                      if (adminBedCategories.length === 0) {
+                        alert('Please configure at least one Bed Category first.');
+                        return;
+                      }
+                      setNewBedForm({
+                        bed_number: '',
+                        category_id: adminBedCategories[0]?.id || '',
+                        branch_id: branches[0]?.id || ''
+                      });
+                      setIsBedModalOpen(true);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Plus size={14} /> Register Physical Bed
+                  </button>
                 </div>
               </div>
+
+              {bedsError && (
+                <div className="admin-alert error" style={{ padding: '12px 16px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', borderRadius: '10px', fontSize: '0.86rem' }}>
+                  {bedsError}
+                </div>
+              )}
+
+              {isLoadingBeds ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}>
+                  <RefreshCw size={32} className="spin" style={{ color: '#0d9488' }} />
+                </div>
+              ) : (
+                <>
+                  {/* Category Configuration Cards Grid */}
+                  <div>
+                    <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>
+                      1. Configured Bed Categories & Pricing Rates
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                      {adminBedCategories.map((cat: any) => (
+                        <div key={cat.id} className="admin-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>{cat.name}</h4>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0d9488', background: '#ccfbf1', padding: '3px 8px', borderRadius: '6px' }}>
+                              Tax: {cat.tax_rate * 100}% GST
+                            </span>
+                          </div>
+                          <hr style={{ border: 'none', borderTop: '1px solid #f1f5f9', margin: '4px 0' }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.86rem', color: '#475569' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Base Rate (24 hours):</span>
+                              <strong style={{ color: '#0f172a' }}>₹{cat.base_charge_24h.toLocaleString('en-IN')}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Overtime Hourly Rate:</span>
+                              <strong style={{ color: '#0f172a' }}>₹{cat.hourly_overtime_rate.toLocaleString('en-IN')}/hr</strong>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="admin-btn-secondary"
+                            onClick={() => {
+                              setNewCategoryForm({
+                                name: cat.name,
+                                base_charge_24h: String(cat.base_charge_24h),
+                                hourly_overtime_rate: String(cat.hourly_overtime_rate),
+                                tax_rate: String(cat.tax_rate)
+                              });
+                              setIsCategoryModalOpen(true);
+                            }}
+                            style={{ width: '100%', marginTop: '8px', padding: '6px', fontSize: '0.82rem', fontWeight: 600 }}
+                          >
+                            Update Config Rates
+                          </button>
+                        </div>
+                      ))}
+                      {adminBedCategories.length === 0 && (
+                        <div style={{ gridColumn: '1 / -1', padding: '30px', textAlign: 'center', background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: '12px', color: '#64748b', fontSize: '0.88rem' }}>
+                          No bed categories configured yet. Click "+ Configure Category" to add one.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bed Assets List Table */}
+                  <div className="admin-card" style={{ padding: '24px' }}>
+                    <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>
+                      2. Registered Bed Assets Inventory
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="admin-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #cbd5e1' }}>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Bed Number</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Category</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Branch</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Current Status</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#475569', fontSize: '0.84rem' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adminBeds.map((bed: any) => {
+                            const statusColorMap: any = {
+                              available: { bg: '#dcfce7', text: '#166534', label: 'Available' },
+                              occupied: { bg: '#fee2e2', text: '#991b1b', label: 'Occupied' },
+                              cleaning: { bg: '#fef3c7', text: '#92400e', label: 'Cleaning' }
+                            };
+                            const statusStyle = statusColorMap[bed.status] || { bg: '#f1f5f9', text: '#475569', label: bed.status };
+
+                            return (
+                              <tr key={bed.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>{bed.bed_number}</td>
+                                <td style={{ padding: '14px 16px', color: '#475569', fontSize: '0.86rem' }}>{bed.category?.name || 'Unassigned'}</td>
+                                <td style={{ padding: '14px 16px', color: '#475569', fontSize: '0.86rem' }}>{bed.branch_name || 'Main Clinic'}</td>
+                                <td style={{ padding: '14px 16px' }}>
+                                  <span style={{ fontSize: '0.78rem', fontWeight: 700, background: statusStyle.bg, color: statusStyle.text, padding: '4px 10px', borderRadius: '12px' }}>
+                                    {statusStyle.label}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteBed(bed.id)}
+                                    disabled={bed.status !== 'available'}
+                                    className="admin-btn-secondary"
+                                    style={{
+                                      padding: '4px 10px',
+                                      fontSize: '0.78rem',
+                                      color: bed.status === 'available' ? '#dc2626' : '#94a3b8',
+                                      borderColor: bed.status === 'available' ? '#fca5a5' : '#e2e8f0',
+                                      cursor: bed.status === 'available' ? 'pointer' : 'not-allowed'
+                                    }}
+                                  >
+                                    Decommission
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {adminBeds.length === 0 && (
+                            <tr>
+                              <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '0.86rem' }}>
+                                No beds registered in this branch inventory yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── MODAL: CONFIGURE BED CATEGORY ── */}
+              {isCategoryModalOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+                  <div style={{ background: '#ffffff', width: '480px', borderRadius: '16px', padding: '28px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                        Configure Bed Category & Rates
+                      </h3>
+                      <button type="button" onClick={() => setIsCategoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleCreateCategory} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Category Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={newCategoryForm.name}
+                          onChange={e => setNewCategoryForm({ ...newCategoryForm, name: e.target.value })}
+                          placeholder="e.g. ICU, Semi-Private"
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Base Charge (24h)</label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            step="0.01"
+                            value={newCategoryForm.base_charge_24h}
+                            onChange={e => setNewCategoryForm({ ...newCategoryForm, base_charge_24h: e.target.value })}
+                            placeholder="e.g. 3500"
+                            style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Hourly Overtime Rate</label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            step="0.01"
+                            value={newCategoryForm.hourly_overtime_rate}
+                            onChange={e => setNewCategoryForm({ ...newCategoryForm, hourly_overtime_rate: e.target.value })}
+                            placeholder="e.g. 150"
+                            style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>GST Tax Rate (%)</label>
+                        <select
+                          value={newCategoryForm.tax_rate}
+                          onChange={e => setNewCategoryForm({ ...newCategoryForm, tax_rate: e.target.value })}
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', background: '#ffffff' }}
+                        >
+                          <option value="0.00">0% (Exempt)</option>
+                          <option value="0.05">5% GST</option>
+                          <option value="0.12">12% GST</option>
+                          <option value="0.18">18% GST</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+                        <button type="button" className="admin-btn-secondary" onClick={() => setIsCategoryModalOpen(false)}>
+                          Cancel
+                        </button>
+                        <button type="submit" className="admin-btn-primary">
+                          Save Category Config
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* ── MODAL: REGISTER PHYSICAL BED ── */}
+              {isBedModalOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+                  <div style={{ background: '#ffffff', width: '440px', borderRadius: '16px', padding: '28px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                        Register Physical Bed Asset
+                      </h3>
+                      <button type="button" onClick={() => setIsBedModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleCreateBed} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Bed Number / Code</label>
+                        <input
+                          type="text"
+                          required
+                          value={newBedForm.bed_number}
+                          onChange={e => setNewBedForm({ ...newBedForm, bed_number: e.target.value })}
+                          placeholder="e.g. Bed-05, ICU-10"
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Select Category</label>
+                        <select
+                          required
+                          value={newBedForm.category_id}
+                          onChange={e => setNewBedForm({ ...newBedForm, category_id: e.target.value })}
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', background: '#ffffff' }}
+                        >
+                          {adminBedCategories.map((cat: any) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Deploy to Branch</label>
+                        <select
+                          required
+                          value={newBedForm.branch_id}
+                          onChange={e => setNewBedForm({ ...newBedForm, branch_id: e.target.value })}
+                          style={{ padding: '10px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '0.9rem', background: '#ffffff' }}
+                        >
+                          {branches.map((br: any) => (
+                            <option key={br.id} value={br.id}>{br.name} ({br.code})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+                        <button type="button" className="admin-btn-secondary" onClick={() => setIsBedModalOpen(false)}>
+                          Cancel
+                        </button>
+                        <button type="submit" className="admin-btn-primary">
+                          Register Bed
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SETTINGS ── */}
+          {activeTab === 'settings' && (
+            <div className="admin-card" style={{ gap: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>System Settings & Operations Configuration</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Configure global tax rates, default consultation fees, and clinic branding preferences.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveSettings}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+                  
+                  {/* Financial & Tax Settings */}
+                  <div style={{ border: '1px solid var(--admin-border)', padding: '20px', borderRadius: '12px', background: '#fff' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 16px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      💵 Financial & Tax Settings
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>GST Rate (%)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          required
+                          value={systemSettings.gst_rate}
+                          onChange={e => setSystemSettings({ ...systemSettings, gst_rate: Number(e.target.value) })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>Default Teleconsultation Fee (₹)</label>
+                        <input
+                          type="number"
+                          required
+                          value={systemSettings.default_teleconsultation_fee}
+                          onChange={e => setSystemSettings({ ...systemSettings, default_teleconsultation_fee: Number(e.target.value) })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* General Clinic Information */}
+                  <div style={{ border: '1px solid var(--admin-border)', padding: '20px', borderRadius: '12px', background: '#fff' }}>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 16px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      🏥 General Branding & Currency
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>Clinic Organization Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={systemSettings.clinic_name}
+                          onChange={e => setSystemSettings({ ...systemSettings, clinic_name: e.target.value })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+
+                      <div className="admin-form-group">
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'block' }}>Currency Symbol</label>
+                        <input
+                          type="text"
+                          required
+                          value={systemSettings.currency_symbol}
+                          onChange={e => setSystemSettings({ ...systemSettings, currency_symbol: e.target.value })}
+                          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--admin-border)', borderRadius: '8px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    className="admin-btn-primary"
+                    disabled={savingSettings}
+                    style={{ padding: '10px 24px', fontSize: '0.9rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    💾 {savingSettings ? 'Saving Settings...' : 'Save Settings'}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
@@ -912,6 +3156,233 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 })()}
               </div>
 
+            </div>
+          )}
+
+          {/* ── ACTIVE SESSIONS & SECURITY ── */}
+          {activeTab === 'active-sessions' && (
+            <div className="admin-card" style={{ gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>Active Login Sessions & Security Control</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Monitor logged-in clinic staff and immediately revoke sessions if unauthorized activity is detected.</p>
+                </div>
+                <button className="admin-btn-secondary" onClick={() => fetchActiveSessions()}>
+                  <RefreshCw size={14} className={loadingSessions ? 'spin' : ''} /> Refresh Sessions
+                </button>
+              </div>
+
+              {loadingSessions ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading active sessions…</div>
+              ) : (
+                <div className="admin-table-container">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th>Assigned Branch</th>
+                        <th>Last Active / Login</th>
+                        <th>Token Ver</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessionsData.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                            No active staff login sessions currently detected.
+                          </td>
+                        </tr>
+                      ) : (
+                        sessionsData.map((s: any) => (
+                          <tr key={s.id}>
+                            <td style={{ fontWeight: 600 }}>
+                              {s.full_name}
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400 }}>{s.email}</div>
+                            </td>
+                            <td style={{ textTransform: 'capitalize' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', fontSize: '0.78rem', fontWeight: 600 }}>{s.role}</span>
+                            </td>
+                            <td>{s.branch_name}</td>
+                            <td>{s.last_login_at}</td>
+                            <td>v{s.token_version}</td>
+                            <td>
+                              <span className={`admin-status-badge ${s.is_active ? 'active' : 'suspended'}`}>
+                                {s.is_active ? 'Active' : 'Deactivated'}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => handleForceLogout(s.id, s.full_name)}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #ef4444',
+                                  background: '#fef2f2',
+                                  color: '#dc2626',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                🔒 Force Logout
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STAFF ATTENDANCE ── */}
+          {activeTab === 'attendance' && (
+            <div className="admin-card" style={{ gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>Staff Daily Attendance Sheet</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Track automated daily punch-in times, late arrivals, and absence records across all clinic branches.</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <input
+                    type="date"
+                    value={attendanceDateFilter}
+                    onChange={e => setAttendanceDateFilter(e.target.value)}
+                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  />
+                  <button className="admin-btn-secondary" onClick={() => fetchStaffAttendance(attendanceDateFilter, attendanceBranchFilter)}>
+                    <RefreshCw size={14} className={loadingAttendance ? 'spin' : ''} /> Filter Date
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter controls row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                {/* Search Name */}
+                <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Search by staff name..."
+                    list="attendance-staff-suggestions"
+                    value={attendanceSearchQuery}
+                    onChange={e => setAttendanceSearchQuery(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px 8px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
+                  />
+                  <datalist id="attendance-staff-suggestions">
+                    {Array.from(new Set((attendanceData?.records || []).map((r: any) => r.staff_name))).map((name: any) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* Branch Filter */}
+                <div style={{ minWidth: '180px' }}>
+                  <select
+                    value={attendanceBranchFilter}
+                    onChange={e => setAttendanceBranchFilter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="">All Branches</option>
+                    {branches.map((b: any) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Role Filter */}
+                <div style={{ minWidth: '180px' }}>
+                  <select
+                    value={attendanceRoleFilter}
+                    onChange={e => setAttendanceRoleFilter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="doctor">Doctor</option>
+                    <option value="receptionist">Receptionist</option>
+                    <option value="pharmacist">Pharmacist</option>
+                    <option value="clinic_manager">Clinic Manager</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Attendance Summary Pill Cards */}
+              {attendanceData.summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>🟢 Present</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>{attendanceData.summary.present}</div>
+                  </div>
+                  <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#854d0e', fontWeight: 600 }}>🟡 Late Arrivals</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#a16207', marginTop: '4px' }}>{attendanceData.summary.late}</div>
+                  </div>
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#1e40af', fontWeight: 600 }}>🔵 On Leave</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1d4ed8', marginTop: '4px' }}>{attendanceData.summary.on_leave}</div>
+                  </div>
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 600 }}>🔴 Absent</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#b91c1c', marginTop: '4px' }}>{attendanceData.summary.absent}</div>
+                  </div>
+                </div>
+              )}
+
+              {loadingAttendance ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading attendance records…</div>
+              ) : (
+                <div className="admin-table-container">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th>Branch</th>
+                        <th>Date</th>
+                        <th>Punch-In Time</th>
+                        <th>Punch-Out Time</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAttendanceRecords.map((r: any) => (
+                        <tr key={r.id}>
+                          <td style={{ fontWeight: 600 }}>{r.staff_name}</td>
+                          <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
+                          <td>{r.branch_name}</td>
+                          <td>{r.date}</td>
+                          <td style={{ fontWeight: 600, color: '#0f172a' }}>{r.punch_in}</td>
+                          <td>{r.punch_out}</td>
+                          <td>
+                            <span className={`admin-status-badge ${
+                              r.status === 'PRESENT' ? 'active' :
+                              r.status === 'LATE' ? 'low' :
+                              r.status === 'LEAVE' ? 'leave' : 'absent'
+                            }`}>
+                              {r.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {filteredAttendanceRecords.length === 0 && (
+                    <div style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '0.86rem' }}>
+                      No staff attendance records match the search or filter criteria.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1273,6 +3744,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <option value="doctor">Doctor</option>
                     <option value="receptionist">Receptionist</option>
                     <option value="pharmacist">Pharmacist</option>
+                    <option value="clinic_manager">Clinic Manager</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
@@ -1386,6 +3858,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <option value="doctor">Doctor</option>
                     <option value="receptionist">Receptionist</option>
                     <option value="pharmacist">Pharmacist</option>
+                    <option value="clinic_manager">Clinic Manager</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
@@ -1405,16 +3878,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                   </select>
                 </div>
                 <div className="admin-form-group full-width">
-                  <label className="admin-form-label">Status</label>
+                  <label className="admin-form-label">Account Status</label>
                   <select
                     className="admin-form-input"
-                    value={staffForm.is_active ? "true" : "false"}
-                    onChange={e => setStaffForm({ ...staffForm, is_active: e.target.value === "true" })}
+                    value={staffStatus}
+                    onChange={e => setStaffStatus(e.target.value as any)}
                   >
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive (Deactivated)</option>
+                    <option value="suspended">Temporarily Suspended</option>
                   </select>
                 </div>
+
+                {staffStatus === 'suspended' && (
+                  <>
+                    <div className="admin-form-group">
+                      <label className="admin-form-label">Suspended Until</label>
+                      <input
+                        type="date"
+                        required
+                        className="admin-form-input"
+                        value={suspensionUntilDate}
+                        onChange={e => setSuspensionUntilDate(e.target.value)}
+                        min={(() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 1);
+                          const month = '' + (d.getMonth() + 1);
+                          const day = '' + d.getDate();
+                          const year = d.getFullYear();
+                          return [year, month.padStart(2, '0'), day.padStart(2, '0')].join('-');
+                        })()}
+                      />
+                    </div>
+                    <div className="admin-form-group">
+                      <label className="admin-form-label">Reason for Suspension</label>
+                      <input
+                        type="text"
+                        required
+                        className="admin-form-input"
+                        value={suspensionReason}
+                        onChange={e => setSuspensionReason(e.target.value)}
+                        placeholder="Reason (e.g. Disruptive behavior)"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div className="admin-modal-actions">
                 {editingStaff.id !== currentUser?.id && (

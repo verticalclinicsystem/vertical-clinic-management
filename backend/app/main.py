@@ -13,6 +13,7 @@ from app.config import settings
 from app.core.exceptions import ClinicAPIError
 from app.core.logging import setup_logging
 from app.db.init_db import check_db_connection, create_tables
+from app.utils.response import ApiResponse
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware ────────────────────────────────────────────────────────────
+    from app.middleware.request_tracking import RequestTrackingMiddleware
+    app.add_middleware(RequestTrackingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -86,6 +89,17 @@ def create_app() -> FastAPI:
     os.makedirs("static/uploads", exist_ok=True)
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+    # Serve uploads locally in development if STORAGE_BACKEND is set to local
+    if settings.STORAGE_BACKEND == "local":
+        target_dir = settings.UPLOAD_DIR
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+            app.mount("/uploads", StaticFiles(directory=target_dir), name="uploads")
+            logger.info(f"Mounted UPLOAD_DIR ({target_dir}) at /uploads")
+        except Exception as e:
+            logger.warning(f"Could not create/mount UPLOAD_DIR ({target_dir}): {e}. Falling back to static/uploads.")
+            app.mount("/uploads", StaticFiles(directory="static/uploads"), name="uploads")
+
     # ── Exception Handlers ────────────────────────────────────────────────────
     from fastapi.exceptions import RequestValidationError
     from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -93,6 +107,14 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ClinicAPIError)
     async def clinic_error_handler(request: Request, exc: ClinicAPIError) -> JSONResponse:
+        logger.warning(
+            "API Failure - Exception: %s | Path: %s | Status: %d | Error Code: %s | Reason: %s",
+            exc.__class__.__name__,
+            request.url.path,
+            exc.status_code,
+            getattr(exc, "error_code", "API_ERROR"),
+            exc.detail
+        )
         return ApiResponse.error(
             message=exc.detail,
             status_code=exc.status_code,
@@ -102,20 +124,41 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         errors = exc.errors()
-        message = "Validation failed"
-        if errors:
-            first_err = errors[0]
-            loc = " -> ".join(str(x) for x in first_err.get("loc", []))
-            message = f"Validation failed: {first_err.get('msg')} at {loc}"
-        
+        clean_msgs = []
+        formatted_details = []
+        for err in errors:
+            raw_msg = str(err.get("msg", "Invalid value"))
+            if raw_msg.startswith("Value error, "):
+                raw_msg = raw_msg[len("Value error, "):]
+            clean_msgs.append(raw_msg)
+            formatted_details.append({
+                "field": " -> ".join(str(x) for x in err.get("loc", []) if str(x) not in ("body", "query", "path")),
+                "message": raw_msg,
+                "type": err.get("type", "value_error"),
+            })
+
+        message = " | ".join(list(dict.fromkeys(clean_msgs))) if clean_msgs else "Validation failed"
+
+        logger.warning(
+            "API Failure - RequestValidationError | Path: %s | Status: 422 | Reason: %s",
+            request.url.path,
+            message,
+        )
         return ApiResponse.error(
             message=message,
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             error_code="VALIDATION_ERROR",
+            details=formatted_details,
         )
 
     @app.exception_handler(StarletteHTTPException)
     async def fastapi_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        logger.warning(
+            "API Failure - StarletteHTTPException | Path: %s | Status: %d | Reason: %s",
+            request.url.path,
+            exc.status_code,
+            exc.detail
+        )
         return ApiResponse.error(
             message=exc.detail,
             status_code=exc.status_code,
@@ -130,12 +173,57 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             error_code="INTERNAL_ERROR",
         )
+    from app.exceptions.exception_handlers import register_exception_handlers
+    register_exception_handlers(app)
 
     # ── Routers ───────────────────────────────────────────────────────────────
     from app.api.v1 import router as v1_router
     app.include_router(v1_router, prefix="/api/v1")
 
-    # ── Health Check ──────────────────────────────────────────────────────────
+    # ── WebSocket Route ───────────────────────────────────────────────────────
+    from fastapi import WebSocket, WebSocketDisconnect
+    from app.core.websocket import manager
+
+    @app.websocket("/api/v1/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        token = websocket.query_params.get("token")
+        user_id = None
+        role = None
+        branch_id = None
+        if token:
+            try:
+                from app.core.security import decode_access_token
+                payload = decode_access_token(token)
+                user_id = payload.get("sub")
+                role = payload.get("role")
+                branch_id = payload.get("branch_id")
+            except Exception as jwt_err:
+                logger.warning(f"Failed to decode websocket connection token: {jwt_err}")
+
+        await manager.connect(websocket, user_id=user_id, role=role, branch_id=branch_id)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
+        except Exception as e:
+            logger.error(f"WebSocket connection error: {e}")
+            manager.disconnect(websocket)
+
+
+    # ── Root & Health Check ───────────────────────────────────────────────────
+    @app.get("/", tags=["System & Notifications"], summary="Root endpoint")
+    async def root() -> JSONResponse:
+        return ApiResponse.success(
+            data={
+                "app": settings.APP_NAME,
+                "version": settings.APP_VERSION,
+                "docs": "/docs",
+                "health": "/health",
+            },
+            message=f"Welcome to {settings.APP_NAME}. ",
+        )
+
     @app.get("/health", tags=["System & Notifications"], summary="Health check")
     async def health_check() -> JSONResponse:
         return ApiResponse.success(

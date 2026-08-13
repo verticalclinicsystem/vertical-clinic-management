@@ -185,10 +185,18 @@ class UserOut(BaseModel):
     branch_id: uuid.UUID | None
     is_active: bool
     is_verified: bool
+    suspended_until: datetime | None = None
+    suspension_reason: str | None = None
     created_at: datetime
     last_login_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class UserSuspendRequest(BaseModel):
+    action: str = Field("suspend", description="Action to perform: 'suspend' or 'unsuspend'")
+    duration_days: int | None = Field(None, gt=0, description="Duration of suspension in days")
+    reason: str | None = Field(None, min_length=2, max_length=500, description="Reason for suspension")
 
 
 class UpdateProfileRequest(BaseModel):
@@ -207,12 +215,12 @@ class UpdateProfileRequest(BaseModel):
 
 # ── Staff creation (admin-only, lives in users.py router) ─────────────────────
 class StaffCreateRequest(BaseModel):
-    """Admin creates a staff user (doctor, receptionist, pharmacist, admin)."""
+    """Admin creates a staff user (doctor, receptionist, pharmacist, admin, clinic_manager)."""
     full_name: str = Field(..., min_length=2, max_length=200)
     email: EmailStr
     phone: str = Field(..., min_length=10, max_length=15)
     password: str = Field(..., min_length=8, max_length=128)
-    role: str = Field(..., pattern="^(receptionist|doctor|pharmacist|admin)$")
+    role: str = Field(..., pattern="^(receptionist|doctor|pharmacist|admin|clinic_manager)$")
     branch_id: uuid.UUID | None = None
 
 
@@ -305,7 +313,7 @@ class UserUpdate(BaseModel):
     full_name: str | None = Field(None, min_length=2, max_length=200)
     phone: str | None = Field(None, min_length=10, max_length=15)
     email: EmailStr | None = None
-    role: str | None = Field(None, pattern="^(receptionist|doctor|pharmacist|admin)$")
+    role: str | None = Field(None, pattern="^(receptionist|doctor|pharmacist|admin|clinic_manager|patient)$")
     branch_id: uuid.UUID | None = None
     is_active: bool | None = None
     password: str | None = Field(None, min_length=8, max_length=128)

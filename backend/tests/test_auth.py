@@ -162,6 +162,31 @@ async def test_token_refresh(client: AsyncClient):
     assert response.status_code == 200
     assert "access_token" in response.json()["data"]
 
+@pytest.mark.asyncio
+async def test_token_refresh_fails_after_revocation(client: AsyncClient):
+    """Token refresh should fail after user session is revoked / token_version is incremented."""
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    admin_token = login.json()["data"]["access_token"]
+    refresh_token = login.json()["data"]["refresh_token"]
+    
+    me_res = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {admin_token}"})
+    admin_id = me_res.json()["data"]["id"]
+
+    revoke_res = await client.post(
+        f"/api/v1/users/{admin_id}/revoke-sessions",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert revoke_res.status_code == 200
+
+    refresh_res = await client.post(
+        "/api/v1/auth/refresh-token",
+        json={"refresh_token": refresh_token},
+    )
+    assert refresh_res.status_code == 401
+
 
 @pytest.mark.asyncio
 async def test_change_password(client: AsyncClient):
@@ -358,4 +383,129 @@ async def test_delete_user(client: AsyncClient):
     # 5. Try to retrieve deleted user -> must fail with 404
     get_res = await client.get(f"/api/v1/users/{temp_user_id}", headers=headers)
     assert get_res.status_code == 404
+
+
+# ── Suspension and Session Revocation Tests ──────────────────────────────────
+@pytest.mark.asyncio
+async def test_user_suspension_flow(client: AsyncClient):
+    """Admin can suspend a user, which prevents them from using active token or logging in. Admin can unsuspend them."""
+    # 1. Login as admin
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    admin_token = login.json()["data"]["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Login as patient
+    patient_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    patient_token = patient_login.json()["data"]["access_token"]
+    patient_id = patient_login.json()["data"]["user"]["id"]
+    patient_headers = {"Authorization": f"Bearer {patient_token}"}
+
+    # Verify patient can call /auth/me
+    me_res = await client.get("/api/v1/auth/me", headers=patient_headers)
+    assert me_res.status_code == 200
+
+    # 3. Admin suspends patient for 3 days
+    suspend_res = await client.post(
+        f"/api/v1/users/{patient_id}/suspend",
+        headers=admin_headers,
+        json={"duration_days": 3, "reason": "Disruptive behavior"}
+    )
+    assert suspend_res.status_code == 200
+    assert suspend_res.json()["data"]["suspension_reason"] == "Disruptive behavior"
+    assert suspend_res.json()["data"]["suspended_until"] is not None
+
+    # 4. Try to call /auth/me with suspended patient's active token -> must be 401/Unauthorized
+    me_res2 = await client.get("/api/v1/auth/me", headers=patient_headers)
+    assert me_res2.status_code == 401
+
+    # Try to login as suspended patient -> must be 401
+    login_res2 = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    assert login_res2.status_code == 401
+
+    # 5. Admin unsuspends patient
+    unsuspend_res = await client.post(
+        f"/api/v1/users/{patient_id}/suspend",
+        json={"action": "unsuspend"},
+        headers=admin_headers
+    )
+    assert unsuspend_res.status_code == 200
+    assert unsuspend_res.json()["data"]["suspended_until"] is None
+    assert unsuspend_res.json()["data"]["suspension_reason"] is None
+
+    # 6. Patient logs in again -> must succeed
+    login_res3 = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    assert login_res3.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_session_revocation_me(client: AsyncClient):
+    """User can revoke all their own sessions, invalidating current token."""
+    # 1. Login as pharmacist
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "pharmacist@verticalclinic.com", "password": "Pharmacist@verticalclinic.com"},
+    )
+    token = login.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Call /auth/me to verify working
+    res1 = await client.get("/api/v1/auth/me", headers=headers)
+    assert res1.status_code == 200
+
+    # 2. Revoke all sessions
+    revoke_res = await client.post("/api/v1/users/me/revoke-sessions", headers=headers)
+    assert revoke_res.status_code == 200
+
+    # 3. Call /auth/me again with same token -> must be 401
+    res2 = await client.get("/api/v1/auth/me", headers=headers)
+    assert res2.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_admin_force_revoke_sessions(client: AsyncClient):
+    """Admin can force-revoke sessions of another user."""
+    # 1. Login as admin
+    admin_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    admin_token = admin_login.json()["data"]["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Login as patient
+    patient_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    patient_token = patient_login.json()["data"]["access_token"]
+    patient_id = patient_login.json()["data"]["user"]["id"]
+    patient_headers = {"Authorization": f"Bearer {patient_token}"}
+
+    # Verify patient working
+    res1 = await client.get("/api/v1/auth/me", headers=patient_headers)
+    assert res1.status_code == 200
+
+    # 3. Admin force revokes patient's sessions
+    force_res = await client.post(
+        f"/api/v1/users/{patient_id}/revoke-sessions",
+        headers=admin_headers
+    )
+    assert force_res.status_code == 200
+
+    # 4. Patient's active token is now invalid
+    res2 = await client.get("/api/v1/auth/me", headers=patient_headers)
+    assert res2.status_code == 401
+
 

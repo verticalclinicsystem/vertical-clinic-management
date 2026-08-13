@@ -143,3 +143,106 @@ async def test_billing_and_payments_flow(client: AsyncClient):
     )
     assert pat_payments.status_code == 200
     assert len(pat_payments.json()["data"]["items"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_send_invoice_email(client: AsyncClient):
+    """Verify that staff can trigger sending the invoice via email, and patient cannot."""
+    # 1. Log in as Staff
+    login_staff = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    token_staff = login_staff.json()["data"]["access_token"]
+
+    # 2. Log in as Patient
+    login_pat = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token_pat = login_pat.json()["data"]["access_token"]
+    
+    pat_profile = await client.get(
+        "/api/v1/patients/me",
+        headers={"Authorization": f"Bearer {token_pat}"},
+    )
+    patient_id = pat_profile.json()["data"]["id"]
+
+    # 3. Create invoice
+    invoice_res = await client.post(
+        "/api/v1/billing/",
+        json={
+            "patient_id": patient_id,
+            "total_amount": 1000.0,
+        },
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    invoice_id = invoice_res.json()["data"]["id"]
+
+    # 4. Patient attempts to trigger send email -> 403 Forbidden
+    forb_res = await client.post(
+        f"/api/v1/billing/{invoice_id}/send-email",
+        headers={"Authorization": f"Bearer {token_pat}"},
+    )
+    assert forb_res.status_code == 403
+
+    # 5. Staff triggers send email -> 200 Success
+    send_res = await client.post(
+        f"/api/v1/billing/{invoice_id}/send-email",
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    assert send_res.status_code == 200
+    assert send_res.json()["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_manager_billing_review_flow(client: AsyncClient):
+    """Verify manager can approve/reject billing requests and it triggers email."""
+    # 1. Log in as Admin (acting as clinic manager)
+    login_mgr = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    assert login_mgr.status_code == 200
+    token_mgr = login_mgr.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token_mgr}"}
+
+    # 2. Log in as Patient to get patient_id
+    login_pat = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token_pat = login_pat.json()["data"]["access_token"]
+    
+    pat_profile = await client.get(
+        "/api/v1/patients/me",
+        headers={"Authorization": f"Bearer {token_pat}"},
+    )
+    patient_id = pat_profile.json()["data"]["id"]
+
+    # 3. Create invoice with discount (unapproved yet)
+    invoice_res = await client.post(
+        "/api/v1/billing/",
+        json={
+            "patient_id": patient_id,
+            "total_amount": 2000.0,
+            "discount_amount": 200.0,
+        },
+        headers=headers,
+    )
+    assert invoice_res.status_code == 201
+    invoice_data = invoice_res.json()["data"]
+    invoice_id = invoice_data["id"]
+
+    # 4. Review & approve billing discount by Manager
+    review_res = await client.post(
+        f"/api/v1/clinic-manager/billing-requests/{invoice_id}/review",
+        json={
+            "action": "approve",
+            "reason_notes": "Valid discount for student patient."
+        },
+        headers=headers
+    )
+    assert review_res.status_code == 200
+    assert review_res.json()["status"] == "approved"
+

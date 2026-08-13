@@ -1,16 +1,16 @@
 /* DoctorPortal.css — Premium styling for Clinic OS Doctor Dashboard */
 
 :root {
-  --doc-primary: var(--primary);
-  --doc-primary-dark: var(--primary-dark);
-  --doc-primary-light: var(--accent);
-  --doc-sidebar-bg: var(--primary-dark);
-  --doc-sidebar-hover: rgba(255, 255, 255, 0.1);
-  --doc-sidebar-active: var(--primary);
-  --doc-bg-light: #f8fafc;
-  --doc-text-dark: #0f172a;
-  --doc-text-muted: #64748b;
-  --doc-border: #e2e8f0;
+  --doc-primary: var(--primary-teal);
+  --doc-primary-dark: var(--dark-sidebar);
+  --doc-primary-light: var(--bright-cyan);
+  --doc-sidebar-bg: var(--dark-sidebar);
+  --doc-sidebar-hover: rgba(22, 185, 212, 0.15);
+  --doc-sidebar-active: var(--active-nav);
+  --doc-bg-light: #EAF6FA;
+  --doc-text-dark: #102A43;
+  --doc-text-muted: #58758A;
+  --doc-border: #D6E7ED;
 }
 
 .doc-layout {
@@ -24,7 +24,8 @@
 /* Sidebar */
 .doc-sidebar {
   width: 260px;
-  background-color: var(--doc-sidebar-bg);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -34,7 +35,7 @@
   left: 0;
   z-index: 100;
   padding: 24px 0;
-  box-shadow: 4px 0 20px rgba(15, 118, 110, 0.08);
+  box-shadow: 4px 0 20px rgba(6, 75, 98, 0.15);
 }
 
 .doc-sidebar-header {
@@ -757,5 +758,90 @@
   .doc-consultation-container {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Profile Dropdown ── */
+.profile-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.profile-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 180px;
+  background-color: var(--bg-white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  padding: 6px 0;
+  animation: scaleUp 0.15s ease-out;
+}
+
+.profile-dropdown-menu button {
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.profile-dropdown-menu button:hover {
+  background-color: #f8fafc;
+  color: var(--primary-teal, #0c6e8c);
+}
+
+.profile-dropdown-menu .profile-dropdown-divider {
+  height: 1px;
+  background-color: #f1f5f9;
+  margin: 6px 0;
+}
+
+.profile-dropdown-menu button.logout-item {
+  color: #dc2626;
+}
+
+.profile-dropdown-menu button.logout-item:hover {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+/* ── Back Navigation Button ── */
+.doc-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--doc-border);
+  background-color: #ffffff;
+  color: var(--doc-primary);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.doc-back-btn:hover {
+  background-color: #f0fdf4;
+  border-color: var(--doc-primary);
+  transform: translateX(-2px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.doc-back-btn:active {
+  transform: scale(0.95) translateX(-2px);
 }
 

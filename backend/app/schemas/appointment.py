@@ -108,6 +108,7 @@ class AppointmentOut(AppointmentBase):
     branch_id: uuid.UUID
     branch_name: str | None = None
     status: str
+    token_number: int | None = None
     reschedule_count: int
     cancelled_by: str | None
     cancel_reason: str | None
@@ -120,11 +121,21 @@ class AppointmentOut(AppointmentBase):
     branch: BranchMinOut | None = None
 
     def map_status_for_role(self, role: str) -> None:
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        appt_dt = self.appointment_datetime
+        if appt_dt.tzinfo is None:
+            appt_dt = appt_dt.replace(tzinfo=timezone.utc)
+        if appt_dt < now - timedelta(hours=4) and self.status in ["pending", "confirmed", "checked_in", "in_consultation"]:
+            self.status = "no_show"
+
         if role == "patient":
             if self.status == "completed":
                 self.status = "completed"
             elif self.status in ["cancelled", "rejected"]:
                 self.status = "cancelled"
+            elif self.status in ["checked_in", "in_consultation", "no_show", "no-show", "not-show", "not_show"]:
+                pass
             elif self.reschedule_count > 0:
                 self.status = "rescheduled"
             else:

@@ -76,6 +76,23 @@ class PaymentService:
 
         await self.db.commit()
         logger.info(f"Payment {payment_number} logged successfully against Invoice {invoice.invoice_number}")
+
+        # Send Payment Received notification to patient
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            from app.repositories.patient_repo import PatientRepository
+            patient_repo = PatientRepository(self.db)
+            patient = await patient_repo.get_by_id(invoice.patient_id)
+            if patient:
+                await noti_service.send_multichannel_notification(
+                    user_id=patient.user_id,
+                    title="Payment Received",
+                    message=f"We have received your payment of {payment_amount} for Invoice {invoice.invoice_number}.",
+                    type="billing"
+                )
+        except Exception as e:
+            logger.error(f"Failed to send payment notification: {e}")
         
         return payment
 

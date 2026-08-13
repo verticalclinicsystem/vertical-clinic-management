@@ -11,7 +11,8 @@
 /* ── SIDEBAR ── */
 .recep-sidebar {
   width: 270px;
-  background-color: var(--primary-dark);
+  background-color: var(--dark-sidebar);
+  background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--deep-blue) 100%);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -21,7 +22,7 @@
   left: 0;
   z-index: 100;
   padding: 24px 0;
-  box-shadow: 4px 0 25px rgba(19, 36, 48, 0.09);
+  box-shadow: 4px 0 25px rgba(6, 75, 98, 0.15);
 }
 
 .recep-sidebar-header {
@@ -35,7 +36,7 @@
 .recep-logo-badge {
   width: 38px;
   height: 38px;
-  background-color: var(--accent);
+  background-color: var(--bright-cyan);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -43,6 +44,7 @@
   font-size: 1.2rem;
   font-weight: 800;
   color: white;
+  box-shadow: 0 4px 12px rgba(22, 185, 212, 0.3);
 }
 
 .recep-clinic-info {
@@ -67,9 +69,9 @@
 .recep-sidebar-pill {
   margin: 0 16px 24px 16px;
   padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(22, 185, 212, 0.25);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(22, 185, 212, 0.08);
   font-size: 0.8rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
@@ -82,8 +84,9 @@
   content: '';
   width: 6px;
   height: 6px;
-  background-color: var(--accent);
+  background-color: var(--bright-cyan);
   border-radius: 50%;
+  box-shadow: 0 0 8px var(--bright-cyan);
 }
 
 .recep-sidebar-nav {
@@ -109,21 +112,22 @@
   border-radius: 8px;
   font-size: 0.88rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.78);
   cursor: pointer;
   transition: var(--transition-all);
   margin-bottom: 4px;
 }
 
 .recep-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(22, 185, 212, 0.15);
   color: #ffffff;
 }
 
 .recep-nav-item.active {
-  background-color: var(--primary);
+  background-color: var(--active-nav);
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 4px 14px rgba(11, 142, 171, 0.35);
 }
 
 .recep-sidebar-footer {
@@ -528,6 +532,7 @@
 .badge-consultation-active { background-color: var(--info-bg); color: var(--info); }
 .badge-completed { background-color: var(--success-bg); color: var(--success); }
 .badge-cancelled { background-color: var(--danger-bg); color: var(--danger); }
+.badge-no_show, .badge-no-show { background-color: #f1f5f9; color: #475569; }
 .badge-unpaid { background-color: var(--danger-bg); color: var(--danger); }
 .badge-partially_paid { background-color: var(--warning-bg); color: var(--warning); }
 .badge-paid { background-color: var(--success-bg); color: var(--success); }
@@ -797,7 +802,7 @@
   gap: 6px;
 }
 
-.btn-action-book, .btn-action-bill, .btn-pay, .btn-download {
+.btn-action-book, .btn-action-bill, .btn-action-history, .btn-pay, .btn-download, .btn-edit {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -814,8 +819,14 @@
 .btn-action-bill { background-color: var(--accent-light); color: #0d9488; }
 .btn-action-bill:hover { background-color: rgba(20, 184, 166, 0.2); }
 
+.btn-action-history { background-color: #f1f5f9; color: #475569; border: 1px solid var(--border); }
+.btn-action-history:hover { background-color: #e2e8f0; }
+
 .btn-pay { background-color: var(--success-bg); color: var(--success); }
 .btn-pay:hover { background-color: rgba(26, 158, 92, 0.2); }
+
+.btn-edit { background-color: var(--warning-bg); color: var(--warning); }
+.btn-edit:hover { background-color: rgba(217, 119, 6, 0.2); }
 
 .btn-download { background-color: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border); }
 .btn-download:hover { background-color: var(--border); }
@@ -897,9 +908,24 @@
   border-radius: 14px;
   width: 600px;
   max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: var(--shadow-xl);
   padding: 28px;
   animation: scaleIn 0.2s ease-out;
+}
+
+.recep-checkbox {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 .recep-modal-header {
@@ -1323,27 +1349,34 @@
 }
 
 .calendar-appt-pill.confirmed {
-  background-color: var(--info-bg);
-  color: var(--info);
-  border: 1px solid rgba(53, 99, 201, 0.2);
-}
-
-.calendar-appt-pill.checked_in {
-  background-color: rgba(20, 184, 166, 0.08);
-  color: #0d9488;
-  border: 1px solid rgba(20, 184, 166, 0.2);
-}
-
-.calendar-appt-pill.completed {
   background-color: var(--success-bg);
   color: var(--success);
   border: 1px solid rgba(26, 158, 92, 0.2);
+}
+
+.calendar-appt-pill.checked_in {
+  background-color: var(--warning-bg);
+  color: #d97706;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+}
+
+.calendar-appt-pill.completed {
+  background-color: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .calendar-appt-pill.cancelled {
   background-color: var(--danger-bg);
   color: var(--danger);
   border: 1px solid rgba(210, 64, 47, 0.2);
+}
+
+.calendar-appt-pill.no_show, .calendar-appt-pill.expired {
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+  text-decoration: line-through;
 }
 
 .calendar-appt-pill.selected {
@@ -2044,5 +2077,121 @@
   font-style: italic;
 }
 
+/* ── Profile Dropdown ── */
+.profile-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
 
+.profile-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 180px;
+  background-color: var(--bg-white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  padding: 6px 0;
+  animation: scaleUp 0.15s ease-out;
+}
+
+.profile-dropdown-menu button {
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.profile-dropdown-menu button:hover {
+  background-color: #f8fafc;
+  color: var(--primary-teal, #0c6e8c);
+}
+
+.profile-dropdown-menu .profile-dropdown-divider {
+  height: 1px;
+  background-color: #f1f5f9;
+  margin: 6px 0;
+}
+
+.profile-dropdown-menu button.logout-item {
+  color: #dc2626;
+}
+
+.profile-dropdown-menu button.logout-item:hover {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+/* ── Back Navigation Button ── */
+.recep-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.recep-back-btn:hover {
+  background-color: var(--primary-light);
+  border-color: var(--primary);
+  transform: translateX(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.recep-back-btn:active {
+  transform: scale(0.95) translateX(-2px);
+}
+
+/* ── BED OCCUPANCY GRID & CARDS STYLING ── */
+.beds-workspace {
+  margin-top: 10px;
+}
+
+.bed-card-premium {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bed-card-premium:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Spin animation for refresh button */
+.spin-animation {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Invoice styled table inside checkout preview */
+.invoice-container-premium {
+  font-family: 'Inter', sans-serif;
+}
+
+.invoice-container-premium h4 {
+  letter-spacing: 0.05em;
+}
 

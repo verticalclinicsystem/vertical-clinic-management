@@ -40,6 +40,17 @@ class Invoice(Base):
         index=True,
     )
 
+    admission_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("admissions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    admission_ids_json: Mapped[str | None] = mapped_column(
+        String(1000), nullable=True
+    )
+
     invoice_number: Mapped[str] = mapped_column(
         String(50), unique=True, nullable=False, index=True
     )  # e.g., INV-2026-0001
@@ -81,6 +92,7 @@ class Invoice(Base):
     patient: Mapped["Patient"] = relationship("Patient", lazy="selectin")  # type: ignore
     consultation: Mapped["Consultation | None"] = relationship("Consultation", lazy="selectin")  # type: ignore
     treatment_plan: Mapped["TreatmentPlan | None"] = relationship("TreatmentPlan", lazy="selectin")  # type: ignore
+    admission: Mapped["Admission | None"] = relationship("Admission", lazy="selectin")  # type: ignore
     payments: Mapped[list["Payment"]] = relationship(
         "Payment", back_populates="invoice", cascade="all, delete-orphan", lazy="selectin"
     )  # type: ignore

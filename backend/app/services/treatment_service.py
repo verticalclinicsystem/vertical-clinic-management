@@ -127,6 +127,12 @@ class TreatmentService:
             await self.db.execute(stmt)
 
             # Insert new procedures
+            all_procs_completed = len(request.procedures) > 0 and all(p.status == "completed" for p in request.procedures)
+            if all_procs_completed:
+                plan.status = "completed"
+            elif request.status is None:
+                plan.status = "active"
+
             for proc in request.procedures:
                 procedure = TreatmentProcedure(
                     treatment_plan_id=plan_id,

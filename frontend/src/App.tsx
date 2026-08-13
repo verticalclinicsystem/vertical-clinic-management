@@ -5,12 +5,24 @@ import { AdminPortal } from './features/admin/AdminPortal';
 import { DoctorPortal } from './features/doctor/DoctorPortal';
 import { PharmacyPortal } from './features/pharmacy/PharmacyPortal';
 import { ReceptionistPortal } from './features/receptionist/ReceptionistPortal';
+import { ClinicManagerPortal } from './features/manager/ClinicManagerPortal';
 import './App.css';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [activePortal, setActivePortal] = useState<'admin' | 'doctor' | 'pharmacist' | 'receptionist' | 'patient' | null>(null);
+  const [activePortal, setActivePortal] = useState<'admin' | 'clinic_manager' | 'doctor' | 'pharmacist' | 'receptionist' | 'patient' | null>(null);
+
+  const getPortalForRole = (role: string) => {
+    switch (role) {
+      case 'admin': return 'admin';
+      case 'clinic_manager': return 'clinic_manager';
+      case 'doctor': return 'doctor';
+      case 'pharmacist': return 'pharmacist';
+      case 'receptionist': return 'receptionist';
+      default: return 'patient';
+    }
+  };
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -19,43 +31,32 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(savedUser);
         setUser(parsed);
-        setActivePortal(
-          parsed.role === 'admin' 
-            ? 'admin' 
-            : parsed.role === 'doctor' 
-              ? 'doctor' 
-              : parsed.role === 'pharmacist' 
-                ? 'pharmacist' 
-                : parsed.role === 'receptionist'
-                  ? 'receptionist'
-                  : 'patient'
-        );
+        setActivePortal(getPortalForRole(parsed.role));
       } catch (e) {
-        localStorage.clear();
+        console.error("Error parsing user from localStorage:", e);
+        localStorage.removeItem('user');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
       }
     }
     setCheckingAuth(false);
   }, []);
 
   const handleLoginSuccess = (loggedInUser: any) => {
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
     setUser(loggedInUser);
-    setActivePortal(
-      loggedInUser.role === 'admin' 
-        ? 'admin' 
-        : loggedInUser.role === 'doctor' 
-          ? 'doctor' 
-          : loggedInUser.role === 'pharmacist' 
-            ? 'pharmacist' 
-            : loggedInUser.role === 'receptionist'
-              ? 'receptionist'
-              : 'patient'
-    );
+    setActivePortal(getPortalForRole(loggedInUser.role));
   };
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
+    localStorage.removeItem('patient_portal_tab');
+    localStorage.removeItem('doctor_portal_tab');
+    localStorage.removeItem('admin_portal_tab');
+    localStorage.removeItem('receptionist_portal_tab');
+    localStorage.removeItem('pharmacy_portal_tab');
     setUser(null);
     setActivePortal(null);
   };
@@ -82,6 +83,10 @@ const App: React.FC = () => {
         activePortal === 'admin' ? (
           <AdminPortal 
             onLogout={handleLogout} 
+          />
+        ) : activePortal === 'clinic_manager' ? (
+          <ClinicManagerPortal
+            onLogout={handleLogout}
           />
         ) : activePortal === 'doctor' ? (
           <DoctorPortal 
