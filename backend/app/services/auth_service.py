@@ -128,6 +128,7 @@ class AuthService:
         await self._issue_otp(user.email, purpose="verify")
 
         logger.info(f"New user registered (unverified): {user.email}")
+        await self.db.commit()
         return {"email": user.email}
 
     # ── 2. Verify OTP ──────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ class AuthService:
             logger.error(f"Failed to send welcome email to {user.email}: {welcome_err}")
 
         logger.info(f"Account verified: {user.email}")
+        await self.db.commit()
         return {"email": user.email}
 
     # ── 3. Resend OTP ──────────────────────────────────────────────────────────
@@ -172,6 +174,7 @@ class AuthService:
             raise BadRequestError("Account is already verified.")
 
         await self._issue_otp(user.email, purpose=request.purpose)
+        await self.db.commit()
         logger.info(f"OTP resent ({request.purpose}): {user.email}")
 
     # ── 4. Login ───────────────────────────────────────────────────────────────
@@ -236,10 +239,10 @@ class AuthService:
                         status=status_str
                     )
                     self.db.add(new_att)
-                    await self.db.commit()
             except Exception as att_err:
                 logger.error(f"Failed to record attendance punch-in: {att_err}")
 
+        await self.db.commit()
         logger.info(f"User logged in: {user.email} [{user.role}]")
         return _build_token_payload(user)
 
@@ -291,6 +294,7 @@ class AuthService:
         if not user or not user.is_active:
             raise UserNotFoundError()
         await self._issue_otp(user.email, purpose="reset")
+        await self.db.commit()
         logger.info(f"Password reset OTP sent: {user.email}")
 
     # ── 8. Verify Reset OTP ────────────────────────────────────────────────────
@@ -303,6 +307,7 @@ class AuthService:
             raise UserNotFoundError()
 
         await self._consume_otp(request.email, request.otp, purpose="reset")
+        await self.db.commit()
 
         reset_token = create_access_token(
             user_id=str(user.id),
@@ -330,6 +335,7 @@ class AuthService:
             raise UserNotFoundError()
 
         await self.user_repo.update_password(user, hash_password(request.new_password))
+        await self.db.commit()
         logger.info(f"Password reset completed: {user.email}")
 
     # ── 10. Change Password ────────────────────────────────────────────────────
@@ -341,6 +347,7 @@ class AuthService:
             raise AuthenticationError("Current password is incorrect.")
 
         await self.user_repo.update_password(user, hash_password(request.new_password))
+        await self.db.commit()
         logger.info(f"Password changed: {user.email}")
 
     # ── 12. Update Profile ─────────────────────────────────────────────────────
@@ -353,12 +360,14 @@ class AuthService:
             if existing and existing.id != user.id:
                 raise ConflictError("This phone number is already in use.")
 
-        return await self.user_repo.update_profile(
+        updated_user = await self.user_repo.update_profile(
             user,
             full_name=request.full_name,
             phone=request.phone,
             avatar_url=request.avatar_url,
         )
+        await self.db.commit()
+        return updated_user
 
     # ── Staff Creation (Admin only) ────────────────────────────────────────────
     async def create_staff_user(self, request, created_by_id: str) -> User:
@@ -392,6 +401,7 @@ class AuthService:
             })
 
         logger.info(f"Staff created: {user.email} [{user.role}] by admin {created_by_id}")
+        await self.db.commit()
         return user
 
     async def create_doctor_user(self, request: DoctorCreateRequest, created_by_id: str) -> User:
@@ -424,6 +434,7 @@ class AuthService:
         })
 
         logger.info(f"Doctor staff created: {user.email} by admin {created_by_id}")
+        await self.db.commit()
         return user
 
     async def create_receptionist_user(self, request: ReceptionistCreateRequest, created_by_id: str) -> User:
@@ -451,6 +462,7 @@ class AuthService:
         )
 
         logger.info(f"Receptionist staff created: {user.email} by admin {created_by_id}")
+        await self.db.commit()
         return user
 
     async def create_pharmacist_user(self, request: PharmacistCreateRequest, created_by_id: str) -> User:
@@ -468,6 +480,7 @@ class AuthService:
         )
 
         logger.info(f"Pharmacist staff created: {user.email} by admin {created_by_id}")
+        await self.db.commit()
         return user
 
     async def create_admin_user(self, request: AdminCreateRequest, created_by_id: str) -> User:
@@ -485,6 +498,7 @@ class AuthService:
         )
 
         logger.info(f"Admin staff created: {user.email} by admin {created_by_id}")
+        await self.db.commit()
         return user
 
     # ── Private helpers (no DB — call repos only) ──────────────────────────────
