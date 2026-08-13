@@ -8,6 +8,7 @@ interface ReportsTabProps {
   setImageZoom: (zoom: number) => void;
   setImageRotate: (rotate: number) => void;
   handleDeleteReport: (reportId: string) => void;
+  downloadPdf: (url: string, filename: string) => void;
 }
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({
@@ -17,6 +18,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   setImageZoom,
   setImageRotate,
   handleDeleteReport,
+  downloadPdf,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -93,16 +95,16 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     >
                       View
                     </button>
-                    <a
-                      href={report.file_url?.startsWith('http') ? report.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => {
+                        const url = report.file_url?.startsWith('http') ? report.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`;
+                        downloadPdf(url, `${report.report_name || 'report'}.pdf`);
+                      }}
                       className="btn-secondary"
-                      style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                      style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center' }}
                     >
                       <Download size={13} />
-                    </a>
+                    </button>
                     <button
                       onClick={() => handleDeleteReport(report.id)}
                       className="btn-danger-outline"

@@ -31,7 +31,8 @@ import {
   Edit3,
   Bed,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
@@ -270,10 +271,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     try {
       const consRes = await api.get(`/consultations/?patient_id=${patient.id}`);
       const prescRes = await api.get(`/prescriptions/?patient_id=${patient.id}`);
+      const reportsRes = await api.get(`/medical-reports/patient/${patient.id}`);
       setEmrLookupPatient({
         patient,
         consultations: consRes.data?.data?.items || [],
-        prescriptions: prescRes.data?.data?.items || []
+        prescriptions: prescRes.data?.data?.items || [],
+        reports: reportsRes.data?.data || []
       });
     } catch (err) {
       console.error('Error fetching EMR lookup patient history:', err);
@@ -287,6 +290,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [patientsList, setPatientsList] = useState<any[]>([]);
   const [selectedPatientHistory, setSelectedPatientHistory] = useState<any>(null);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  // Medical report preview and download state
+  const [viewingReport, setViewingReport] = useState<any>(null);
+  const [reportFileUrl, setReportFileUrl] = useState<string>('');
+  const [loadingReportFile, setLoadingReportFile] = useState<boolean>(false);
+  const [reportError, setReportError] = useState<string>('');
+  const [reportContentType, setReportContentType] = useState<string>('');
 
   // Consultation Form state
   const [activeAppt, setActiveAppt] = useState<any>(null);
@@ -1046,7 +1056,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setLoadingIpdBeds(true);
     try {
       const [bedsRes, catRes] = await Promise.all([
-        api.get('/ipd/beds'),
+        api.get('/ipd/dashboard/beds'),
         api.get('/ipd/categories')
       ]);
       if (bedsRes.data && bedsRes.data.success) {
@@ -1124,7 +1134,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Fetch all tab contents on change
   useEffect(() => {
-    if (activeTab === 'ipd') {
+    if (activeTab === 'ipd' || activeTab === 'consultation') {
       fetchIpdBeds();
     } else if (activeTab === 'prescriptions') {
       fetchPrescriptions();
@@ -1365,11 +1375,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     try {
       const consRes = await api.get(`/consultations/?patient_id=${patient.id}`);
       const prescRes = await api.get(`/prescriptions/?patient_id=${patient.id}`);
+      const reportsRes = await api.get(`/medical-reports/patient/${patient.id}`);
       
       const historyData = {
         patient,
         consultations: consRes.data?.data?.items || [],
-        prescriptions: prescRes.data?.data?.items || []
+        prescriptions: prescRes.data?.data?.items || [],
+        reports: reportsRes.data?.data || []
       };
       
       setSelectedPatientHistory(historyData);
@@ -1380,6 +1392,82 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       setLoadingHistory(false);
       setLoadingEmrHistory(false);
     }
+  };
+
+  const handlePreviewReport = async (report: any) => {
+    setViewingReport(report);
+    setLoadingReportFile(true);
+    setReportError('');
+    setReportFileUrl('');
+    setReportContentType('');
+    try {
+      const url = report.file_url.startsWith('http') 
+        ? report.file_url 
+        : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const blob = await response.blob();
+      
+      let contentType = blob.type || response.headers.get('content-type') || '';
+      
+      // Determine if the URL or source indicates a PDF, or if it is a generic octet-stream
+      const urlLower = report.file_url.toLowerCase();
+      const isPdf = urlLower.endsWith('.pdf') || urlLower.includes('/raw/') || contentType.includes('pdf');
+      
+      if (isPdf) {
+        contentType = 'application/pdf';
+      } else if (contentType === 'application/octet-stream') {
+        // Fallback for raw files served with generic binary mime type
+        contentType = 'application/pdf';
+      }
+      
+      setReportContentType(contentType);
+      
+      const fileBlob = new Blob([blob], { type: contentType });
+      const objectUrl = window.URL.createObjectURL(fileBlob);
+      setReportFileUrl(objectUrl);
+    } catch (err: any) {
+      console.error('Error loading report file:', err);
+      setReportError(err.message || 'Failed to load preview');
+    } finally {
+      setLoadingReportFile(false);
+    }
+  };
+
+  const downloadReportFile = async (url: string, filename: string) => {
+    try {
+      const absoluteUrl = url.startsWith('http') 
+        ? url 
+        : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${url}`;
+      
+      const response = await fetch(absoluteUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      setTimeout(() => {
+        window.URL.revokeObjectURL(link.href);
+      }, 100);
+    } catch (err: any) {
+      console.error('Error downloading report:', err);
+      showToast('Failed to download report document.', 'error');
+    }
+  };
+
+  const handleCloseReportModal = () => {
+    if (reportFileUrl && reportFileUrl.startsWith('blob:')) {
+      window.URL.revokeObjectURL(reportFileUrl);
+    }
+    setViewingReport(null);
+    setReportFileUrl('');
+    setReportContentType('');
   };
 
   // Start Consultation — updates appointment status to in_consultation in backend
@@ -4614,57 +4702,100 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         {/* REPORTS VIEW */}
                         {patientWorkspaceTab === 'reports' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <div style={{ border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px', backgroundColor: '#f0fdf4' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                                <FolderOpen size={20} color="#16a34a" />
-                                <div>
-                                  <h5 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#14532d' }}>OPG X-Ray (Dental Scan)</h5>
-                                  <span style={{ fontSize: '0.72rem', color: '#166534' }}>Uploaded on 15 July 2026</span>
-                                </div>
+                            {(!selectedPatientHistory?.reports || selectedPatientHistory.reports.length === 0) ? (
+                              <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                No medical reports uploaded yet.
                               </div>
-                              <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bbf7d0', color: '#15803d' }}>
-                                Preview X-Ray PDF
-                              </button>
-                            </div>
-
-                            <div style={{ border: '1px solid #bfdbfe', borderRadius: '10px', padding: '12px', backgroundColor: '#eff6ff' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                                <FileText size={20} color="#2563eb" />
-                                <div>
-                                  <h5 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#1e40af' }}>CBC Blood Report</h5>
-                                  <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>Uploaded on 12 July 2026</span>
+                            ) : (
+                              selectedPatientHistory.reports.map((report: any) => (
+                                <div 
+                                  key={report.id} 
+                                  style={{ 
+                                    border: '1px solid #bfdbfe', 
+                                    borderRadius: '10px', 
+                                    padding: '12px', 
+                                    backgroundColor: '#eff6ff' 
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                    <FolderOpen size={20} color="#2563eb" />
+                                    <div>
+                                      <h5 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#1e40af', wordBreak: 'break-all' }}>
+                                        {report.report_name}
+                                      </h5>
+                                      <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>
+                                        Uploaded on {new Date(report.created_at).toLocaleDateString()} · {report.report_type}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <button 
+                                    className="doc-btn-secondary" 
+                                    onClick={() => handlePreviewReport(report)}
+                                    style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
+                                  >
+                                    Preview Report PDF
+                                  </button>
                                 </div>
-                              </div>
-                              <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}>
-                                Preview Report PDF
-                              </button>
-                            </div>
+                              ))
+                            )}
                           </div>
                         )}
 
                         {/* CURRENT TREATMENT VIEW */}
-                        {patientWorkspaceTab === 'treatment' && (
-                          <div style={{ border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
-                            <div>
-                              <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block' }}>Primary Problem</span>
-                              <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>
-                                • {activePatientDetails?.current_treatment_details || 'Tooth pain (Left Molar)'}
-                              </span>
-                            </div>
+                        {patientWorkspaceTab === 'treatment' && (() => {
+                          const rawDetails = activePatientDetails?.current_treatment_details;
+                          let problem = 'Tooth pain (Left Molar)';
+                          let medicines = 'Amoxicillin 500mg, Ibuprofen 400mg';
+                          let since = '12 July 2026';
 
-                            <div>
-                              <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block' }}>Medicines Being Taken</span>
-                              <span style={{ color: '#334155', fontWeight: 600 }}>
-                                • Amoxicillin 500mg, Ibuprofen 400mg
-                              </span>
-                            </div>
+                          if (rawDetails) {
+                            try {
+                              if (rawDetails.trim().startsWith('{')) {
+                                const parsed = JSON.parse(rawDetails);
+                                problem = parsed.currentProblem || problem;
+                                medicines = parsed.currentMedicines || medicines;
+                                if (parsed.treatmentSince) {
+                                  since = parsed.treatmentSince;
+                                }
+                              } else {
+                                problem = rawDetails;
+                              }
+                            } catch (e) {
+                              problem = rawDetails;
+                            }
+                          }
 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #bbf7d0', paddingTop: '8px' }}>
-                              <span style={{ color: '#15803d', fontWeight: 600 }}>Treatment Since</span>
-                              <span style={{ fontWeight: 700, color: '#0f172a' }}>12 July 2026</span>
+                          // Format since date if it matches YYYY-MM-DD
+                          if (since && since.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                            try {
+                              const d = new Date(since);
+                              since = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+                            } catch (err) {}
+                          }
+
+                          return (
+                            <div style={{ border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
+                              <div>
+                                <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block' }}>Primary Problem</span>
+                                <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>
+                                  • {problem}
+                                </span>
+                              </div>
+
+                              <div>
+                                <span style={{ color: '#15803d', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block' }}>Medicines Being Taken</span>
+                                <span style={{ color: '#334155', fontWeight: 600 }}>
+                                  • {medicines}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #bbf7d0', paddingTop: '8px' }}>
+                                <span style={{ color: '#15803d', fontWeight: 600 }}>Treatment Since</span>
+                                <span style={{ fontWeight: 700, color: '#0f172a' }}>{since}</span>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* TIMELINE VIEW */}
                         {patientWorkspaceTab === 'timeline' && (
@@ -5175,6 +5306,133 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           </div>
         </div>
       )}
+      {/* Report Preview Modal */}
+      {viewingReport && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            width: '90%',
+            maxWidth: '800px',
+            height: '85vh',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 24px',
+              borderBottom: '1px solid #e2e8f0',
+              backgroundColor: '#f8fafc'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: '#0f172a' }}>
+                  {viewingReport.report_name}
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Category: {viewingReport.report_type}
+                </span>
+              </div>
+              <button 
+                onClick={handleCloseReportModal}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  padding: '4px'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div style={{ flex: 1, padding: '24px', backgroundColor: '#f1f5f9', position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              {loadingReportFile ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                  <div style={{ width: '40px', height: '40px', border: '3px solid #cbd5e1', borderTopColor: '#0f766e', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  <span style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600 }}>Loading report preview...</span>
+                </div>
+              ) : reportError ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                  <AlertTriangle size={48} color="#e11d48" />
+                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Failed to load preview directly</h4>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', textAlign: 'center' }}>{reportError}</p>
+                  <button
+                    onClick={() => downloadReportFile(viewingReport.file_url, `${viewingReport.report_name || 'report'}.pdf`)}
+                    className="doc-btn-primary"
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    Download File Instead
+                  </button>
+                </div>
+              ) : reportFileUrl ? (
+                (() => {
+                  const isImg = viewingReport.file_url?.toLowerCase().includes('/image/') || 
+                                viewingReport.file_url?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif)$/) ||
+                                reportContentType?.toLowerCase().startsWith('image/');
+                  if (isImg) {
+                    return (
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', backgroundColor: '#0f172a', borderRadius: '8px', padding: '16px' }}>
+                        <img 
+                          src={reportFileUrl} 
+                          alt={viewingReport.report_name} 
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                        />
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <iframe
+                        src={reportFileUrl}
+                        title={viewingReport.report_name}
+                        width="100%"
+                        height="100%"
+                        style={{ border: 'none', borderRadius: '8px', backgroundColor: '#ffffff' }}
+                      />
+                    );
+                  }
+                })()
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', padding: '16px 24px', backgroundColor: '#f8fafc' }}>
+              <button
+                onClick={() => downloadReportFile(viewingReport.file_url, `${viewingReport.report_name || 'report'}.pdf`)}
+                className="doc-btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
+              >
+                <Download size={14} /> Download File
+              </button>
+              <button 
+                onClick={handleCloseReportModal} 
+                className="doc-btn-primary" 
+                style={{ fontSize: '0.85rem', backgroundColor: '#0f766e', borderColor: '#0f766e', color: 'white' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── QUICK ACTION DRAWER MODAL ── */}
       {activeQuickDrawer && (
         <div style={{
@@ -5268,33 +5526,36 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
               {activeQuickDrawer === 'reports' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#f0fdf4' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                        <FolderOpen size={20} color="#16a34a" />
-                        <div>
-                          <h5 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#14532d' }}>OPG X-Ray (Dental Scan)</h5>
-                          <span style={{ fontSize: '0.72rem', color: '#166534' }}>Uploaded on 15 July 2026</span>
-                        </div>
-                      </div>
-                      <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bbf7d0', color: '#15803d' }}>
-                        Preview X-Ray PDF
-                      </button>
+                  {(!selectedPatientHistory?.reports || selectedPatientHistory.reports.length === 0) ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.88rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                      No medical reports uploaded yet.
                     </div>
-
-                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#eff6ff' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                        <FileText size={20} color="#2563eb" />
-                        <div>
-                          <h5 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e40af' }}>CBC Blood Report</h5>
-                          <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>Uploaded on 12 July 2026</span>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      {selectedPatientHistory.reports.map((report: any) => (
+                        <div key={report.id} style={{ border: '1px solid #bfdbfe', borderRadius: '10px', padding: '16px', backgroundColor: '#eff6ff' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <FolderOpen size={20} color="#2563eb" />
+                            <div>
+                              <h5 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e40af', wordBreak: 'break-all' }}>
+                                {report.report_name}
+                              </h5>
+                              <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>
+                                Uploaded on {new Date(report.created_at).toLocaleDateString()} · {report.report_type}
+                              </span>
+                            </div>
+                          </div>
+                          <button 
+                            className="doc-btn-secondary" 
+                            onClick={() => handlePreviewReport(report)}
+                            style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
+                          >
+                            Preview Report PDF
+                          </button>
                         </div>
-                      </div>
-                      <button className="doc-btn-secondary" style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}>
-                        Preview Report PDF
-                      </button>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -5588,42 +5849,84 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               )}
 
               {/* TAB 3: CURRENT TREATMENT */}
-              {profileModalTab === 'treatment' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ border: '1px solid #dcfce7', backgroundColor: '#f0fdf4', borderRadius: '12px', padding: '20px' }}>
-                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800, color: '#166534' }}>
-                      🟢 Active Treatment Plan & Patient Complaints
-                    </h4>
+              {profileModalTab === 'treatment' && (() => {
+                const rawDetails = activePatientDetails?.current_treatment_details;
+                let problem = 'Tooth pain (Left Molar)';
+                let medicines = 'Amoxicillin 500mg, Ibuprofen 400mg';
+                let since = '12 July 2026';
+                let rxDate = '15 July 2026';
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.88rem' }}>
-                      <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Primary Problem</span>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                          {activePatientDetails?.current_treatment_details || 'Tooth pain (Left Molar)'}
-                        </span>
-                      </div>
+                if (rawDetails) {
+                  try {
+                    if (rawDetails.trim().startsWith('{')) {
+                      const parsed = JSON.parse(rawDetails);
+                      problem = parsed.currentProblem || problem;
+                      medicines = parsed.currentMedicines || medicines;
+                      if (parsed.treatmentSince) {
+                        since = parsed.treatmentSince;
+                      }
+                      if (parsed.prescriptionDate) {
+                        rxDate = parsed.prescriptionDate;
+                      }
+                    } else {
+                      problem = rawDetails;
+                    }
+                  } catch (e) {
+                    problem = rawDetails;
+                  }
+                }
 
-                      <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Current Medicines Being Taken</span>
-                        <span style={{ fontSize: '0.95rem', color: '#334155' }}>
-                          Amoxicillin 500mg, Ibuprofen 400mg
-                        </span>
-                      </div>
+                // Format dates if they match YYYY-MM-DD
+                if (since && since.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                  try {
+                    const d = new Date(since);
+                    since = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+                  } catch (err) {}
+                }
+                if (rxDate && rxDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                  try {
+                    const d = new Date(rxDate);
+                    rxDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+                  } catch (err) {}
+                }
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ border: '1px solid #dcfce7', backgroundColor: '#f0fdf4', borderRadius: '12px', padding: '20px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800, color: '#166534' }}>
+                        🟢 Active Treatment Plan & Patient Complaints
+                      </h4>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.88rem' }}>
                         <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Treatment Since</span>
-                          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>12 July 2026</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Primary Problem</span>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                            {problem}
+                          </span>
                         </div>
+
                         <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Latest Prescription Date</span>
-                          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>15 July 2026</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Current Medicines Being Taken</span>
+                          <span style={{ fontSize: '0.95rem', color: '#334155' }}>
+                            {medicines}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Treatment Since</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>{since}</span>
+                          </div>
+                          <div style={{ backgroundColor: '#ffffff', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: '8px' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'block' }}>Latest Prescription Date</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>{rxDate}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* TAB 4: DEMOGRAPHICS */}
               {profileModalTab === 'demographics' && (
