@@ -1406,12 +1406,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setReportFileUrl(url);
     
     const urlLower = report.file_url.toLowerCase();
-    const isImg = urlLower.endsWith('.png') || 
+    const isImg = !urlLower.includes('.pdf') && (
+                  urlLower.endsWith('.png') || 
                   urlLower.endsWith('.jpg') || 
                   urlLower.endsWith('.jpeg') || 
                   urlLower.endsWith('.gif') || 
                   urlLower.endsWith('.webp') ||
-                  urlLower.includes('/image/');
+                  urlLower.includes('/image/')
+                );
                   
     if (isImg) {
       setReportContentType('image/jpeg');
@@ -5368,9 +5370,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 </div>
               ) : reportFileUrl ? (
                 (() => {
-                  const isImg = viewingReport.file_url?.toLowerCase().includes('/image/') || 
-                                viewingReport.file_url?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif)$/) ||
-                                reportContentType?.toLowerCase().startsWith('image/');
+                  const fileUrlLower = viewingReport.file_url?.toLowerCase() || '';
+                  const isImg = !fileUrlLower.includes('.pdf') && (
+                                fileUrlLower.includes('/image/') || 
+                                fileUrlLower.match(/\.(jpg|jpeg|png|webp|gif)$/) ||
+                                reportContentType?.toLowerCase().startsWith('image/')
+                              );
                   if (isImg) {
                     return (
                       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', backgroundColor: '#0f172a', borderRadius: '8px', padding: '16px' }}>
