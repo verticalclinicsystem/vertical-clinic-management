@@ -1,6 +1,29 @@
 import React from 'react';
 import { UploadCloud, Clock, Download, Video } from 'lucide-react';
 
+const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
+  const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+  const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+  
+  const fileExt = file.name.split('.').pop()?.toLowerCase();
+  
+  if (!fileExt || !allowedExtensions.includes(fileExt)) {
+    return {
+      isValid: false,
+      message: `Invalid file format (.${fileExt || 'unknown'}). Supported formats are: PDF, PNG, JPG, JPEG, WEBP. Please select a valid document or image scan.`
+    };
+  }
+  
+  if (file.size > maxSizeBytes) {
+    return {
+      isValid: false,
+      message: `File size exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(2)}MB). Please compress the file before uploading.`
+    };
+  }
+  
+  return { isValid: true, message: '' };
+};
+
 interface PatientModalsProps {
   // Reschedule
   rescheduleApptId: string | null;
@@ -767,7 +790,20 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                     <UploadCloud size={32} style={{ color: 'var(--primary-teal)' }} />
                     <input
                       type="file"
-                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      accept=".pdf,.png,.jpg,.jpeg,.webp"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (file) {
+                          const validation = validateMedicalFile(file);
+                          if (!validation.isValid) {
+                            alert(validation.message);
+                            e.target.value = '';
+                            setUploadFile(null);
+                            return;
+                          }
+                        }
+                        setUploadFile(file);
+                      }}
                       required
                       style={{ fontSize: '0.85rem' }}
                     />

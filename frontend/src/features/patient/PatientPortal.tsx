@@ -33,6 +33,29 @@ const getErrorMessage = (err: any, defaultMsg: string): string => {
   return err.message || defaultMsg;
 };
 
+const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
+  const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+  const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+  
+  const fileExt = file.name.split('.').pop()?.toLowerCase();
+  
+  if (!fileExt || !allowedExtensions.includes(fileExt)) {
+    return {
+      isValid: false,
+      message: `Invalid file format (.${fileExt || 'unknown'}). Supported formats are: PDF, PNG, JPG, JPEG, WEBP. Please select a valid document or image scan.`
+    };
+  }
+  
+  if (file.size > maxSizeBytes) {
+    return {
+      isValid: false,
+      message: `File size exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(2)}MB). Please compress the file before uploading.`
+    };
+  }
+  
+  return { isValid: true, message: '' };
+};
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
@@ -684,6 +707,13 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     e.preventDefault();
     if (!uploadFile || !uploadTitle) {
       triggerToast('error', 'Please provide a report title and select a valid file.');
+      return;
+    }
+
+    const validation = validateMedicalFile(uploadFile);
+    if (!validation.isValid) {
+      triggerToast('error', validation.message);
+      setUploadFile(null);
       return;
     }
 
