@@ -836,7 +836,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                       />
                     </div>
                   </div>
-                ) : (viewingReport.file_url?.toLowerCase().endsWith('.pdf') || viewingReport.file_url?.toLowerCase().includes('/raw/')) ? (
+                ) : (viewingReport.file_url?.toLowerCase().includes('.pdf') || viewingReport.file_url?.toLowerCase().includes('/raw/')) ? (
                   <div style={{ width: '100%', height: '500px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                     {isFetchingPdf ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>

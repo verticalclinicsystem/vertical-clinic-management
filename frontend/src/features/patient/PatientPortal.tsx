@@ -262,6 +262,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const isImageFile = (url?: string): boolean => {
     if (!url) return false;
     const cleanUrl = url.split('?')[0].toLowerCase();
+    if (cleanUrl.includes('.pdf')) return false;
     return cleanUrl.includes('/image/') || cleanUrl.endsWith('.png') || cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg') || cleanUrl.endsWith('.gif') || cleanUrl.endsWith('.webp');
   };
 

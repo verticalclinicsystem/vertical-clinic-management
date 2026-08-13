@@ -87,20 +87,23 @@ class CloudinaryService:
             contents = await file.read()
             # Determine if PDF or Image
             ext = os.path.splitext(file.filename or "")[1].lower()
+            if not ext and file.content_type == "application/pdf":
+                ext = ".pdf"
             
             unique_id = f"report_{uuid.uuid4().hex}"
-            if ext == ".pdf":
+            if ext == ".pdf" or file.content_type == "application/pdf":
                 resource_type = "raw"
+                public_id = f"{unique_id}{ext}"
             else:
                 resource_type = "auto"
-            public_id = unique_id
+                public_id = unique_id
 
             response = cloudinary.uploader.upload(
                 contents,
                 folder=f"vclinic/reports/{patient_id}",
                 public_id=public_id,
                 resource_type=resource_type,
-                type="private",
+                type="upload",
                 overwrite=True
             )
             return response.get("secure_url", "")
