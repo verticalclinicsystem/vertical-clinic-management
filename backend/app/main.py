@@ -89,16 +89,15 @@ def create_app() -> FastAPI:
     os.makedirs("static/uploads", exist_ok=True)
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
-    # Serve uploads locally in development if STORAGE_BACKEND is set to local
-    if settings.STORAGE_BACKEND == "local":
-        target_dir = settings.UPLOAD_DIR
-        try:
-            os.makedirs(target_dir, exist_ok=True)
-            app.mount("/uploads", StaticFiles(directory=target_dir), name="uploads")
-            logger.info(f"Mounted UPLOAD_DIR ({target_dir}) at /uploads")
-        except Exception as e:
-            logger.warning(f"Could not create/mount UPLOAD_DIR ({target_dir}): {e}. Falling back to static/uploads.")
-            app.mount("/uploads", StaticFiles(directory="static/uploads"), name="uploads")
+    # Serve uploads locally in development or as fallback
+    target_dir = settings.UPLOAD_DIR if settings.STORAGE_BACKEND == "local" else "static/uploads"
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+        app.mount("/uploads", StaticFiles(directory=target_dir), name="uploads")
+        logger.info(f"Mounted UPLOAD_DIR ({target_dir}) at /uploads")
+    except Exception as e:
+        logger.warning(f"Could not create/mount UPLOAD_DIR ({target_dir}): {e}. Falling back to static/uploads.")
+        app.mount("/uploads", StaticFiles(directory="static/uploads"), name="uploads")
 
     # ── Exception Handlers ────────────────────────────────────────────────────
     from fastapi.exceptions import RequestValidationError

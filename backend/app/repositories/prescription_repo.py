@@ -63,7 +63,6 @@ class PrescriptionRepository(BaseRepository[Prescription]):
             .options(
                 joinedload(Prescription.patient).joinedload(Patient.user),
                 joinedload(Prescription.doctor).joinedload(Doctor.user),
-                joinedload(Prescription.doctor).joinedload(Doctor.slots),
                 joinedload(Prescription.items),
                 joinedload(Prescription.consultation)
             )

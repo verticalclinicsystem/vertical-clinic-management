@@ -69,7 +69,6 @@ class ConsultationRepository(BaseRepository[Consultation]):
             .options(
                 joinedload(Consultation.patient).joinedload(Patient.user),
                 joinedload(Consultation.doctor).joinedload(Doctor.user),
-                joinedload(Consultation.doctor).joinedload(Doctor.slots),
                 joinedload(Consultation.branch),
                 joinedload(Consultation.prescriptions)
             )

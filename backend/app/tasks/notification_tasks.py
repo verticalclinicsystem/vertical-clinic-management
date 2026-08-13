@@ -20,8 +20,10 @@ from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
+from sqlalchemy.pool import NullPool
+
 # Synchronous engine for sync Celery worker
-_engine = create_engine(settings.SYNC_DATABASE_URL, pool_pre_ping=True)
+_engine = create_engine(settings.SYNC_DATABASE_URL, poolclass=NullPool)
 
 
 def _send_sync_notification(
