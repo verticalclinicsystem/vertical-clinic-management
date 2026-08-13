@@ -169,7 +169,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
       return;
     }
 
-    const isPdf = viewingReport.file_url.toLowerCase().endsWith('.pdf') || viewingReport.file_url.toLowerCase().includes('/raw/');
+    const isPdf = viewingReport.file_url.toLowerCase().includes('.pdf') || viewingReport.file_url.toLowerCase().includes('/raw/');
     if (!isPdf) {
       setBlobUrl(null);
       setFetchError(null);

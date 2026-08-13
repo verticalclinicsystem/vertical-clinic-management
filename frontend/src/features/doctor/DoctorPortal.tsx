@@ -297,6 +297,66 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [loadingReportFile, setLoadingReportFile] = useState<boolean>(false);
   const [reportError, setReportError] = useState<string>('');
   const [reportContentType, setReportContentType] = useState<string>('');
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!viewingReport || !viewingReport.file_url) {
+      setBlobUrl(null);
+      setReportError('');
+      return;
+    }
+
+    const isPdf = viewingReport.file_url.toLowerCase().includes('.pdf') || viewingReport.file_url.toLowerCase().includes('/raw/');
+    if (!isPdf) {
+      setBlobUrl(null);
+      setReportError('');
+      return;
+    }
+
+    let active = true;
+    const url = viewingReport.file_url.startsWith('http') 
+      ? viewingReport.file_url 
+      : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`;
+    
+    setLoadingReportFile(true);
+    setReportError('');
+
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.blob();
+      })
+      .then((blob) => {
+        if (active) {
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+          const objectUrl = URL.createObjectURL(pdfBlob);
+          setBlobUrl(objectUrl);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to fetch PDF blob:", err);
+          setReportError(err.message || "Failed to load PDF");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingReportFile(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      setBlobUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+    };
+  }, [viewingReport]);
 
   // Consultation Form state
   const [activeAppt, setActiveAppt] = useState<any>(null);
@@ -5389,7 +5449,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   } else {
                     return (
                       <iframe
-                        src={reportFileUrl}
+                        src={blobUrl || reportFileUrl}
                         title={viewingReport.report_name}
                         width="100%"
                         height="100%"
