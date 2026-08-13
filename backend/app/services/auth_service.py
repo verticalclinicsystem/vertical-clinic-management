@@ -183,10 +183,11 @@ class AuthService:
         identifier = request.identifier.strip()
         user = await self.user_repo.get_by_identifier(identifier)
 
-        # — Credential checks (always raise the same error to prevent enumeration) —
-        if not user or not verify_password(request.password, user.hashed_password):
-            if user:
-                logger.warning(f"Failed login attempt for: {identifier}")
+        if not user:
+            raise UserNotFoundError()
+
+        if not verify_password(request.password, user.hashed_password):
+            logger.warning(f"Failed login attempt for: {identifier}")
             raise InvalidCredentialsError()
 
         if not user.is_active:

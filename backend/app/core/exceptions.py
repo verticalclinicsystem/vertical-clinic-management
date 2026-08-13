@@ -75,9 +75,9 @@ class NotFoundError(ClinicAPIError):
         super().__init__(status.HTTP_404_NOT_FOUND, f"{resource} not found", "NOT_FOUND")
 
 
-class UserNotFoundError(NotFoundError):
+class UserNotFoundError(ClinicAPIError):
     def __init__(self):
-        super().__init__("User")
+        super().__init__(status.HTTP_404_NOT_FOUND, "User not found. Please sign up.", "USER_NOT_FOUND")
 
 
 class PatientNotFoundError(NotFoundError):

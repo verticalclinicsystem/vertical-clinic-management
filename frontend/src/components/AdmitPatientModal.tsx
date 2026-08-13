@@ -25,6 +25,7 @@ interface AdmitPatientModalProps {
   doctors: any[];
   pendingAdmissionRequests: any[];
   onSubmit: (e: React.FormEvent, notifyDoctor: boolean) => Promise<void>;
+  categories?: any[];
 }
 
 /**
@@ -44,6 +45,7 @@ const AdmitPatientModal: React.FC<AdmitPatientModalProps> = ({
   doctors,
   pendingAdmissionRequests,
   onSubmit,
+  categories = [],
 }) => {
   const [notifyDoctor, setNotifyDoctor] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,20 +79,34 @@ const AdmitPatientModal: React.FC<AdmitPatientModalProps> = ({
     ? pendingAdmissionRequests.find((r: any) => r.id === activeAdmissionRequestId)
     : null;
 
-  // Group beds by category/ward (only available ones, or currently selected)
-  const categoriesMap: { [catId: string]: { id: string; name: string; beds: any[] } } = {};
-  bedsData.forEach((b: any) => {
-    const catId = b.category?.id || 'default';
-    const catName = b.category?.name || 'General Ward';
-    if (!categoriesMap[catId]) {
-      categoriesMap[catId] = { id: catId, name: catName, beds: [] };
-    }
-    // Only show available beds, or the one currently selected
-    if (b.status === 'available' || b.id === selectedBed.id) {
-      categoriesMap[catId].beds.push(b);
-    }
+  // Group beds by category/ward using the configured categories list
+  const categoriesList = (categories && categories.length > 0 ? categories : []).map((cat: any) => {
+    const categoryBeds = bedsData.filter((b: any) =>
+      b.category?.id === cat.id && (b.status === 'available' || b.id === selectedBed.id)
+    );
+    return {
+      id: cat.id,
+      name: cat.name,
+      beds: categoryBeds
+    };
   });
-  const categoriesList = Object.values(categoriesMap);
+
+  // Fallback if categories are not loaded/passed
+  if (categoriesList.length === 0) {
+    const categoriesMap: { [catId: string]: { id: string; name: string; beds: any[] } } = {};
+    bedsData.forEach((b: any) => {
+      const catId = b.category?.id || 'default';
+      const catName = b.category?.name || 'General Ward';
+      if (!categoriesMap[catId]) {
+        categoriesMap[catId] = { id: catId, name: catName, beds: [] };
+      }
+      if (b.status === 'available' || b.id === selectedBed.id) {
+        categoriesMap[catId].beds.push(b);
+      }
+    });
+    categoriesList.push(...Object.values(categoriesMap));
+  }
+
   const currentCategory = categoriesList.find((c) => c.id === selectedBed.category?.id) || categoriesList[0];
 
   // Helper to format doctor names
@@ -305,8 +321,16 @@ const AdmitPatientModal: React.FC<AdmitPatientModalProps> = ({
                   onChange={(e) => {
                     const catId = e.target.value;
                     const cat = categoriesList.find((c) => c.id === catId);
-                    if (cat && cat.beds.length > 0) {
-                      setSelectedBed(cat.beds[0]);
+                    if (cat) {
+                      if (cat.beds.length > 0) {
+                        setSelectedBed(cat.beds[0]);
+                      } else {
+                        setSelectedBed({
+                          id: '',
+                          bed_number: '',
+                          category: { id: cat.id, name: cat.name }
+                        });
+                      }
                     }
                   }}
                   required
