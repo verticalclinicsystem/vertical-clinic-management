@@ -14,7 +14,6 @@ interface RecepBedsTabProps {
   bedsData: any[];
   setSelectedBed: (bed: any) => void;
   setIsAdmitModalOpen: (open: boolean) => void;
-  showToast: (msg: string, type: 'success' | 'error') => void;
   bedsError: string | null;
   historySearchQuery: string;
   setHistorySearchQuery: (query: string) => void;
@@ -48,7 +47,6 @@ export const RecepBedsTab: React.FC<RecepBedsTabProps> = ({
   bedsData,
   setSelectedBed,
   setIsAdmitModalOpen,
-  showToast,
   bedsError,
   historySearchQuery,
   setHistorySearchQuery,
@@ -251,7 +249,12 @@ export const RecepBedsTab: React.FC<RecepBedsTabProps> = ({
                           setSelectedBed(availableBed);
                           setIsAdmitModalOpen(true);
                         } else {
-                          showToast('No available bed found in clinic. Please clear or clean a bed first.', 'error');
+                          setSelectedBed({
+                            id: '',
+                            bed_number: '',
+                            category: { id: req.category_id || '', name: req.category_name || 'General Ward' }
+                          });
+                          setIsAdmitModalOpen(true);
                         }
                       }}
                       style={{

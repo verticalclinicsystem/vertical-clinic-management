@@ -467,6 +467,33 @@ async def _seed_users_and_profiles(
     return doctor_ids, patient_ids
 
 
+async def _get_seed_report_url(patient_id: uuid.UUID) -> str:
+    from app.config import settings
+    if settings.STORAGE_BACKEND == "cloudinary":
+        try:
+            import os
+            from app.services.cloudinary_service import CloudinaryService
+            import cloudinary.uploader
+            pdf_path = "static/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    contents = f.read()
+                response = cloudinary.uploader.upload(
+                    contents,
+                    folder=f"vclinic/reports/{patient_id}",
+                    public_id=f"report_seed_{uuid.uuid4().hex}",
+                    resource_type="raw",
+                    type="private",
+                    overwrite=True
+                )
+                url = response.get("secure_url", "")
+                if url:
+                    return url
+        except Exception as e:
+            logger.warning(f"Failed to upload seed PDF to Cloudinary: {e}")
+    return "/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
+
+
 async def _seed_clinical_records(
     db: AsyncSession,
     branch_ids: dict[str, uuid.UUID],
@@ -656,12 +683,13 @@ async def _seed_clinical_records(
         db.add(pi2)
 
         # 3. Medical Reports
+        report_url = await _get_seed_report_url(pat_id)
         r1 = MedicalReport(
             id=uuid.uuid4(),
             patient_id=pat_id,
             report_type="X-Ray",
             report_name=f"Panoramic Dental OPG - {branch_code}",
-            file_url="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
+            file_url=report_url
         )
         db.add(r1)
 
