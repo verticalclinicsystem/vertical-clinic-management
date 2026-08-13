@@ -120,12 +120,16 @@ class StorageService:
         
         elif backend == "s3":
             ext = os.path.splitext(file.filename or "")[1].lower()
+            if not ext and file.content_type == "application/pdf":
+                ext = ".pdf"
             filename = f"report_{uuid.uuid4().hex}{ext}"
             return await StorageService._upload_to_s3(file, f"reports/{patient_id}/{filename}")
             
         else:  # local
             upload_dir = StorageService._get_local_upload_dir()
             ext = os.path.splitext(file.filename or "")[1].lower()
+            if not ext and file.content_type == "application/pdf":
+                ext = ".pdf"
             filename = f"report_{uuid.uuid4().hex}{ext}"
             filepath = os.path.join(upload_dir, filename)
             
