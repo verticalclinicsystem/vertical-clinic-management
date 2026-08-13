@@ -1396,44 +1396,27 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   const handlePreviewReport = async (report: any) => {
     setViewingReport(report);
-    setLoadingReportFile(true);
+    setLoadingReportFile(false);
     setReportError('');
-    setReportFileUrl('');
-    setReportContentType('');
-    try {
-      const url = report.file_url.startsWith('http') 
-        ? report.file_url 
-        : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`;
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const blob = await response.blob();
+    
+    const url = report.file_url.startsWith('http') 
+      ? report.file_url 
+      : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`;
       
-      let contentType = blob.type || response.headers.get('content-type') || '';
-      
-      // Determine if the URL or source indicates a PDF, or if it is a generic octet-stream
-      const urlLower = report.file_url.toLowerCase();
-      const isPdf = urlLower.endsWith('.pdf') || urlLower.includes('/raw/') || contentType.includes('pdf');
-      
-      if (isPdf) {
-        contentType = 'application/pdf';
-      } else if (contentType === 'application/octet-stream') {
-        // Fallback for raw files served with generic binary mime type
-        contentType = 'application/pdf';
-      }
-      
-      setReportContentType(contentType);
-      
-      const fileBlob = new Blob([blob], { type: contentType });
-      const objectUrl = window.URL.createObjectURL(fileBlob);
-      setReportFileUrl(objectUrl);
-    } catch (err: any) {
-      console.error('Error loading report file:', err);
-      setReportError(err.message || 'Failed to load preview');
-    } finally {
-      setLoadingReportFile(false);
+    setReportFileUrl(url);
+    
+    const urlLower = report.file_url.toLowerCase();
+    const isImg = urlLower.endsWith('.png') || 
+                  urlLower.endsWith('.jpg') || 
+                  urlLower.endsWith('.jpeg') || 
+                  urlLower.endsWith('.gif') || 
+                  urlLower.endsWith('.webp') ||
+                  urlLower.includes('/image/');
+                  
+    if (isImg) {
+      setReportContentType('image/jpeg');
+    } else {
+      setReportContentType('application/pdf');
     }
   };
 
@@ -4724,7 +4707,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                         {report.report_name}
                                       </h5>
                                       <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>
-                                        Uploaded on {new Date(report.created_at).toLocaleDateString()} · {report.report_type}
+                                        Uploaded on {new Date(report.uploaded_at || report.created_at || new Date()).toLocaleDateString()} · {report.report_type}
                                       </span>
                                     </div>
                                   </div>
@@ -5541,7 +5524,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 {report.report_name}
                               </h5>
                               <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>
-                                Uploaded on {new Date(report.created_at).toLocaleDateString()} · {report.report_type}
+                                Uploaded on {new Date(report.uploaded_at || report.created_at || new Date()).toLocaleDateString()} · {report.report_type}
                               </span>
                             </div>
                           </div>

@@ -13,6 +13,33 @@ from app.models.payment import Payment
 from app.models.teleconsult import TeleConsultation
 from sqlalchemy import select
 
+async def _get_seed_report_url(patient_id: uuid.UUID) -> str:
+    from app.config import settings
+    if settings.STORAGE_BACKEND == "cloudinary":
+        try:
+            import os
+            from app.services.cloudinary_service import CloudinaryService
+            import cloudinary.uploader
+            pdf_path = "static/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    contents = f.read()
+                response = cloudinary.uploader.upload(
+                    contents,
+                    folder=f"vclinic/reports/{patient_id}",
+                    public_id=f"report_seed_{uuid.uuid4().hex}",
+                    resource_type="raw",
+                    type="private",
+                    overwrite=True
+                )
+                url = response.get("secure_url", "")
+                if url:
+                    return url
+        except Exception as e:
+            print(f"Failed to upload seed PDF to Cloudinary: {e}")
+    return "/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
+
+
 async def seed():
     async with AsyncSessionLocal() as db:
         # Find doctor
@@ -103,19 +130,20 @@ async def seed():
         db.add(pi2)
 
         # 3. Medical Reports
+        report_url = await _get_seed_report_url(patient.id)
         r1 = MedicalReport(
             id=uuid.uuid4(),
             patient_id=patient.id,
             report_type="X-Ray",
             report_name="OPG Dental Panoramic X-Ray",
-            file_url="/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
+            file_url=report_url
         )
         r2 = MedicalReport(
             id=uuid.uuid4(),
             patient_id=patient.id,
             report_type="Blood Test",
             report_name="Complete Blood Count",
-            file_url="/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
+            file_url=report_url
         )
         db.add(r1)
         db.add(r2)
@@ -185,18 +213,24 @@ async def seed():
         appt_res = await db.execute(appt_stmt)
         appt = appt_res.scalars().first()
         if appt:
-            tele = TeleConsultation(
-                id=uuid.uuid4(),
-                appointment_id=appt.id,
-                meeting_url="https://meet.jit.si/VerticalClinicConsultation",
-                start_time=today - timedelta(hours=1),
-                end_time=today + timedelta(hours=1),
-                expiry_time=today + timedelta(hours=2),
-                status="Ready",
-                meeting_link_sent=True
-            )
-            db.add(tele)
-            print("Seeded TeleConsultation link.")
+            # Check if teleconsult already exists
+            tele_exists_stmt = select(TeleConsultation).filter(TeleConsultation.appointment_id == appt.id)
+            tele_exists_res = await db.execute(tele_exists_stmt)
+            if not tele_exists_res.scalars().first():
+                tele = TeleConsultation(
+                    id=uuid.uuid4(),
+                    appointment_id=appt.id,
+                    meeting_url="https://meet.jit.si/VerticalClinicConsultation",
+                    start_time=today - timedelta(hours=1),
+                    end_time=today + timedelta(hours=1),
+                    expiry_time=today + timedelta(hours=2),
+                    status="Ready",
+                    meeting_link_sent=True
+                )
+                db.add(tele)
+                print("Seeded TeleConsultation link.")
+            else:
+                print("TeleConsultation link already exists, skipping.")
 
         await db.commit()
         print("Successfully seeded all patient medical history, prescriptions, invoices, and diagnostics!")

@@ -544,6 +544,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
   // Bed Management states
   const [bedsData, setBedsData] = useState<any[]>([]);
+  const [categoriesData, setCategoriesData] = useState<any[]>([]);
   const [isLoadingBeds, setIsLoadingBeds] = useState<boolean>(false);
   const [bedsError, setBedsError] = useState<string | null>(null);
 
@@ -705,6 +706,16 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       } else {
         setBedsError('Failed to load beds.');
       }
+      
+      try {
+        const catRes = await api.get('/ipd/categories');
+        if (catRes.data && catRes.data.success) {
+          setCategoriesData(catRes.data.data);
+        }
+      } catch (catErr) {
+        console.error('Failed to fetch IPD categories:', catErr);
+      }
+
       fetchPendingAdmissionRequests();
     } catch (err: any) {
       setBedsError(err.message || 'An error occurred while loading beds.');
@@ -2196,7 +2207,6 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   bedsData={bedsData}
                   setSelectedBed={setSelectedBed}
                   setIsAdmitModalOpen={setIsAdmitModalOpen}
-                  showToast={showToast}
                   bedsError={bedsError}
                   historySearchQuery={historySearchQuery}
                   setHistorySearchQuery={setHistorySearchQuery}
@@ -3786,6 +3796,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         doctors={doctors}
         pendingAdmissionRequests={pendingAdmissionRequests}
         onSubmit={handleAdmitPatient}
+        categories={categoriesData}
       />
 
       {/* 2. TRANSFER BED MODAL */}
