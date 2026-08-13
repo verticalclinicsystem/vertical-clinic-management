@@ -96,7 +96,6 @@ class AppointmentRepository(BaseRepository[Appointment]):
             .options(
                 joinedload(Appointment.patient).joinedload(Patient.user),
                 joinedload(Appointment.doctor).joinedload(Doctor.user),
-                joinedload(Appointment.doctor).joinedload(Doctor.slots),
                 joinedload(Appointment.branch)
             )
         )

@@ -108,14 +108,14 @@ async def seed():
             patient_id=patient.id,
             report_type="X-Ray",
             report_name="OPG Dental Panoramic X-Ray",
-            file_url="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
+            file_url="/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
         )
         r2 = MedicalReport(
             id=uuid.uuid4(),
             patient_id=patient.id,
             report_type="Blood Test",
             report_name="Complete Blood Count",
-            file_url="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
+            file_url="/uploads/report_80f90602523f4f71a4c318d492a80e45.pdf"
         )
         db.add(r1)
         db.add(r2)

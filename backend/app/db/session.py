@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -14,9 +15,14 @@ engine = create_async_engine(
     echo=False,                      # disable verbose raw SQL query logging
     pool_pre_ping=True,             # verify connections before use
     pool_size=10,
-    max_overflow=20,
-    pool_recycle=3600,              # recycle connections every hour
-    connect_args={"statement_cache_size": 0},
+    max_overflow=5,
+    pool_recycle=1800,              # recycle connections every 30 minutes
+    pool_timeout=30,
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid.uuid4().hex}__",
+    },
 )
 
 # ── Session Factory ───────────────────────────────────────────────────────────
@@ -32,14 +38,11 @@ AsyncSessionLocal = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency that yields a database session per request.
-    Automatically commits on success or rolls back on exception.
+    Guarantees clean release of connections back to the pool.
     """
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()

@@ -59,7 +59,6 @@ class TreatmentRepository(BaseRepository[TreatmentPlan]):
             .options(
                 joinedload(TreatmentPlan.patient).joinedload(Patient.user),
                 joinedload(TreatmentPlan.doctor).joinedload(Doctor.user),
-                joinedload(TreatmentPlan.doctor).joinedload(Doctor.slots),
                 joinedload(TreatmentPlan.procedures)
             )
             .where(and_(*filters) if filters else True)

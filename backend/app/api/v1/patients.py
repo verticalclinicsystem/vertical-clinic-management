@@ -977,61 +977,61 @@ async def get_patient_statistics(
     patient = await service.get_patient_by_user_id(current_user.id)
     patient_id = patient.id
 
+    from app.models.appointment import Appointment
+    from app.models.prescription import Prescription
+    from app.models.consultation import Consultation
+    from app.models.medical_report import MedicalReport
+    from app.models.invoice import Invoice
+
     # 1. Appointments counts
-    appt_service = AppointmentService(db)
-    all_appts, _ = await appt_service.list_appointments(
-        page=1,
-        limit=1000,
-        patient_id=patient_id,
+    appt_stmt = (
+        select(Appointment.status, Appointment.appointment_datetime)
+        .where(Appointment.patient_id == patient_id)
     )
+    appt_res = await db.execute(appt_stmt)
+    appts_data = appt_res.all()
     
     upcoming_count = 0
     completed_count = 0
     cancelled_count = 0
     now = datetime.now(timezone.utc)
     
-    for appt in all_appts:
-        if appt.status == "cancelled":
+    for status, appt_dt in appts_data:
+        if appt_dt.tzinfo is None:
+            appt_dt = appt_dt.replace(tzinfo=timezone.utc)
+        if status == "cancelled":
             cancelled_count += 1
-        elif appt.status == "completed" or (appt.appointment_datetime < now and appt.status in ["checked_in", "in_consultation"]):
+        elif status == "completed" or (appt_dt < now and status in ["checked_in", "in_consultation"]):
             completed_count += 1
-        elif appt.appointment_datetime >= now and appt.status in ["pending", "confirmed"]:
+        elif appt_dt >= now and status in ["pending", "confirmed"]:
             upcoming_count += 1
 
     # 2. Active prescriptions count
-    presc_service = PrescriptionService(db)
-    prescs, _ = await presc_service.list_prescriptions(
-        page=1,
-        limit=1000,
-        patient_id=patient_id,
-    )
-    active_prescriptions_count = len(prescs)
+    presc_stmt = select(func.count(Prescription.id)).where(Prescription.patient_id == patient_id)
+    presc_res = await db.execute(presc_stmt)
+    active_prescriptions_count = presc_res.scalar() or 0
 
     # 3. Medical history (visits) count
-    consult_service = ConsultationService(db)
-    consults, _ = await consult_service.list_consultations(
-        page=1,
-        limit=1000,
-        patient_id=patient_id,
-    )
-    total_visits = len(consults)
+    consult_stmt = select(func.count(Consultation.id)).where(Consultation.patient_id == patient_id)
+    consult_res = await db.execute(consult_stmt)
+    total_visits = consult_res.scalar() or 0
 
     # 4. Reports count
-    from app.services.medical_report_service import MedicalReportService
-    report_service = MedicalReportService(db)
-    reports = await report_service.get_reports_by_user_id(current_user.id)
-    uploaded_reports_count = len(reports)
+    report_stmt = select(func.count(MedicalReport.id)).where(MedicalReport.patient_id == patient_id)
+    report_res = await db.execute(report_stmt)
+    uploaded_reports_count = report_res.scalar() or 0
 
     # 5. Pending bills count and balance due
-    billing_service = BillingService(db)
-    invoices, _ = await billing_service.list_invoices(
-        page=1,
-        limit=1000,
-        patient_id=patient_id,
+    invoice_count_stmt = (
+        select(func.count(Invoice.id))
+        .where(
+            Invoice.patient_id == patient_id,
+            Invoice.status.in_(["unpaid", "partially_paid"])
+        )
     )
-    pending_bills_count = sum(1 for inv in invoices if inv.status in ["unpaid", "partially_paid"])
+    invoice_count_res = await db.execute(invoice_count_stmt)
+    pending_bills_count = invoice_count_res.scalar() or 0
     
-    from app.models.invoice import Invoice
     balance_stmt = (
         select(func.sum(Invoice.balance_due))
         .where(
@@ -1043,23 +1043,35 @@ async def get_patient_statistics(
     total_balance_due = float(balance_res.scalar() or 0.0)
 
     # 6. Follow-up count
-    from app.models.appointment import Appointment
-    stmt = (
-        select(Appointment)
+    consults_query = (
+        select(Consultation.doctor_id, Consultation.consultation_datetime)
+        .where(Consultation.patient_id == patient_id)
+    )
+    consults_res = await db.execute(consults_query)
+    consults_data = consults_res.all()
+
+    future_appt_stmt = (
+        select(Appointment.doctor_id, Appointment.appointment_datetime)
         .where(
             Appointment.patient_id == patient_id,
             Appointment.status.in_(["pending", "confirmed"])
         )
     )
-    result = await db.execute(stmt)
-    future_appointments = list(result.scalars().all())
+    future_appt_res = await db.execute(future_appt_stmt)
+    future_appts_data = future_appt_res.all()
     
     follow_up_count = 0
-    for c in consults:
-        has_future_booking = any(
-            appt.doctor_id == c.doctor_id and appt.appointment_datetime > c.consultation_datetime
-            for appt in future_appointments
-        )
+    for doc_id, consult_dt in consults_data:
+        if consult_dt.tzinfo is None:
+            consult_dt = consult_dt.replace(tzinfo=timezone.utc)
+        
+        has_future_booking = False
+        for appt_doc_id, appt_dt in future_appts_data:
+            if appt_dt.tzinfo is None:
+                appt_dt = appt_dt.replace(tzinfo=timezone.utc)
+            if appt_doc_id == doc_id and appt_dt > consult_dt:
+                has_future_booking = True
+                break
         if not has_future_booking:
             follow_up_count += 1
 
