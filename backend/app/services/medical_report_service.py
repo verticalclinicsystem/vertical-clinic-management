@@ -51,6 +51,38 @@ class MedicalReportService:
 
         return report
 
+    async def create_report_for_patient(
+        self, patient_id: uuid.UUID, report_type: str, report_name: str, file_url: str
+    ) -> MedicalReport:
+        """Create a new medical report directly for a patient ID (used by staff on behalf of a patient)."""
+        patient = await self.patient_repo.get_by_id(patient_id)
+        if not patient:
+            raise NotFoundError("Patient profile not found.")
+
+        report = await self.report_repo.create({
+            "patient_id": patient.id,
+            "report_type": report_type,
+            "report_name": report_name,
+            "file_url": file_url,
+        })
+        await self.db.commit()
+        logger.info(f"Medical report created by staff for patient {patient.patient_code}: {report.id}")
+
+        # Send Medical Report notification
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            await noti_service.send_multichannel_notification(
+                user_id=patient.user_id,
+                title="Medical Report Uploaded",
+                message=f"Your new medical report ({report_name}) has been uploaded and is ready to view.",
+                type="report"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send medical report notification: {e}")
+
+        return report
+
     async def get_reports_by_user_id(self, user_id: uuid.UUID) -> list[MedicalReport]:
         """Retrieve all medical reports for the authenticated patient user."""
         patient = await self.patient_repo.get_by_user_id(user_id)
@@ -71,7 +103,7 @@ class MedicalReportService:
             raise NotFoundError("Medical report not found.")
 
         # Auth check
-        if user_role != "admin":
+        if user_role not in ["admin", "receptionist", "doctor"]:
             patient = await self.patient_repo.get_by_user_id(user_id)
             if not patient or report.patient_id != patient.id:
                 raise PermissionDeniedError("You do not have permission to delete this report.")

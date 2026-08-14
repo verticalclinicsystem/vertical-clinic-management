@@ -31,7 +31,9 @@ UPLOAD_DIR = "static/uploads"
 )
 async def upload_medical_report(
     request: Request,
-    report_type: Annotated[str, Form(...)],
+    report_type: str = Form(...),
+    title: str | None = Form(None),
+    patient_id: uuid.UUID | None = Form(None),
     file: UploadFile = File(...),
     current_user: Annotated[User, Depends(get_current_user)] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
@@ -40,27 +42,48 @@ async def upload_medical_report(
     Upload a medical report file (e.g. PDF, Image) and store metadata.
     Supported backends: local, s3, cloudinary.
     """
-    if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
-        raise BadRequestError("Only patients can upload medical reports.")
+    if current_user.role not in [UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.ADMIN]:
+        from app.core.exceptions import PermissionDeniedError
+        raise PermissionDeniedError("You do not have permission to upload reports.")
 
+    from app.core.exceptions import BadRequestError
     from app.services.storage_service import StorageService
     
-    # Upload via StorageService
-    patient_service = PatientService(db)
-    patient = await patient_service.get_patient_by_user_id(current_user.id)
-    patient_id_str = str(patient.id) if patient is not None else str(current_user.id)
+    patient_id_str = None
+    patient_uuid = None
     
+    if current_user.role == UserRole.PATIENT:
+        patient_service = PatientService(db)
+        patient = await patient_service.get_patient_by_user_id(current_user.id)
+        if not patient:
+            raise BadRequestError("Patient profile not found.")
+        patient_uuid = patient.id
+        patient_id_str = str(patient.id)
+    else:
+        if not patient_id:
+            raise BadRequestError("patient_id is required for staff uploads.")
+        patient_uuid = patient_id
+        patient_id_str = str(patient_id)
+
+    # Upload via StorageService
     file_url = await StorageService.upload_medical_report(file, patient_id=patient_id_str, request=request)
-    report_name = file.filename or "report.pdf"
+    report_name = title or file.filename or "report.pdf"
 
     service = MedicalReportService(db)
-    report = await service.create_report(
-        user_id=current_user.id,
-        report_type=report_type,
-        report_name=report_name,
-        file_url=file_url,
-    )
+    if current_user.role == UserRole.PATIENT:
+        report = await service.create_report(
+            user_id=current_user.id,
+            report_type=report_type,
+            report_name=report_name,
+            file_url=file_url,
+        )
+    else:
+        report = await service.create_report_for_patient(
+            patient_id=patient_uuid,
+            report_type=report_type,
+            report_name=report_name,
+            file_url=file_url,
+        )
 
     return ApiResponse.success(
         data=MedicalReportOut.model_validate(report),
