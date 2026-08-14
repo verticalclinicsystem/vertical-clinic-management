@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.prescription import Prescription, PrescriptionItem
 from app.repositories.base import BaseRepository
@@ -28,8 +28,8 @@ class PrescriptionRepository(BaseRepository[Prescription]):
                 joinedload(Prescription.patient).joinedload(Patient.user),
                 joinedload(Prescription.doctor).joinedload(Doctor.user),
                 joinedload(Prescription.doctor).joinedload(Doctor.branch),
-                joinedload(Prescription.doctor).joinedload(Doctor.slots),
-                joinedload(Prescription.items),
+                joinedload(Prescription.doctor).selectinload(Doctor.slots),
+                selectinload(Prescription.items),
                 joinedload(Prescription.consultation)
             )
             .where(Prescription.id == prescription_id)
@@ -63,7 +63,7 @@ class PrescriptionRepository(BaseRepository[Prescription]):
             .options(
                 joinedload(Prescription.patient).joinedload(Patient.user),
                 joinedload(Prescription.doctor).joinedload(Doctor.user),
-                joinedload(Prescription.items),
+                selectinload(Prescription.items),
                 joinedload(Prescription.consultation)
             )
             .where(and_(*filters) if filters else True)
@@ -94,7 +94,7 @@ class PrescriptionRepository(BaseRepository[Prescription]):
             select(Prescription)
             .options(
                 joinedload(Prescription.doctor).joinedload(Doctor.user),
-                joinedload(Prescription.items)
+                selectinload(Prescription.items)
             )
             .where(Prescription.patient_id == patient_id)
             .order_by(Prescription.created_at.desc())

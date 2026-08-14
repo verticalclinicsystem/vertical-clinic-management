@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.invoice import Invoice
 from app.repositories.base import BaseRepository
@@ -29,10 +29,10 @@ class InvoiceRepository(BaseRepository[Invoice]):
             select(Invoice)
             .options(
                 joinedload(Invoice.patient).joinedload(Patient.user),
-                joinedload(Invoice.payments),
+                selectinload(Invoice.payments),
                 joinedload(Invoice.consultation).joinedload(Consultation.doctor).joinedload(Doctor.user),
-                joinedload(Invoice.consultation).joinedload(Consultation.prescriptions).joinedload(Prescription.items).joinedload(PrescriptionItem.medicine),
-                joinedload(Invoice.treatment_plan).joinedload(TreatmentPlan.procedures),
+                joinedload(Invoice.consultation).selectinload(Consultation.prescriptions).selectinload(Prescription.items).joinedload(PrescriptionItem.medicine),
+                joinedload(Invoice.treatment_plan).selectinload(TreatmentPlan.procedures),
                 joinedload(Invoice.admission).joinedload(Admission.bed).joinedload(Bed.category)
             )
             .where(Invoice.id == invoice_id)

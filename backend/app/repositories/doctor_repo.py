@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.doctor import Doctor, DoctorSlot
 from app.repositories.base import BaseRepository
@@ -29,7 +29,7 @@ class DoctorRepository(BaseRepository[Doctor]):
         """Fetch doctor profile by associated user ID."""
         stmt = (
             select(Doctor)
-            .options(joinedload(Doctor.user), joinedload(Doctor.slots), joinedload(Doctor.branch))
+            .options(joinedload(Doctor.user), selectinload(Doctor.slots), joinedload(Doctor.branch))
             .where(Doctor.user_id == user_id)
         )
         result = await self.db.execute(stmt)
@@ -39,7 +39,7 @@ class DoctorRepository(BaseRepository[Doctor]):
         """Fetch doctor profile with User, Slots, and Branch preloaded."""
         stmt = (
             select(Doctor)
-            .options(joinedload(Doctor.user), joinedload(Doctor.slots), joinedload(Doctor.branch))
+            .options(joinedload(Doctor.user), selectinload(Doctor.slots), joinedload(Doctor.branch))
             .where(Doctor.id == doctor_id)
         )
         result = await self.db.execute(stmt)
@@ -137,7 +137,7 @@ class DoctorRepository(BaseRepository[Doctor]):
         
         stmt = (
             select(Doctor)
-            .options(joinedload(Doctor.user), joinedload(Doctor.slots), joinedload(Doctor.branch))
+            .options(joinedload(Doctor.user), selectinload(Doctor.slots), joinedload(Doctor.branch))
             .join(User, Doctor.user_id == User.id)
         )
         

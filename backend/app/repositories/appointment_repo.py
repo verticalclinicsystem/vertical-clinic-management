@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.appointment import Appointment
 from app.repositories.base import BaseRepository
@@ -26,7 +26,7 @@ class AppointmentRepository(BaseRepository[Appointment]):
             .options(
                 joinedload(Appointment.patient).joinedload(Patient.user),
                 joinedload(Appointment.doctor).joinedload(Doctor.user),
-                joinedload(Appointment.doctor).joinedload(Doctor.slots),
+                joinedload(Appointment.doctor).selectinload(Doctor.slots),
                 joinedload(Appointment.branch)
             )
             .where(Appointment.id == appointment_id)
