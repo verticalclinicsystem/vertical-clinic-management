@@ -219,3 +219,58 @@ async def test_receptionist_overrides(client: AsyncClient, db_session: AsyncSess
     )
     assert book_double_res.status_code == 400
     assert "already booked" in book_double_res.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_receptionist_report_upload(client: AsyncClient):
+    # 1. Login as receptionist
+    login_recep = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "receptionist@verticalclinic.com", "password": "Receptionist@123"},
+    )
+    assert login_recep.status_code == 200
+    token_recep = login_recep.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token_recep}"}
+
+    # 2. Login as patient to get patient ID
+    login_patient = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    assert login_patient.status_code == 200
+    token_patient = login_patient.json()["data"]["access_token"]
+    p_res = await client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {token_patient}"})
+    patient_id = p_res.json()["data"]["id"]
+
+    # 3. Upload report on behalf of patient
+    valid_pdf_content = b"%PDF-1.4 ... (mock pdf content)"
+    file_payload = {"file": ("receptionist_upload.pdf", valid_pdf_content, "application/pdf")}
+    form_payload = {
+        "report_type": "Lab Report",
+        "title": "Uploaded By Receptionist",
+        "patient_id": str(patient_id)
+    }
+
+    upload_res = await client.post(
+        "/api/v1/medical-reports/upload",
+        data=form_payload,
+        files=file_payload,
+        headers=headers
+    )
+    assert upload_res.status_code == 201
+    upload_data = upload_res.json()
+    assert upload_data["success"] is True
+    assert upload_data["data"]["report_type"] == "Lab Report"
+    assert upload_data["data"]["report_name"] == "Uploaded By Receptionist"
+    report_id = upload_data["data"]["id"]
+
+    # 4. View / list reports as receptionist for this patient
+    list_res = await client.get(
+        f"/api/v1/medical-reports/patient/{patient_id}",
+        headers=headers
+    )
+    assert list_res.status_code == 200
+    list_data = list_res.json()
+    assert list_data["success"] is True
+    assert any(r["id"] == report_id for r in list_data["data"])
+
