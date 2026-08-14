@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.consultation import Consultation
 from app.repositories.base import BaseRepository
@@ -26,9 +26,9 @@ class ConsultationRepository(BaseRepository[Consultation]):
             .options(
                 joinedload(Consultation.patient).joinedload(Patient.user),
                 joinedload(Consultation.doctor).joinedload(Doctor.user),
-                joinedload(Consultation.doctor).joinedload(Doctor.slots),
+                joinedload(Consultation.doctor).selectinload(Doctor.slots),
                 joinedload(Consultation.branch),
-                joinedload(Consultation.prescriptions)
+                selectinload(Consultation.prescriptions)
             )
             .where(Consultation.id == consultation_id)
         )
@@ -70,7 +70,7 @@ class ConsultationRepository(BaseRepository[Consultation]):
                 joinedload(Consultation.patient).joinedload(Patient.user),
                 joinedload(Consultation.doctor).joinedload(Doctor.user),
                 joinedload(Consultation.branch),
-                joinedload(Consultation.prescriptions)
+                selectinload(Consultation.prescriptions)
             )
             .where(and_(*filters) if filters else True)
             .order_by(Consultation.consultation_datetime.desc())
