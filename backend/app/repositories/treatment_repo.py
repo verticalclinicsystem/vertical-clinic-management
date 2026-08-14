@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.treatment import TreatmentPlan, TreatmentProcedure
 from app.repositories.base import BaseRepository
@@ -26,8 +26,8 @@ class TreatmentRepository(BaseRepository[TreatmentPlan]):
             .options(
                 joinedload(TreatmentPlan.patient).joinedload(Patient.user),
                 joinedload(TreatmentPlan.doctor).joinedload(Doctor.user),
-                joinedload(TreatmentPlan.doctor).joinedload(Doctor.slots),
-                joinedload(TreatmentPlan.procedures)
+                joinedload(TreatmentPlan.doctor).selectinload(Doctor.slots),
+                selectinload(TreatmentPlan.procedures)
             )
             .where(TreatmentPlan.id == plan_id)
         )
@@ -59,7 +59,7 @@ class TreatmentRepository(BaseRepository[TreatmentPlan]):
             .options(
                 joinedload(TreatmentPlan.patient).joinedload(Patient.user),
                 joinedload(TreatmentPlan.doctor).joinedload(Doctor.user),
-                joinedload(TreatmentPlan.procedures)
+                selectinload(TreatmentPlan.procedures)
             )
             .where(and_(*filters) if filters else True)
             .order_by(TreatmentPlan.created_at.desc())
