@@ -24,7 +24,16 @@ import {
   History,
   Mail,
   Bed,
-  RefreshCw
+  RefreshCw,
+  Phone,
+  MapPin,
+  Activity,
+  Shield,
+  Heart,
+  AlertTriangle,
+  UploadCloud,
+  Trash2,
+  Eye
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import AdmitPatientModal from '../../components/AdmitPatientModal';
@@ -38,6 +47,29 @@ import { RecepCheckInTab } from './components/RecepCheckInTab';
 import { RecepBedsTab } from './components/RecepBedsTab';
 import { RecepAvailabilityTab } from './components/RecepAvailabilityTab';
 import './ReceptionistPortal.css';
+
+const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
+  const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+  const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+  
+  const fileExt = file.name.split('.').pop()?.toLowerCase();
+  
+  if (!fileExt || !allowedExtensions.includes(fileExt)) {
+    return {
+      isValid: false,
+      message: `Invalid file format (.${fileExt || 'unknown'}). Supported formats are: PDF, PNG, JPG, JPEG, WEBP. Please select a valid document or image scan.`
+    };
+  }
+  
+  if (file.size > maxSizeBytes) {
+    return {
+      isValid: false,
+      message: `File size exceeds the 10MB limit. Your file is ${(file.size / (1024 * 1024)).toFixed(2)}MB. Please optimize or select a smaller file.`
+    };
+  }
+  
+  return { isValid: true, message: '' };
+};
 
 interface ReceptionistPortalProps {
   onLogout: () => void;
@@ -347,7 +379,15 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [selectedPatientForHistory, setSelectedPatientForHistory] = useState<any>(null);
   const [patientHistoryData, setPatientHistoryData] = useState<any>(null);
   const [loadingPatientHistory, setLoadingPatientHistory] = useState<boolean>(false);
-  const [historyModalTab, setHistoryModalTab] = useState<'appointments' | 'consultations' | 'prescriptions' | 'bills'>('appointments');
+  const [historyModalTab, setHistoryModalTab] = useState<'appointments' | 'consultations' | 'prescriptions' | 'bills' | 'reports'>('appointments');
+  
+  // Medical reports upload state in Receptionist EMR History Modal
+  const [reportUploadTitle, setReportUploadTitle] = useState<string>('');
+  const [reportUploadType, setReportUploadType] = useState<string>('Lab Report');
+  const [reportUploadFile, setReportUploadFile] = useState<File | null>(null);
+  const [uploadingReport, setUploadingReport] = useState<boolean>(false);
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
+  const [viewingReport, setViewingReport] = useState<any>(null);
   
   // Global Patient Search
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
@@ -1576,6 +1616,72 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       showToast(err.response?.data?.message || 'Error loading patient history profile.', 'error');
     } finally {
       setLoadingPatientHistory(false);
+    }
+  };
+
+  const handleReportUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPatientForHistory?.id) return;
+    if (!reportUploadFile) {
+      showToast('Please select a report file first.', 'error');
+      return;
+    }
+
+    const validation = validateMedicalFile(reportUploadFile);
+    if (!validation.isValid) {
+      showToast(validation.message, 'error');
+      return;
+    }
+
+    setUploadingReport(true);
+    const formData = new FormData();
+    formData.append('file', reportUploadFile);
+    formData.append('report_type', reportUploadType);
+    formData.append('patient_id', selectedPatientForHistory.id);
+    if (reportUploadTitle.trim()) {
+      formData.append('title', reportUploadTitle.trim());
+    }
+
+    try {
+      const res = await api.post('/medical-reports/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      if (res.data?.success) {
+        showToast('Medical report uploaded successfully.', 'success');
+        setReportUploadTitle('');
+        setReportUploadType('Lab Report');
+        setReportUploadFile(null);
+        // Reload history to refresh the reports list
+        await fetchPatientHistoryProfile(selectedPatientForHistory.id);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to upload medical report.', 'error');
+    } finally {
+      setUploadingReport(false);
+    }
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    if (!selectedPatientForHistory?.id || !reportId) return;
+    if (!window.confirm('Are you sure you want to delete this medical report? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingReportId(reportId);
+    try {
+      const res = await api.delete(`/medical-reports/${reportId}`);
+      if (res.data?.success) {
+        showToast('Medical report deleted successfully.', 'success');
+        await fetchPatientHistoryProfile(selectedPatientForHistory.id);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to delete medical report.', 'error');
+    } finally {
+      setDeletingReportId(null);
     }
   };
 
@@ -3144,24 +3250,27 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             <div className="recep-modal-body" style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', padding: '20px 0' }}>
               {/* Left Side: Demographic Card */}
               <div className="patient-demographics-sidebar" style={{ borderRight: '1px solid var(--border)', paddingRight: '20px', overflowY: 'auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '15px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                   <div style={{
-                    width: '70px',
-                    height: '70px',
-                    borderRadius: '50%',
-                    backgroundColor: 'var(--primary-light)',
-                    color: 'var(--primary)',
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '24px',
+                    background: 'linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%)',
+                    color: '#ffffff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '1.5rem',
+                    fontSize: '1.75rem',
                     fontWeight: 'bold',
-                    margin: '0 auto 10px auto'
+                    margin: '0 auto 12px auto',
+                    boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.2), 0 4px 6px -4px rgba(59, 130, 246, 0.2)'
                   }}>
                     {selectedPatientForHistory?.user?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'PT'}
                   </div>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '1.1rem' }}>{selectedPatientForHistory?.user?.full_name || selectedPatientForHistory?.name || 'N/A'}</h4>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                  <h4 style={{ margin: '0 0 6px 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--ink)' }}>
+                    {selectedPatientForHistory?.user?.full_name || selectedPatientForHistory?.name || 'N/A'}
+                  </h4>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--primary)', background: 'var(--primary-light)', padding: '4px 10px', borderRadius: '9999px', fontWeight: 600, border: '1px solid rgba(59, 130, 246, 0.1)' }}>
                     {selectedPatientForHistory?.patient_code}
                   </span>
 
@@ -3169,7 +3278,19 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                     <button 
                       className="recep-btn-secondary full-width" 
                       onClick={() => handleStartEditPatient()}
-                      style={{ marginTop: '12px', padding: '6px 12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      style={{ 
+                        marginTop: '16px', 
+                        padding: '8px 16px', 
+                        fontSize: '0.85rem', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: '8px',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        border: '1px solid var(--border)',
+                        backgroundColor: '#ffffff'
+                      }}
                     >
                       <Edit2 size={14} /> Edit Profile Details
                     </button>
@@ -3360,61 +3481,163 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                     </div>
                   </form>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
-                    <div>
-                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Phone</strong>
-                      <span>{selectedPatientForHistory?.user?.phone || '—'}</span>
-                    </div>
-                    <div>
-                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Email</strong>
-                      <span>{selectedPatientForHistory?.user?.email || '—'}</span>
-                    </div>
-                    <div>
-                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Gender / Age</strong>
-                      <span>
-                        {selectedPatientForHistory?.gender || '—'} / {selectedPatientForHistory?.date_of_birth ? `${new Date().getFullYear() - new Date(selectedPatientForHistory.date_of_birth).getFullYear()} Yrs` : '—'}
-                      </span>
-                    </div>
-                    <div>
-                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Blood Group</strong>
-                      <span>{selectedPatientForHistory?.blood_group || '—'}</span>
-                    </div>
-                    <div>
-                      <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Address</strong>
-                      <span style={{ display: 'block', lineHeight: 1.3 }}>{selectedPatientForHistory?.address || '—'}</span>
-                    </div>
-
-                    {selectedPatientForHistory?.allergies && (
-                      <div>
-                        <strong style={{ color: 'var(--danger)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Known Allergies</strong>
-                        <span>{formatClinicalDisplay(selectedPatientForHistory.allergies)}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.88rem' }}>
+                    
+                    {/* Compact Profile Info Grid */}
+                    <div style={{ 
+                      backgroundColor: 'var(--surface-1)', 
+                      border: '1px solid var(--border)', 
+                      borderRadius: '12px', 
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: 'var(--surface-2)' }}>
+                          <Phone size={14} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.025em' }}>Phone</span>
+                          <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{selectedPatientForHistory?.user?.phone || '—'}</span>
+                        </div>
                       </div>
-                    )}
 
-                    {selectedPatientForHistory?.chronic_conditions && (
-                      <div>
-                        <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Chronic Conditions</strong>
-                        <span>{formatClinicalDisplay(selectedPatientForHistory.chronic_conditions)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: 'var(--surface-2)' }}>
+                          <Mail size={14} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.025em' }}>Email</span>
+                          <span style={{ fontWeight: 500, color: 'var(--ink)', wordBreak: 'break-all' }}>{selectedPatientForHistory?.user?.email || '—'}</span>
+                        </div>
                       </div>
-                    )}
 
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: 'var(--surface-2)' }}>
+                          <Users size={14} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.025em' }}>Gender / Age</span>
+                          <span style={{ fontWeight: 500, color: 'var(--ink)' }}>
+                            {selectedPatientForHistory?.gender || '—'} / {selectedPatientForHistory?.date_of_birth ? `${new Date().getFullYear() - new Date(selectedPatientForHistory.date_of_birth).getFullYear()} Yrs` : '—'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: 'var(--surface-2)' }}>
+                          <Activity size={14} style={{ color: '#ef4444' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.025em' }}>Blood Group</span>
+                          <span style={{ fontWeight: 600, color: '#ef4444' }}>{selectedPatientForHistory?.blood_group || '—'}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                        <div style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: 'var(--surface-2)', marginTop: '2px' }}>
+                          <MapPin size={14} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.025em' }}>Address</span>
+                          <span style={{ display: 'block', lineHeight: 1.4, color: 'var(--ink)', fontSize: '0.85rem' }}>{selectedPatientForHistory?.address || '—'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Medical / Alert Badges Card */}
+                    <div style={{ 
+                      backgroundColor: 'var(--surface-1)', 
+                      border: '1px solid var(--border)', 
+                      borderRadius: '12px', 
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+                    }}>
+                      <div>
+                        <strong style={{ 
+                          color: selectedPatientForHistory?.allergies && selectedPatientForHistory.allergies.toLowerCase() !== 'none' ? 'var(--danger)' : 'var(--muted)', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px', 
+                          fontSize: '0.72rem', 
+                          textTransform: 'uppercase', 
+                          fontWeight: 700, 
+                          marginBottom: '4px',
+                          letterSpacing: '0.025em'
+                        }}>
+                          <AlertTriangle size={13} style={{ color: selectedPatientForHistory?.allergies && selectedPatientForHistory.allergies.toLowerCase() !== 'none' ? 'var(--danger)' : 'var(--muted)' }} /> Known Allergies
+                        </strong>
+                        <div style={{ 
+                          fontSize: '0.85rem', 
+                          padding: '8px 10px', 
+                          backgroundColor: selectedPatientForHistory?.allergies && selectedPatientForHistory.allergies.toLowerCase() !== 'none' ? '#fef2f2' : 'var(--surface-2)', 
+                          border: selectedPatientForHistory?.allergies && selectedPatientForHistory.allergies.toLowerCase() !== 'none' ? '1px solid #fee2e2' : '1px solid transparent',
+                          borderRadius: '8px',
+                          color: selectedPatientForHistory?.allergies && selectedPatientForHistory.allergies.toLowerCase() !== 'none' ? '#b91c1c' : 'var(--ink)',
+                          fontWeight: selectedPatientForHistory?.allergies && selectedPatientForHistory.allergies.toLowerCase() !== 'none' ? 600 : 400
+                        }}>
+                          {selectedPatientForHistory?.allergies ? formatClinicalDisplay(selectedPatientForHistory.allergies) : 'None'}
+                        </div>
+                      </div>
+
+                      {selectedPatientForHistory?.chronic_conditions && (
+                        <div>
+                          <strong style={{ color: 'var(--muted)', display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px', letterSpacing: '0.025em' }}>
+                            Chronic Conditions
+                          </strong>
+                          <div style={{ fontSize: '0.85rem', padding: '8px 10px', backgroundColor: 'var(--surface-2)', borderRadius: '8px', color: 'var(--ink)' }}>
+                            {formatClinicalDisplay(selectedPatientForHistory.chronic_conditions)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Emergency Contact */}
                     {selectedPatientForHistory?.emergency_contact_name && (
-                      <div style={{ marginTop: '4px', padding: '8px 10px', background: 'var(--surface-2)', borderRadius: '6px' }}>
-                        <strong style={{ color: 'var(--primary-dark)', display: 'block', fontSize: '0.78rem', marginBottom: '2px' }}>Emergency Contact</strong>
-                        <span style={{ display: 'block', fontSize: '0.8rem' }}>
-                          {selectedPatientForHistory.emergency_contact_name} ({selectedPatientForHistory.emergency_contact_relation || 'Relative'}) &middot; {selectedPatientForHistory.emergency_contact_phone || '—'}
+                      <div style={{ 
+                        padding: '12px 14px', 
+                        background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)', 
+                        border: '1px solid #fde68a', 
+                        borderRadius: '12px',
+                        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+                      }}>
+                        <strong style={{ color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '4px' }}>
+                          <Heart size={13} style={{ color: '#d97706' }} /> Emergency Contact
+                        </strong>
+                        <span style={{ display: 'block', fontSize: '0.82rem', color: '#78350f', lineHeight: 1.4 }}>
+                          <strong>{selectedPatientForHistory.emergency_contact_name}</strong> ({selectedPatientForHistory.emergency_contact_relation || 'Relative'})
                         </span>
+                        {selectedPatientForHistory.emergency_contact_phone && (
+                          <span style={{ display: 'block', fontSize: '0.82rem', color: '#78350f', marginTop: '2px', fontWeight: 500 }}>
+                            📞 {selectedPatientForHistory.emergency_contact_phone}
+                          </span>
+                        )}
                       </div>
                     )}
 
-                    <div style={{ marginTop: '4px', padding: '10px', background: 'var(--surface-2)', borderRadius: '8px' }}>
-                      <strong style={{ color: 'var(--primary-dark)', display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Insurance Details</strong>
-                      <span style={{ display: 'block', fontSize: '0.8rem' }}>
+                    {/* Insurance Details Box */}
+                    <div style={{ 
+                      padding: '14px', 
+                      background: selectedPatientForHistory?.insurance_provider ? 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)' : 'var(--surface-2)', 
+                      border: selectedPatientForHistory?.insurance_provider ? '1px solid #a7f3d0' : '1px solid var(--border)', 
+                      borderRadius: '12px',
+                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+                    }}>
+                      <strong style={{ color: selectedPatientForHistory?.insurance_provider ? '#065f46' : 'var(--muted)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px' }}>
+                        <Shield size={13} style={{ color: selectedPatientForHistory?.insurance_provider ? '#059669' : 'var(--muted)' }} /> Insurance Details
+                      </strong>
+                      <span style={{ display: 'block', fontSize: '0.82rem', color: selectedPatientForHistory?.insurance_provider ? '#047857' : 'var(--muted)', lineHeight: 1.4, fontWeight: selectedPatientForHistory?.insurance_provider ? 500 : 400 }}>
                         {selectedPatientForHistory?.insurance_provider 
                           ? `${selectedPatientForHistory.insurance_provider} (Policy: ${selectedPatientForHistory.insurance_policy_no || '—'})` 
                           : 'No active insurance policy'}
                       </span>
                     </div>
+
                   </div>
                 )}
               </div>
@@ -3430,7 +3653,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   <>
                     {/* Tabs navigation */}
                     <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '15px', gap: '15px' }}>
-                      {(['appointments', 'consultations', 'prescriptions', 'bills'] as const).map((tab) => (
+                      {(['appointments', 'consultations', 'prescriptions', 'bills', 'reports'] as const).map((tab) => (
                         <button
                           key={tab}
                           onClick={() => setHistoryModalTab(tab)}
@@ -3610,6 +3833,229 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                           )}
                         </div>
                       )}
+
+                      {historyModalTab === 'reports' && (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                            <h4 style={{ margin: 0, color: 'var(--primary-dark)', fontSize: '1.1rem', fontWeight: 600 }}>Medical Documents & Reports</h4>
+                          </div>
+
+                          {/* Premium Upload Section */}
+                          <div style={{
+                            background: 'linear-gradient(135deg, var(--surface-2) 0%, var(--surface-1) 100%)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            marginBottom: '20px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                          }}>
+                            <h5 style={{ margin: '0 0 12px 0', fontSize: '0.88rem', fontWeight: 600, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <UploadCloud size={16} style={{ color: 'var(--primary)' }} /> Upload Document on Behalf of Patient
+                            </h5>
+                            <form onSubmit={handleReportUpload} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>Document Title</label>
+                                  <input
+                                    type="text"
+                                    className="recep-input-field"
+                                    placeholder="e.g. Blood Test, Chest X-Ray"
+                                    style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                                    value={reportUploadTitle}
+                                    onChange={(e) => setReportUploadTitle(e.target.value)}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>Document Category *</label>
+                                  <select
+                                    className="recep-input-field"
+                                    style={{ fontSize: '0.85rem', padding: '6px 10px', height: '34px', background: 'var(--surface-1)' }}
+                                    value={reportUploadType}
+                                    onChange={(e) => setReportUploadType(e.target.value)}
+                                    required
+                                  >
+                                    <option value="Lab Report">Lab Report</option>
+                                    <option value="X-Ray">X-Ray / Scan</option>
+                                    <option value="Prescription">Prescription</option>
+                                    <option value="Consent Form">Consent Form</option>
+                                    <option value="Other">Other Document</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1 }}>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>Select File * (PDF, Image - max 10MB)</label>
+                                  <div style={{
+                                    border: '1px dashed var(--border)',
+                                    borderRadius: '8px',
+                                    padding: '8px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    backgroundColor: 'var(--surface-1)',
+                                    cursor: 'pointer',
+                                    position: 'relative'
+                                  }}>
+                                    <FileText size={16} style={{ color: 'var(--muted)' }} />
+                                    <span style={{ fontSize: '0.8rem', color: reportUploadFile ? 'var(--ink)' : 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }}>
+                                      {reportUploadFile ? reportUploadFile.name : 'Choose a file...'}
+                                    </span>
+                                    <input
+                                      type="file"
+                                      accept=".pdf,.png,.jpg,.jpeg,.webp"
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        opacity: 0,
+                                        cursor: 'pointer'
+                                      }}
+                                      onChange={(e) => {
+                                        if (e.target.files && e.target.files[0]) {
+                                          setReportUploadFile(e.target.files[0]);
+                                        }
+                                      }}
+                                      required
+                                    />
+                                  </div>
+                                </div>
+                                <button
+                                  type="submit"
+                                  className="recep-btn-primary"
+                                  disabled={uploadingReport}
+                                  style={{
+                                    height: '36px',
+                                    padding: '0 16px',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}
+                                >
+                                  {uploadingReport ? (
+                                    <>
+                                      <Loader2 size={14} className="spin-icon" /> Uploading...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UploadCloud size={14} /> Upload
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+
+                          {/* Existing Reports List */}
+                          <h5 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--muted)' }}>
+                            Patient Document History
+                          </h5>
+                          {!patientHistoryData?.reports?.length ? (
+                            <div style={{
+                              textAlign: 'center',
+                              padding: '24px',
+                              border: '1px solid var(--border)',
+                              borderRadius: '12px',
+                              color: 'var(--muted)',
+                              backgroundColor: 'var(--surface-2)',
+                              fontSize: '0.85rem'
+                            }}>
+                              No medical reports or documents uploaded for this patient.
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {patientHistoryData.reports.map((report: any) => {
+                                return (
+                                  <div
+                                    key={report.id}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '12px 16px',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: '10px',
+                                      backgroundColor: 'var(--surface-1)'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                                      <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '8px',
+                                        backgroundColor: 'var(--surface-2)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'var(--primary)'
+                                      }}>
+                                        <FileText size={18} />
+                                      </div>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <strong style={{ display: 'block', fontSize: '0.88rem', color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {report.report_name}
+                                        </strong>
+                                        <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px' }}>
+                                          <span style={{
+                                            backgroundColor: 'var(--surface-2)',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontWeight: 500
+                                          }}>
+                                            {report.report_type}
+                                          </span>
+                                          &middot;
+                                          <span>
+                                            Uploaded: {new Date(report.uploaded_at).toLocaleDateString()}
+                                          </span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', marginLeft: '12px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingReport(report)}
+                                        className="recep-btn-secondary"
+                                        style={{ padding: '6px 10px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        title="View Report"
+                                      >
+                                        <Eye size={13} /> View
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteReport(report.id)}
+                                        disabled={deletingReportId === report.id}
+                                        className="recep-btn-secondary"
+                                        style={{
+                                          padding: '6px 10px',
+                                          fontSize: '0.8rem',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          color: 'var(--danger)',
+                                          borderColor: 'rgba(239, 68, 68, 0.2)',
+                                          backgroundColor: 'rgba(239, 68, 68, 0.05)'
+                                        }}
+                                        title="Delete Report"
+                                      >
+                                        {deletingReportId === report.id ? (
+                                          <Loader2 size={13} className="spin-icon" />
+                                        ) : (
+                                          <Trash2 size={13} />
+                                        )}
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -3619,6 +4065,67 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             <div className="recep-modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: '15px', display: 'flex', justifyContent: 'flex-end' }}>
               <button className="btn-cancel" onClick={() => { setShowPatientHistoryModal(false); setPatientHistoryData(null); }}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Medical Report Viewer */}
+      {viewingReport && (
+        <div className="recep-modal-overlay" onClick={() => setViewingReport(null)} style={{ zIndex: 1100 }}>
+          <div className="recep-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="recep-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <FileText size={24} style={{ color: 'var(--primary)' }} />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--ink)' }}>{viewingReport.report_name}</h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    Category: <strong style={{ color: 'var(--ink)' }}>{viewingReport.report_type}</strong> | Uploaded: {new Date(viewingReport.uploaded_at || viewingReport.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setViewingReport(null)} 
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="recep-modal-body" style={{ flex: 1, padding: '20px 0', minHeight: '450px', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+              {viewingReport.file_url?.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  src={viewingReport.file_url.startsWith('http') ? viewingReport.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`}
+                  style={{ width: '100%', height: '100%', border: 'none', minHeight: '450px', borderRadius: '4px' }}
+                  title={viewingReport.report_name}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px' }}>
+                  <img
+                    src={viewingReport.file_url.startsWith('http') ? viewingReport.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`}
+                    style={{ maxWidth: '100%', maxHeight: '450px', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    alt={viewingReport.report_name}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="recep-modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: '15px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="recep-btn-secondary"
+                onClick={() => {
+                  const url = viewingReport.file_url.startsWith('http') ? viewingReport.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`;
+                  window.open(url, '_blank');
+                }}
+                style={{ fontSize: '0.85rem' }}
+              >
+                Open in New Tab
+              </button>
+              <button type="button" className="recep-btn-primary" onClick={() => setViewingReport(null)} style={{ fontSize: '0.85rem' }}>
+                Close Viewer
               </button>
             </div>
           </div>
