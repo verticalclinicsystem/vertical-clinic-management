@@ -268,6 +268,23 @@ class PrescriptionService:
 
         await self.db.commit()
         logger.info(f"Prescription {prescription_id} dispensed successfully.")
+
+        # Notify patient that prescription is dispensed / ready
+        try:
+            from app.services.notification_service import NotificationService
+            noti_service = NotificationService(self.db)
+            full_presc = await self.get_prescription(prescription_id)
+            if full_presc.patient:
+                msg = f"Your prescription prescribed by Dr. {full_presc.doctor.user.full_name if full_presc.doctor else 'Doctor'} has been dispensed and is ready at the pharmacy. Please collect your medicines."
+                await noti_service.send_multichannel_notification(
+                    user_id=full_presc.patient.user_id,
+                    title="Prescription Ready & Dispensed",
+                    message=msg,
+                    type="prescription"
+                )
+        except Exception as ws_noti_err:
+            logger.error(f"Failed to send prescription dispensed notification: {ws_noti_err}")
+
         return await self.get_prescription(prescription_id)
 
     async def get_prescription(self, prescription_id: uuid.UUID) -> Prescription:

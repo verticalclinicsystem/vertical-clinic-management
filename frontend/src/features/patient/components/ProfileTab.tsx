@@ -1,5 +1,6 @@
 import React from 'react';
 import { User } from 'lucide-react';
+import { CustomDatePicker } from '../../../components/CustomDatePicker';
 
 interface ProfileTabProps {
   patientProfile: any;
@@ -121,11 +122,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         <div>
           <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Date of Birth</label>
           {isEditingProfile ? (
-            <input
-              type="date"
+            <CustomDatePicker
               value={profileForm.date_of_birth}
-              onChange={e => setProfileForm({ ...profileForm, date_of_birth: e.target.value })}
-              className="form-input"
+              onChange={date => setProfileForm({ ...profileForm, date_of_birth: date })}
             />
           ) : (
             <div className="form-input" style={{ backgroundColor: '#f8fafc' }}>

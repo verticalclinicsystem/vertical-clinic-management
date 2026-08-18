@@ -28,13 +28,18 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './PharmacyPortal.css';
+import { CustomDatePicker } from '../../components/CustomDatePicker';
 
 interface PharmacyPortalProps {
   onLogout: () => void;
 }
 
 export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem('pharmacy_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const saved = localStorage.getItem('pharmacy_portal_tab');
+    const validTabs = ['dashboard', 'rxqueue', 'dispense', 'inventory', 'purchase', 'availability', 'profile'];
+    return saved && validTabs.includes(saved) ? saved : 'dashboard';
+  });
 
   useEffect(() => {
     localStorage.setItem('pharmacy_portal_tab', activeTab);
@@ -1778,22 +1783,16 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
                 <div className="pharmacy-form-grid">
                   <div className="pharmacy-form-group">
                     <label className="pharmacy-label">Start Date *</label>
-                    <input 
-                      type="date" 
-                      required
-                      className="pharmacy-input"
+                    <CustomDatePicker 
                       value={reqStartDate}
-                      onChange={(e) => setReqStartDate(e.target.value)}
+                      onChange={setReqStartDate}
                     />
                   </div>
                   <div className="pharmacy-form-group">
                     <label className="pharmacy-label">End Date *</label>
-                    <input 
-                      type="date" 
-                      required
-                      className="pharmacy-input"
+                    <CustomDatePicker 
                       value={reqEndDate}
-                      onChange={(e) => setReqEndDate(e.target.value)}
+                      onChange={setReqEndDate}
                     />
                   </div>
                   <div className="pharmacy-form-group full-width">

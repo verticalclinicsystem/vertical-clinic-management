@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar, Stethoscope, MapPin, MoreVertical, Clock, X, Video } from 'lucide-react';
+import { Stethoscope, MapPin, MoreVertical, Clock, Video, Calendar, X } from 'lucide-react';
+import { CustomDatePicker } from '../../../components/CustomDatePicker';
 
 interface AppointmentsTabProps {
   dashboardData: any;
@@ -15,6 +16,8 @@ interface AppointmentsTabProps {
   setViewingAppointment: (appt: any) => void;
   triggerToast: (type: 'success' | 'error', message: string) => void;
 }
+
+
 
 export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   dashboardData,
@@ -63,30 +66,8 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label htmlFor="appt-date-filter" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Filter Date:</label>
-            <input
-              id="appt-date-filter"
-              type="date"
-              value={appointmentDateFilter}
-              onChange={(e) => setAppointmentDateFilter(e.target.value)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color)',
-                fontSize: '0.85rem',
-                outline: 'none',
-                backgroundColor: 'var(--surface-color, #ffffff)'
-              }}
-            />
-            {appointmentDateFilter && (
-              <button
-                onClick={() => setAppointmentDateFilter('')}
-                className="btn-text"
-                style={{ fontSize: '0.8rem', color: 'var(--error-red)', padding: '4px 8px' }}
-              >
-                Clear
-              </button>
-            )}
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Filter Date:</label>
+            <CustomDatePicker value={appointmentDateFilter} onChange={setAppointmentDateFilter} />
           </div>
 
           <button

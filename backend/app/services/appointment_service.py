@@ -448,6 +448,28 @@ class AppointmentService:
         except Exception as e:
             logger.error(f"Error creating booking notification: {e}")
 
+        # Broadcast new booking to branch receptionists via WebSocket
+        try:
+            from app.core.websocket import manager as ws_manager
+            doc_name = full_appt.doctor.user.full_name if (full_appt.doctor and full_appt.doctor.user) else 'Doctor'
+            time_str = full_appt.appointment_datetime.astimezone(IST).strftime('%I:%M %p on %Y-%m-%d')
+            await ws_manager.send_to_role_in_branch(
+                role="receptionist",
+                branch_id=str(request.branch_id),
+                message={
+                    "event": "new_booking",
+                    "data": {
+                        "appointment_id": str(full_appt.id),
+                        "patient_name": full_appt.patient.user.full_name if (full_appt.patient and full_appt.patient.user) else "Patient",
+                        "doctor_name": doc_name,
+                        "treatment_type": full_appt.treatment_type,
+                        "time": time_str
+                    }
+                }
+            )
+        except Exception as ws_err:
+            logger.warning(f"Failed to broadcast new booking via WebSocket: {ws_err}")
+
         return full_appt
 
     async def get_appointment(self, appointment_id: uuid.UUID) -> Appointment:
