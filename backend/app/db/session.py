@@ -14,10 +14,10 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,                      # disable verbose raw SQL query logging
     pool_pre_ping=True,             # verify connections before use
-    pool_size=10,
-    max_overflow=5,
-    pool_recycle=1800,              # recycle connections every 30 minutes
-    pool_timeout=30,
+    pool_size=3,                    # optimized for PgBouncer / Supabase free tier connection limits
+    max_overflow=2,
+    pool_recycle=300,               # recycle connections every 5 minutes
+    pool_timeout=10,
     connect_args={
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
