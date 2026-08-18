@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../../services/api';
+import { CustomDatePicker } from '../../../components/CustomDatePicker';
 
 interface Branch {
   id: string;
@@ -547,11 +548,9 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     <label>
                       📅 Date of Birth <span className="required-tag">*</span>
                     </label>
-                    <input
-                      type="date"
-                      className="form-input"
+                    <CustomDatePicker
                       value={dob}
-                      onChange={(e) => setDob(e.target.value)}
+                      onChange={setDob}
                     />
                   </div>
                   <div className="form-group">
@@ -858,20 +857,16 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                 <div className="form-grid-2">
                   <div className="form-group">
                     <label>Treatment Start Date</label>
-                    <input
-                      type="date"
-                      className="form-input"
+                    <CustomDatePicker
                       value={treatmentSince}
-                      onChange={(e) => setTreatmentSince(e.target.value)}
+                      onChange={setTreatmentSince}
                     />
                   </div>
                   <div className="form-group">
                     <label>Latest Prescription Date</label>
-                    <input
-                      type="date"
-                      className="form-input"
+                    <CustomDatePicker
                       value={prescriptionDate}
-                      onChange={(e) => setPrescriptionDate(e.target.value)}
+                      onChange={setPrescriptionDate}
                     />
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { CalendarPlus, Users, X, Clock, Trash2 } from 'lucide-react';
+import { CustomDatePicker } from '../../../components/CustomDatePicker';
 
 interface RecepAppointmentsTabProps {
   calendarDate: string;
@@ -88,13 +89,11 @@ export const RecepAppointmentsTab: React.FC<RecepAppointmentsTabProps> = ({
         <div className="toolbar-left">
           <div className="date-picker-container">
             <label htmlFor="calendar-date-input">Select Date</label>
-            <input
+            <CustomDatePicker
               id="calendar-date-input"
-              type="date"
-              className="calendar-date-input"
               value={calendarDate}
-              onChange={(e) => {
-                setCalendarDate(e.target.value);
+              onChange={(date) => {
+                setCalendarDate(date);
                 setSelectedCalendarAppt(null);
               }}
             />
@@ -319,19 +318,11 @@ export const RecepAppointmentsTab: React.FC<RecepAppointmentsTabProps> = ({
                             >
                               New Date
                             </label>
-                            <input
-                              type="date"
+                            <CustomDatePicker
                               value={rescheduleDate}
-                              onChange={(e) => {
-                                setRescheduleDate(e.target.value);
+                              onChange={(date) => {
+                                setRescheduleDate(date);
                                 setRescheduleTime('');
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '6px',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '4px',
-                                fontSize: '0.85rem',
                               }}
                             />
                           </div>

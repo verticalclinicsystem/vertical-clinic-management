@@ -163,6 +163,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         localStorage.removeItem('admin_portal_tab');
         localStorage.removeItem('receptionist_portal_tab');
         localStorage.removeItem('pharmacy_portal_tab');
+        localStorage.removeItem('manager_portal_tab');
 
         setAlert({
           type: 'success',

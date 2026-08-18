@@ -1,5 +1,6 @@
 import React from 'react';
 import { UploadCloud, Clock, Download, Video } from 'lucide-react';
+import { CustomDatePicker } from '../../../components/CustomDatePicker';
 
 const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
   const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
@@ -355,12 +356,9 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
 
               <div className="form-group">
                 <label className="form-label">New Date</label>
-                <input
-                  type="date"
+                <CustomDatePicker
                   value={rescheduleDate}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => handleRescheduleDateSelect(e.target.value)}
-                  className="form-input"
+                  onChange={(date) => handleRescheduleDateSelect(date)}
                 />
               </div>
 
@@ -1151,16 +1149,85 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
             <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--primary)' }}>INV-{viewingInvoice.invoice_number}</h4>
+                  <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--primary)' }}>{viewingInvoice.invoice_number}</h4>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Issued: {new Date(viewingInvoice.created_at || viewingInvoice.due_date).toLocaleDateString()}</span>
                 </div>
                 <span className={`status-pill ${viewingInvoice.status}`}>{viewingInvoice.status}</span>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 700 }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Consultation Fee:</span>
-                  <span style={{ color: 'var(--primary)' }}>₹{viewingInvoice.total_amount}</span>
+              {/* Items Breakdown Table */}
+              <div style={{ marginTop: '10px' }}>
+                <h5 style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Bill Breakdown</h5>
+                <table className="portal-table" style={{ width: '100%', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Description</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewingInvoice.items_breakdown?.map((item: any, idx: number) => (
+                      <tr key={idx}>
+                        <td style={{ textAlign: 'left' }}>{item.description}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{parseFloat(item.amount || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {(!viewingInvoice.items_breakdown || viewingInvoice.items_breakdown.length === 0) && (
+                      <tr>
+                        <td style={{ textAlign: 'left' }}>Consultation &amp; Services</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{parseFloat(viewingInvoice.total_amount || 0).toFixed(2)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals Breakdown */}
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '8px', 
+                borderTop: '1px solid var(--border)', 
+                paddingTop: '12px',
+                alignItems: 'flex-end',
+                width: '100%'
+              }}>
+                <div style={{ display: 'flex', width: '220px', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Amount:</span>
+                  <span style={{ fontWeight: 600 }}>₹{parseFloat(viewingInvoice.total_amount || 0).toFixed(2)}</span>
+                </div>
+                {parseFloat(viewingInvoice.discount_amount || 0) > 0 && (
+                  <div style={{ display: 'flex', width: '220px', justifyContent: 'space-between', fontSize: '0.85rem', color: '#dc2626' }}>
+                    <span>Discount:</span>
+                    <span>-₹{parseFloat(viewingInvoice.discount_amount || 0).toFixed(2)}</span>
+                  </div>
+                )}
+                {parseFloat(viewingInvoice.tax_amount || 0) > 0 && (
+                  <div style={{ display: 'flex', width: '220px', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Tax:</span>
+                    <span style={{ fontWeight: 600 }}>₹{parseFloat(viewingInvoice.tax_amount || 0).toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', width: '220px', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 700, borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+                  <span>Grand Total:</span>
+                  <span>₹{parseFloat(viewingInvoice.grand_total || 0).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', width: '220px', justifyContent: 'space-between', fontSize: '0.85rem', color: '#16a34a', fontWeight: 600 }}>
+                  <span>Amount Paid:</span>
+                  <span>-₹{parseFloat(viewingInvoice.amount_paid || 0).toFixed(2)}</span>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  width: '220px', 
+                  justifyContent: 'space-between', 
+                  fontSize: '1rem', 
+                  fontWeight: 800, 
+                  borderTop: '2px double var(--border)', 
+                  paddingTop: '6px',
+                  color: parseFloat(viewingInvoice.balance_due || 0) > 0 ? '#dc2626' : '#16a34a'
+                }}>
+                  <span>Balance Due:</span>
+                  <span>₹{parseFloat(viewingInvoice.balance_due || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>

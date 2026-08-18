@@ -1,5 +1,5 @@
 import React from 'react';
-import { CreditCard, Download } from 'lucide-react';
+import { CreditCard, Download, Eye } from 'lucide-react';
 
 interface BillingTabProps {
   dashboardData: any;
@@ -24,10 +24,10 @@ export const BillingTab: React.FC<BillingTabProps> = ({
           <thead>
             <tr>
               <th>Invoice Code</th>
-              <th>Due Date</th>
+              <th>Invoice Date</th>
               <th>Consultation Fee</th>
               <th>Status</th>
-              <th>Download</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -44,19 +44,28 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                 }}
               >
                 <td style={{ fontFamily: 'monospace' }}>{bill.invoice_number}</td>
-                <td>{new Date(bill.due_date).toLocaleDateString()}</td>
+                <td>{new Date(bill.created_at || bill.due_date).toLocaleDateString()}</td>
                 <td>₹{bill.total_amount}</td>
                 <td>
                   <span className={`status-pill ${bill.status}`}>{bill.status}</span>
                 </td>
                 <td>
-                  <button
-                    onClick={() => downloadPdf(`/billing/${bill.id}/pdf`, `Invoice_${bill.invoice_number}.pdf`)}
-                    className="btn-secondary"
-                    style={{ padding: '6px 10px', fontSize: '0.75rem' }}
-                  >
-                    <Download size={13} /> PDF Invoice
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setViewingInvoice(bill)}
+                      className="btn-secondary"
+                      style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Eye size={13} /> View
+                    </button>
+                    <button
+                      onClick={() => downloadPdf(`/billing/${bill.id}/pdf`, `Invoice_${bill.invoice_number}.pdf`)}
+                      className="btn-secondary"
+                      style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Download size={13} /> PDF Invoice
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

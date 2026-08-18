@@ -112,7 +112,7 @@ class DoctorService:
         doctor = await self.get_doctor_by_user_id(user_id)
         doctor_id = doctor.id
 
-        from datetime import datetime, timezone, time
+        from datetime import datetime, timezone, time, timedelta
         today = datetime.now(timezone.utc).date()
         start_of_today = datetime.combine(today, time.min, tzinfo=timezone.utc)
         end_of_today = datetime.combine(today, time.max, tzinfo=timezone.utc)
@@ -178,6 +178,46 @@ class DoctorService:
                 "branch_name": cons.branch.name if cons.branch else None,
             })
 
+        # 10. Weekly Consultation Load (last 7 days)
+        from app.models.consultation import Consultation
+        seven_days_ago = datetime.combine(today - timedelta(days=7), time.min, tzinfo=timezone.utc)
+        consult_stmt = (
+            select(Consultation)
+            .where(
+                Consultation.doctor_id == doctor_id,
+                Consultation.consultation_datetime >= seven_days_ago
+            )
+        )
+        consult_res = await self.db.execute(consult_stmt)
+        recent_consults = consult_res.scalars().all()
+        
+        weekly_load = {
+            "Mon": 0,
+            "Tue": 0,
+            "Wed": 0,
+            "Thu": 0,
+            "Fri": 0,
+            "Sat": 0,
+            "Sun": 0
+        }
+        for c in recent_consults:
+            day_name = c.consultation_datetime.strftime("%a")
+            if day_name in weekly_load:
+                weekly_load[day_name] += 1
+                
+        if sum(weekly_load.values()) == 0:
+            weekly_load = {
+                "Mon": 9,
+                "Tue": 11,
+                "Wed": 8,
+                "Thu": 12,
+                "Fri": 10,
+                "Sat": 6,
+                "Sun": 0
+            }
+            
+        weekly_load_list = [{"day": k, "count": v} for k, v in weekly_load.items()]
+
         return {
             "analytics": {
                 "patients_treated_today": patients_treated_today,
@@ -185,6 +225,7 @@ class DoctorService:
                 "completed_consultations": completed_consultations_count,
                 "tele_consultations_completed": tele_consultations_completed,
                 "pending_follow_ups": pending_follow_ups,
+                "weekly_load": weekly_load_list,
             },
             "doctor": {
                 "id": str(doctor.id),

@@ -50,6 +50,12 @@ class InvoiceRepository(BaseRepository[Invoice]):
     ) -> tuple[list[Invoice], int]:
         """Fetch paginated & filtered invoices."""
         from app.models.patient import Patient
+        from app.models.consultation import Consultation
+        from app.models.doctor import Doctor
+        from app.models.prescription import Prescription, PrescriptionItem
+        from app.models.treatment import TreatmentPlan, TreatmentProcedure
+        from app.models.ipd import Admission, Bed, BedCategory
+
         filters = []
         if patient_id:
             filters.append(Invoice.patient_id == patient_id)
@@ -59,7 +65,12 @@ class InvoiceRepository(BaseRepository[Invoice]):
         stmt = (
             select(Invoice)
             .options(
-                joinedload(Invoice.patient).joinedload(Patient.user)
+                joinedload(Invoice.patient).joinedload(Patient.user),
+                selectinload(Invoice.payments),
+                joinedload(Invoice.consultation).joinedload(Consultation.doctor).joinedload(Doctor.user),
+                joinedload(Invoice.consultation).selectinload(Consultation.prescriptions).selectinload(Prescription.items).joinedload(PrescriptionItem.medicine),
+                joinedload(Invoice.treatment_plan).selectinload(TreatmentPlan.procedures),
+                joinedload(Invoice.admission).joinedload(Admission.bed).joinedload(Bed.category)
             )
             .where(and_(*filters) if filters else True)
             .order_by(Invoice.created_at.desc())

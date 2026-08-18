@@ -37,6 +37,7 @@ import {
 import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import './DoctorPortal.css';
+import { CustomDatePicker } from '../../components/CustomDatePicker';
 
 interface DoctorPortalProps {
   onLogout: () => void;
@@ -108,7 +109,11 @@ const CLINICAL_SCENARIOS: Record<string, { notes: string; aiSummary: string; sug
 };
 
 export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('doctor_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => {
+    const saved = localStorage.getItem('doctor_portal_tab');
+    const validTabs = ['dashboard', 'queue', 'consultation', 'prescriptions', 'treatment', 'followup', 'availability', 'ipd', 'profile', 'workflow', 'patients'];
+    return saved && validTabs.includes(saved) ? saved : 'dashboard';
+  });
   const [tabHistory, setTabHistory] = useState<string[]>([]);
 
   const changeTab = (newTab: string, pushToHistory = true) => {
@@ -2279,42 +2284,38 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     <div className="doc-card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
                       <h2 className="doc-card-title">Consultation Load — This Week</h2>
                       <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '20px 10px 10px 10px', height: '180px' }}>
-                        {/* Mon */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>9</span>
-                          <div style={{ width: '100%', height: '90px', background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', borderRadius: '4px' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>Mon</span>
-                        </div>
-                        {/* Tue */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>11</span>
-                          <div style={{ width: '100%', height: '110px', background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', borderRadius: '4px' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>Tue</span>
-                        </div>
-                        {/* Wed */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>8</span>
-                          <div style={{ width: '100%', height: '80px', background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', borderRadius: '4px' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>Wed</span>
-                        </div>
-                        {/* Thu */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>12</span>
-                          <div style={{ width: '100%', height: '120px', background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', borderRadius: '4px' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>Thu</span>
-                        </div>
-                        {/* Fri */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>10</span>
-                          <div style={{ width: '100%', height: '100px', background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', borderRadius: '4px' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>Fri</span>
-                        </div>
-                        {/* Sat */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>6</span>
-                          <div style={{ width: '100%', height: '60px', background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', borderRadius: '4px' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>Sat</span>
-                        </div>
+                        {(() => {
+                          const weeklyData = dashboardData?.analytics?.weekly_load || [
+                            { day: 'Mon', count: 9 },
+                            { day: 'Tue', count: 11 },
+                            { day: 'Wed', count: 8 },
+                            { day: 'Thu', count: 12 },
+                            { day: 'Fri', count: 10 },
+                            { day: 'Sat', count: 6 },
+                            { day: 'Sun', count: 0 }
+                          ];
+                          const maxCount = Math.max(...weeklyData.map((d: any) => d.count), 5);
+                          return weeklyData.map((d: any, idx: number) => {
+                            const heightPx = Math.max(10, Math.round((d.count / maxCount) * 120));
+                            return (
+                              <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%', position: 'relative' }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>{d.count}</span>
+                                <div 
+                                  style={{ 
+                                    width: '100%', 
+                                    height: `${heightPx}px`, 
+                                    background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', 
+                                    borderRadius: '4px', 
+                                    cursor: 'pointer',
+                                    transition: 'all 0.3s ease'
+                                  }}
+                                  title={`${d.count} consultations on ${d.day}`}
+                                />
+                                <span style={{ fontSize: '0.75rem', fontWeight: '600', marginTop: '8px', color: 'var(--doc-text-muted)' }}>{d.day}</span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -3759,7 +3760,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         All Wards ({ipdBeds.length} Beds)
                       </button>
                       {ipdCategories.map((cat: any) => {
-                        const count = ipdBeds.filter((b: any) => b.category_id === cat.id).length;
+                        const count = ipdBeds.filter((b: any) => b.category?.id === cat.id).length;
                         const isSelected = selectedWardCategory === cat.id;
                         return (
                           <button
@@ -3800,7 +3801,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                           {filteredCategories.map((cat: any) => {
                             const categoryBeds = ipdBeds.filter((b: any) => {
-                              if (b.category_id !== cat.id) return false;
+                              if (b.category?.id !== cat.id) return false;
                               if (!ipdSearchQuery.trim()) return true;
                               const query = ipdSearchQuery.toLowerCase();
                               const bedNoMatch = b.bed_number.toLowerCase().includes(query);
@@ -5261,24 +5262,16 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Start Date</label>
-                      <input 
-                        type="date" 
-                        required
-                        className="doc-input"
+                      <CustomDatePicker 
                         value={reqStartDate}
-                        onChange={(e) => setReqStartDate(e.target.value)}
-                        style={{ width: '100%', height: '38px', borderRadius: '8px', border: '1px solid var(--doc-border)', padding: '0 8px' }}
+                        onChange={setReqStartDate}
                       />
                     </div>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>End Date</label>
-                      <input 
-                        type="date" 
-                        required
-                        className="doc-input"
+                      <CustomDatePicker 
                         value={reqEndDate}
-                        onChange={(e) => setReqEndDate(e.target.value)}
-                        style={{ width: '100%', height: '38px', borderRadius: '8px', border: '1px solid var(--doc-border)', padding: '0 8px' }}
+                        onChange={setReqEndDate}
                       />
                     </div>
                   </div>

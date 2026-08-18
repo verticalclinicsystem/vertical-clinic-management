@@ -97,6 +97,7 @@ async def get_patient_dashboard(
     from app.schemas.medical_report import MedicalReportOut
     from app.schemas.invoice import InvoiceOut
     from app.schemas.patient import FollowUpRecommendationOut
+    from app.api.v1.billing import invoice_to_out
 
     def to_patient_appt_out(a) -> AppointmentOut:
         out = AppointmentOut.model_validate(a)
@@ -288,7 +289,7 @@ async def get_patient_dashboard(
             "recent_prescriptions": [PrescriptionOut.model_validate(p) for p in prescriptions],
             "medical_history": [ConsultationOut.model_validate(c) for c in consultations],
             "reports": [MedicalReportOut.model_validate(r) for r in reports],
-            "bills": [InvoiceOut.model_validate(i) for i in invoices],
+            "bills": [invoice_to_out(i) for i in invoices],
             "follow_ups": [FollowUpRecommendationOut.model_validate(f) for f in follow_ups],
         },
         message="Patient dashboard data fetched successfully.",
@@ -715,9 +716,11 @@ async def list_my_billing(
     )
     pages = (total + limit - 1) // limit
 
+    from app.api.v1.billing import invoice_to_out
+
     return ApiResponse.success(
         data={
-            "items": [InvoiceOut.model_validate(item) for item in items],
+            "items": [invoice_to_out(item) for item in items],
             "total": total,
             "page": page,
             "limit": limit,
