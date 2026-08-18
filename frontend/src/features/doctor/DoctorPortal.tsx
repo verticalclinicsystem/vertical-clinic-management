@@ -731,7 +731,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Voice dictation & AI states
   const [selectedScenario, setSelectedScenario] = useState<string>('');
-  const [isListening, setIsListening] = useState<boolean>(false);
+  const [, setIsListening] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [isEditingSummary, setIsEditingSummary] = useState<boolean>(false);
