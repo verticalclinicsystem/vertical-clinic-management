@@ -38,6 +38,7 @@ import {
 import { api, getWebSocketUrl } from '../../services/api';
 import AdmitPatientModal from '../../components/AdmitPatientModal';
 import { RecepDashboardTab } from './components/RecepDashboardTab';
+import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { RecepAppointmentsTab } from './components/RecepAppointmentsTab';
 import { RecepBillingTab } from './components/RecepBillingTab';
 import { RecepQueueTab } from './components/RecepQueueTab';
@@ -187,7 +188,11 @@ const formatClinicalEdit = (input: any): string => {
 };
 
 export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('receptionist_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => {
+    const saved = localStorage.getItem('receptionist_portal_tab');
+    const validTabs = ['dashboard', 'calendar', 'queue', 'checkin', 'patients', 'billing', 'invoices', 'beds', 'availability'];
+    return saved && validTabs.includes(saved) ? saved : 'dashboard';
+  });
   const [tabHistory, setTabHistory] = useState<string[]>([]);
 
   const changeTab = (newTab: string, pushToHistory = true) => {
@@ -1060,6 +1065,10 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
             const data = JSON.parse(event.data);
             if (data.event === 'queue_updated') {
               console.log('Queue update received via WebSocket, refreshing...');
+              fetchPortalData(true);
+            } else if (data.event === 'new_booking') {
+              console.log('New booking event received via WebSocket:', data.data);
+              showToast(`New Appointment Booked: ${data.data.patient_name} with Dr. ${data.data.doctor_name} for ${data.data.treatment_type} at ${data.data.time}.`, 'success');
               fetchPortalData(true);
             }
           } catch (err) {
@@ -2356,20 +2365,16 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
               <div className="recep-form-grid">
                 <div className="form-group">
                   <label>Start Date</label>
-                  <input 
-                    type="date" 
-                    required
+                  <CustomDatePicker 
                     value={reqStartDate}
-                    onChange={(e) => setReqStartDate(e.target.value)}
+                    onChange={setReqStartDate}
                   />
                 </div>
                 <div className="form-group">
                   <label>End Date</label>
-                  <input 
-                    type="date" 
-                    required
+                  <CustomDatePicker 
                     value={reqEndDate}
-                    onChange={(e) => setReqEndDate(e.target.value)}
+                    onChange={setReqEndDate}
                   />
                 </div>
                 <div className="form-group full-width">
@@ -2453,10 +2458,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 </div>
                 <div className="form-group">
                   <label>Date of Birth</label>
-                  <input 
-                    type="date" 
+                  <CustomDatePicker 
                     value={registerForm.date_of_birth} 
-                    onChange={e => setRegisterForm({ ...registerForm, date_of_birth: e.target.value })}
+                    onChange={date => setRegisterForm({ ...registerForm, date_of_birth: date })}
                   />
                 </div>
                 <div className="form-group">
@@ -2606,12 +2610,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
                 <div className="form-group">
                   <label>Date *</label>
-                  <input 
-                    type="date" 
-                    required 
-                    min={today}
+                  <CustomDatePicker 
                     value={bookingForm.appointment_date} 
-                    onChange={e => setBookingForm({ ...bookingForm, appointment_date: e.target.value })}
+                    onChange={date => setBookingForm({ ...bookingForm, appointment_date: date })}
                   />
                 </div>
 
@@ -3345,12 +3346,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                       <div>
                         <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>DOB</label>
-                        <input 
-                          type="date" 
-                          className="recep-input-field" 
-                          style={{ padding: '5px 8px', fontSize: '0.82rem' }}
-                          value={editPatientForm.date_of_birth} 
-                          onChange={(e) => setEditPatientForm({ ...editPatientForm, date_of_birth: e.target.value })}
+                        <CustomDatePicker 
+                          value={editPatientForm.date_of_birth || ''} 
+                          onChange={(date) => setEditPatientForm({ ...editPatientForm, date_of_birth: date })}
                         />
                       </div>
                       <div>

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './AdminPortal.css';
+import { CustomDatePicker } from '../../components/CustomDatePicker';
 
 interface AdminPortalProps { onLogout: () => void; }
 
@@ -50,7 +51,11 @@ function DonutChart({ segments, total, label }: { segments: { value: number; col
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTabInternal] = useState<string>(() => localStorage.getItem('admin_portal_tab') || 'dashboard');
+  const [activeTab, setActiveTabInternal] = useState<string>(() => {
+    const saved = localStorage.getItem('admin_portal_tab');
+    const validTabs = ['dashboard', 'reports', 'inventory', 'staff', 'attendance', 'branches', 'beds', 'availability-requests', 'active-sessions', 'settings'];
+    return saved && validTabs.includes(saved) ? saved : 'dashboard';
+  });
   const [tabHistory, setTabHistory] = useState<string[]>([]);
 
   const changeTab = (newTab: string, pushToHistory = true) => {
@@ -1767,22 +1772,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                   {/* Start Date */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Start Date:</label>
-                    <input
-                      type="date"
+                    <CustomDatePicker
                       value={reportStartDate}
-                      onChange={(e) => setReportStartDate(e.target.value)}
-                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                      onChange={setReportStartDate}
                     />
                   </div>
 
                   {/* End Date */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>End Date:</label>
-                    <input
-                      type="date"
+                    <CustomDatePicker
                       value={reportEndDate}
-                      onChange={(e) => setReportEndDate(e.target.value)}
-                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                      onChange={setReportEndDate}
                     />
                   </div>
 
@@ -3252,11 +3253,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                   <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>Track automated daily punch-in times, late arrivals, and absence records across all clinic branches.</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <input
-                    type="date"
+                  <CustomDatePicker
                     value={attendanceDateFilter}
-                    onChange={e => setAttendanceDateFilter(e.target.value)}
-                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    onChange={setAttendanceDateFilter}
                   />
                   <button className="admin-btn-secondary" onClick={() => fetchStaffAttendance(attendanceDateFilter, attendanceBranchFilter)}>
                     <RefreshCw size={14} className={loadingAttendance ? 'spin' : ''} /> Filter Date
@@ -3894,20 +3893,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                   <>
                     <div className="admin-form-group">
                       <label className="admin-form-label">Suspended Until</label>
-                      <input
-                        type="date"
-                        required
-                        className="admin-form-input"
+                      <CustomDatePicker
                         value={suspensionUntilDate}
-                        onChange={e => setSuspensionUntilDate(e.target.value)}
-                        min={(() => {
-                          const d = new Date();
-                          d.setDate(d.getDate() + 1);
-                          const month = '' + (d.getMonth() + 1);
-                          const day = '' + d.getDate();
-                          const year = d.getFullYear();
-                          return [year, month.padStart(2, '0'), day.padStart(2, '0')].join('-');
-                        })()}
+                        onChange={setSuspensionUntilDate}
                       />
                     </div>
                     <div className="admin-form-group">

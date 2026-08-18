@@ -234,7 +234,7 @@ async def _seed_users_and_profiles(
             phone="+919820000005",
             hashed_password=hash_password("ManagerPassword123!"),
             role="clinic_manager",
-            branch_id=branch_ids.get("SAT"),
+            branch_id=branch_ids.get("BOP"),
             is_active=True,
             is_verified=True,
         )

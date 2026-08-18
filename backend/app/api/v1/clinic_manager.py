@@ -226,6 +226,7 @@ class StaffEditRequest(BaseModel):
     consultation_fee: Optional[float] = None
     specialization: Optional[str] = None
     shift_timing: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=6)
 
 
 class DoctorEmergencyBlockRequest(BaseModel):
@@ -290,6 +291,7 @@ async def edit_staff_member(
         consultation_fee=req.consultation_fee,
         specialization=req.specialization,
         shift_timing=req.shift_timing,
+        password=req.password,
     )
 
 
@@ -365,4 +367,19 @@ async def create_announcement(
         target_role=req.target_role,
         branch_id=current_user.branch_id,
     )
+
+
+@router.get(
+    "/analytics",
+    summary="Get operational and financial analytics metrics",
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CLINIC_MANAGER))],
+)
+async def get_analytics(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get monthly revenue, bed occupancy, and low stock medicine metrics."""
+    service = ClinicManagerService(db)
+    return await service.get_analytics_dashboard(branch_id=current_user.branch_id)
+
 

@@ -77,7 +77,11 @@ interface PatientPortalProps {
 type ScreenType = 'dashboard' | 'appointments' | 'prescriptions' | 'billing' | 'reports' | 'preferences' | 'timeline' | 'profile' | 'book' | 'teleconsultation';
 
 export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
-  const [screen, setScreen] = useState<ScreenType>(() => (localStorage.getItem('patient_portal_tab') as ScreenType) || 'dashboard');
+  const [screen, setScreen] = useState<ScreenType>(() => {
+    const saved = localStorage.getItem('patient_portal_tab');
+    const validTabs = ['dashboard', 'appointments', 'prescriptions', 'billing', 'reports', 'preferences', 'timeline', 'profile', 'book', 'teleconsultation'];
+    return (saved && validTabs.includes(saved) ? saved : 'dashboard') as ScreenType;
+  });
 
   useEffect(() => {
     localStorage.setItem('patient_portal_tab', screen);
@@ -386,6 +390,10 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                 doctor_name: data.doctor_name || 'Doctor',
                 meeting_url: data.meeting_url
               });
+              fetchPortalData();
+            } else if (data.event === 'new_notification') {
+              console.log('New notification received via WebSocket:', data.data);
+              triggerToast('info', `${data.data.title}: ${data.data.message}`);
               fetchPortalData();
             }
           } catch (err) {
@@ -1173,6 +1181,8 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                 <TimelineTab
                   timeline={timeline}
                   dashboardData={dashboardData}
+                  followups={followups}
+                  handleBookFollowup={handleBookFollowup}
                   setViewingHistoryEvent={setViewingHistoryEvent}
                   setViewingInvoice={setViewingInvoice}
                   setViewingReport={setViewingReport}

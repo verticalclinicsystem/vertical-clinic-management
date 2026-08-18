@@ -24,10 +24,16 @@ import {
   Camera,
   Upload,
   Bed,
-  Eye
+  Eye,
+  BarChart3,
+  TrendingUp,
+  Activity,
+  Phone,
+  Lock
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './ClinicManagerPortal.css';
+import { CustomDatePicker } from '../../components/CustomDatePicker';
 
 interface ClinicManagerPortalProps {
   onLogout: () => void;
@@ -41,12 +47,24 @@ const formatBedNumber = (bedNum: string): string => {
 
 export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'staff' | 'onboard' | 'emergency' | 'billing' | 'notices' | 'requests' | 'profile' | 'beds'
-  >('overview');
+    'overview' | 'staff' | 'onboard' | 'emergency' | 'billing' | 'notices' | 'requests' | 'profile' | 'beds' | 'analytics'
+  >(() => {
+    const saved = localStorage.getItem('manager_portal_tab');
+    const validTabs = ['overview', 'staff', 'onboard', 'emergency', 'billing', 'notices', 'requests', 'profile', 'beds', 'analytics'];
+    return (saved && validTabs.includes(saved) ? saved : 'overview') as any;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('manager_portal_tab', activeTab);
+  }, [activeTab]);
 
   // Dashboard Overview state
   const [overviewData, setOverviewData] = useState<any>(null);
   const [isLoadingOverview, setIsLoadingOverview] = useState<boolean>(true);
+
+  // Analytics Dashboard state
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState<boolean>(false);
 
   // Staff listing state
   const [staffData, setStaffData] = useState<{ doctors: any[]; receptionists: any[]; pharmacists?: any[] }>({
@@ -263,6 +281,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
     specialization: string;
     shift_timing: string;
     role: string;
+    password?: string;
   } | null>(null);
 
   // Doctor Emergency Block & Bulk Reschedule State
@@ -304,6 +323,21 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
       showToast('error', 'Failed to load operational overview metrics.');
     } finally {
       setIsLoadingOverview(false);
+    }
+  };
+
+  // Fetch Analytics Data
+  const fetchAnalytics = async () => {
+    setIsLoadingAnalytics(true);
+    try {
+      const res = await api.get('/clinic-manager/analytics');
+      if (res.data) {
+        setAnalyticsData(res.data);
+      }
+    } catch (err: any) {
+      showToast('error', 'Failed to load clinic operational analytics.');
+    } finally {
+      setIsLoadingAnalytics(false);
     }
   };
 
@@ -591,6 +625,9 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
       fetchAdmissionHistory();
       fetchPatientsAndDoctors();
     }
+    if (activeTab === 'analytics') {
+      fetchAnalytics();
+    }
   }, [activeTab]);
 
   // Handle Onboard Doctor
@@ -684,6 +721,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         consultation_fee: editStaffModal.consultation_fee,
         specialization: editStaffModal.specialization,
         shift_timing: editStaffModal.shift_timing,
+        password: editStaffModal.password || undefined,
       });
       showToast('success', res.data?.message || 'Staff updated successfully!');
       setEditStaffModal(null);
@@ -843,81 +881,126 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
       {editStaffModal && (
         <div className="manager-modal-overlay">
           <div className="manager-modal-card">
-            <div className="modal-header">
-              <h2>Edit Staff Member: {editStaffModal.full_name}</h2>
-              <button className="close-btn" onClick={() => setEditStaffModal(null)}>×</button>
+            <div className="modal-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Edit Staff Member
+                </h2>
+                <button className="close-btn" onClick={() => setEditStaffModal(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', fontSize: '1.2rem' }}>×</button>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                Updating details for <strong>{editStaffModal.full_name}</strong> ({editStaffModal.role})
+              </p>
             </div>
             <form onSubmit={handleSaveEditStaff}>
-              <div className="custom-form-group" style={{ marginBottom: '12px' }}>
-                <label>Full Name</label>
-                <input
-                  type="text"
-                  className="custom-input"
-                  value={editStaffModal.full_name}
-                  onChange={(e) => setEditStaffModal({ ...editStaffModal, full_name: e.target.value })}
-                />
-              </div>
-
-              <div className="custom-form-group" style={{ marginBottom: '12px' }}>
-                <label>Phone Number</label>
-                <input
-                  type="text"
-                  className="custom-input"
-                  value={editStaffModal.phone}
-                  onChange={(e) => setEditStaffModal({ ...editStaffModal, phone: e.target.value })}
-                />
-              </div>
-
-              {editStaffModal.role === 'doctor' && (
-                <>
-                  <div className="custom-form-group" style={{ marginBottom: '12px' }}>
-                    <label>Specialization</label>
-                    <input
-                      type="text"
-                      className="custom-input"
-                      value={editStaffModal.specialization}
-                      onChange={(e) => setEditStaffModal({ ...editStaffModal, specialization: e.target.value })}
-                    />
-                  </div>
-                  <div className="custom-form-group" style={{ marginBottom: '12px' }}>
-                    <label>Consultation Fee (₹)</label>
-                    <input
-                      type="number"
-                      className="custom-input"
-                      value={editStaffModal.consultation_fee}
-                      onChange={(e) => setEditStaffModal({ ...editStaffModal, consultation_fee: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                </>
-              )}
-
-              {editStaffModal.role === 'receptionist' && (
-                <div className="custom-form-group" style={{ marginBottom: '12px' }}>
-                  <label>Shift Timing</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <User size={14} style={{ color: '#0d9488' }} /> Full Name
+                  </label>
                   <input
                     type="text"
                     className="custom-input"
-                    value={editStaffModal.shift_timing}
-                    onChange={(e) => setEditStaffModal({ ...editStaffModal, shift_timing: e.target.value })}
+                    value={editStaffModal.full_name}
+                    onChange={(e) => setEditStaffModal({ ...editStaffModal, full_name: e.target.value })}
+                    style={{ borderRadius: '10px', padding: '10px 14px' }}
                   />
                 </div>
-              )}
 
-              <div className="custom-form-group" style={{ marginBottom: '20px' }}>
-                <label>Status</label>
-                <select
-                  className="custom-input"
-                  value={editStaffModal.is_active ? 'active' : 'inactive'}
-                  onChange={(e) => setEditStaffModal({ ...editStaffModal, is_active: e.target.value === 'active' })}
-                >
-                  <option value="active">Active / On Duty</option>
-                  <option value="inactive">Inactive / Off Duty</option>
-                </select>
+                <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <Phone size={14} style={{ color: '#0d9488' }} /> Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    className="custom-input"
+                    value={editStaffModal.phone || ''}
+                    onChange={(e) => setEditStaffModal({ ...editStaffModal, phone: e.target.value })}
+                    style={{ borderRadius: '10px', padding: '10px 14px' }}
+                  />
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-secondary" onClick={() => setEditStaffModal(null)}>Cancel</button>
-                <button type="submit" className="btn-primary" disabled={isSubmitting}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                {editStaffModal.role === 'doctor' && (
+                  <>
+                    <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <Edit3 size={14} style={{ color: '#0d9488' }} /> Specialization
+                      </label>
+                      <input
+                        type="text"
+                        className="custom-input"
+                        value={editStaffModal.specialization || ''}
+                        onChange={(e) => setEditStaffModal({ ...editStaffModal, specialization: e.target.value })}
+                        style={{ borderRadius: '10px', padding: '10px 14px' }}
+                      />
+                    </div>
+                    <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <DollarSign size={14} style={{ color: '#0d9488' }} /> Consultation Fee (₹)
+                      </label>
+                      <input
+                        type="number"
+                        className="custom-input"
+                        value={editStaffModal.consultation_fee || 0}
+                        onChange={(e) => setEditStaffModal({ ...editStaffModal, consultation_fee: parseFloat(e.target.value) || 0 })}
+                        style={{ borderRadius: '10px', padding: '10px 14px' }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {editStaffModal.role === 'receptionist' && (
+                  <div className="custom-form-group" style={{ gridColumn: 'span 2', marginBottom: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <Clock size={14} style={{ color: '#0d9488' }} /> Shift Timing
+                    </label>
+                    <input
+                      type="text"
+                      className="custom-input"
+                      value={editStaffModal.shift_timing || ''}
+                      onChange={(e) => setEditStaffModal({ ...editStaffModal, shift_timing: e.target.value })}
+                      style={{ borderRadius: '10px', padding: '10px 14px' }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <Lock size={14} style={{ color: '#0d9488' }} /> Reset Password
+                  </label>
+                  <input
+                    type="password"
+                    className="custom-input"
+                    placeholder="New password (optional)"
+                    value={editStaffModal.password || ''}
+                    onChange={(e) => setEditStaffModal({ ...editStaffModal, password: e.target.value })}
+                    style={{ borderRadius: '10px', padding: '10px 14px' }}
+                  />
+                </div>
+
+                <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <Activity size={14} style={{ color: '#0d9488' }} /> Account Status
+                  </label>
+                  <select
+                    className="custom-input"
+                    value={editStaffModal.is_active ? 'active' : 'inactive'}
+                    onChange={(e) => setEditStaffModal({ ...editStaffModal, is_active: e.target.value === 'active' })}
+                    style={{ borderRadius: '10px', padding: '10px 14px' }}
+                  >
+                    <option value="active">Active / On Duty</option>
+                    <option value="inactive">Inactive / Off Duty</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '20px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setEditStaffModal(null)} style={{ padding: '10px 20px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 600 }}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ padding: '10px 22px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', border: 'none', color: '#ffffff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(13, 148, 136, 0.2)' }}>
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
@@ -996,6 +1079,13 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
             <Bed size={18} /> Bed Management
           </button>
 
+          <button
+            className={`sidebar-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            <BarChart3 size={18} /> Interactive Analytics
+          </button>
+
           <div className="sidebar-section-heading" style={{ marginTop: '16px' }}>PROFILE</div>
           <button
             className={`sidebar-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
@@ -1026,6 +1116,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
               {activeTab === 'notices' && 'Staff Broadcast Announcements'}
               {activeTab === 'requests' && 'Doctor Schedule Approvals'}
               {activeTab === 'beds' && 'IPD Bed Management & Asset Registry'}
+              {activeTab === 'analytics' && 'Operational & Financial Analytics'}
             </h1>
             <p className="topbar-subtitle">Branch Operations & Clinical Workflow Oversight</p>
           </div>
@@ -1091,7 +1182,8 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                 consultation_fee: doc.consultation_fee,
                                 specialization: doc.specialization,
                                 shift_timing: '',
-                                role: 'doctor'
+                                role: 'doctor',
+                                password: ''
                               });
                             }}
                           >
@@ -1128,7 +1220,8 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                 consultation_fee: 0,
                                 specialization: '',
                                 shift_timing: rec.shift_timing,
-                                role: 'receptionist'
+                                role: 'receptionist',
+                                password: ''
                               });
                             }}
                           >
@@ -1442,7 +1535,8 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                     consultation_fee: d.consultation_fee,
                                     specialization: d.specialization,
                                     shift_timing: '',
-                                    role: 'doctor'
+                                    role: 'doctor',
+                                    password: ''
                                   })}
                                 >
                                   <Edit3 size={15} /> Edit
@@ -1499,7 +1593,8 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                     consultation_fee: 0,
                                     specialization: '',
                                     shift_timing: r.shift_timing,
-                                    role: 'receptionist'
+                                    role: 'receptionist',
+                                    password: ''
                                   })}
                                 >
                                   <Edit3 size={15} /> Edit
@@ -1776,23 +1871,17 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
 
                     <div className="custom-form-group">
                       <label>Emergency Absence Date *</label>
-                      <input
-                        type="date"
-                        className="custom-input"
+                      <CustomDatePicker
                         value={emergencyForm.leave_date}
-                        onChange={(e) => setEmergencyForm({ ...emergencyForm, leave_date: e.target.value })}
-                        required
+                        onChange={(date) => setEmergencyForm({ ...emergencyForm, leave_date: date })}
                       />
                     </div>
 
                     <div className="custom-form-group">
                       <label>Target Reschedule Date (Optional)</label>
-                      <input
-                        type="date"
-                        className="custom-input"
-                        placeholder="Default: Next Day"
+                      <CustomDatePicker
                         value={emergencyForm.target_reschedule_date}
-                        onChange={(e) => setEmergencyForm({ ...emergencyForm, target_reschedule_date: e.target.value })}
+                        onChange={(date) => setEmergencyForm({ ...emergencyForm, target_reschedule_date: date })}
                       />
                     </div>
                   </div>
@@ -3379,6 +3468,365 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
           </div>
         </div>
       )}
+
+          {/* TAB 9: OPERATIONAL & FINANCIAL ANALYTICS */}
+          {activeTab === 'analytics' && (
+            <div className="tab-fade-in" style={{ width: '100%' }}>
+              <div className="analytics-grid">
+                
+                {/* 1. Monthly Revenue Trends */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><TrendingUp size={18} className="text-teal-600" /> Monthly Revenue Trends</h3>
+                    <span className="header-badge">Last 6 Months</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.revenue_trends ? (
+                    <>
+                      <div className="chart-visual-container">
+                        {(() => {
+                          const data = analyticsData.revenue_trends;
+                          const maxVal = Math.max(...data.map((d: any) => d.revenue), 100000) * 1.1;
+                          const width = 450;
+                          const height = 180;
+                          const points = data.map((d: any, idx: number) => {
+                            const x = (idx / (data.length - 1)) * (width - 70) + 45;
+                            const y = (height - 30) - (d.revenue / maxVal) * (height - 50);
+                            return { x, y, val: d.revenue, month: d.month };
+                          });
+                          const linePath = points.map((p: any, idx: number) => 
+                            `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
+                          ).join(' ');
+                          const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - 30} L ${points[0].x} ${height - 30} Z`;
+                          
+                          return (
+                            <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
+                              <defs>
+                                <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#0b8eab" stopOpacity="0.45" />
+                                  <stop offset="100%" stopColor="#0b8eab" stopOpacity="0.01" />
+                                </linearGradient>
+                              </defs>
+                              
+                              {/* Grid lines */}
+                              {[0.25, 0.5, 0.75, 1.0].map((ratio, idx) => {
+                                const yVal = (height - 30) - ratio * (height - 50);
+                                return (
+                                  <line 
+                                    key={idx} 
+                                    x1="40" 
+                                    y1={yVal} 
+                                    x2={width - 20} 
+                                    y2={yVal} 
+                                    className="chart-grid-line" 
+                                  />
+                                );
+                              })}
+                              
+                              {/* Gradient Area */}
+                              <path d={areaPath} className="chart-area" />
+                              
+                              {/* Trend Line */}
+                              <path d={linePath} className="chart-line" />
+                              
+                              {/* Data Points */}
+                              {points.map((p: any, idx: number) => (
+                                <g key={idx} className="chart-point-container">
+                                  <circle cx={p.x} cy={p.y} r="5" className="chart-point" />
+                                  <text x={p.x} y={height - 10} textAnchor="middle" className="chart-axis-text">
+                                    {p.month}
+                                  </text>
+                                  
+                                  {/* Interactive Tooltip Group */}
+                                  <g className="chart-tooltip-group" transform={`translate(${p.x - 45}, ${p.y - 35})`}>
+                                    <rect width="90" height="24" className="chart-tooltip-rect" />
+                                    <text x="45" y="15" textAnchor="middle" className="chart-tooltip-text">
+                                      ₹{(p.val / 1000).toFixed(0)}k ({p.month})
+                                    </text>
+                                  </g>
+                                </g>
+                              ))}
+                            </svg>
+                          );
+                        })()}
+                      </div>
+                      
+                      <div className="chart-stats-row">
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val" style={{ color: '#0f766e' }}>
+                            ₹{analyticsData.revenue_trends[analyticsData.revenue_trends.length - 1].revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </div>
+                          <div className="chart-stat-lbl">Current Month</div>
+                        </div>
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val">
+                            ₹{(analyticsData.revenue_trends.reduce((sum: number, d: any) => sum + d.revenue, 0) / 6).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </div>
+                          <div className="chart-stat-lbl">6-Month Avg</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-td">No revenue data available.</div>
+                  )}
+                </div>
+
+                {/* 2. Bed Occupancy Rates */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><Activity size={18} className="text-teal-600" /> Bed Occupancy Analysis</h3>
+                    <span className="header-badge">IPD Metrics</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.bed_occupancy ? (
+                    <div className="gauge-visual-container">
+                      <div className="circular-gauge-wrapper">
+                        {(() => {
+                          const radius = 55;
+                          const circ = 2 * Math.PI * radius;
+                          const offset = circ - (analyticsData.bed_occupancy.occupancy_rate / 100) * circ;
+                          return (
+                            <svg className="gauge-svg" viewBox="0 0 140 140">
+                              <circle cx="70" cy="70" r={radius} className="gauge-bg" />
+                              <circle 
+                                cx="70" 
+                                cy="70" 
+                                r={radius} 
+                                className="gauge-fill" 
+                                strokeDasharray={circ} 
+                                strokeDashoffset={offset} 
+                              />
+                            </svg>
+                          );
+                        })()}
+                        
+                        <div className="gauge-text">
+                          <span className="gauge-percent">{analyticsData.bed_occupancy.occupancy_rate}%</span>
+                          <span className="gauge-label">Occupied</span>
+                        </div>
+                      </div>
+                      
+                      <div className="gauge-legend">
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot occupied"></span>
+                            <span>Occupied Beds</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.occupied}</span>
+                        </div>
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot available"></span>
+                            <span>Available Beds</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.available}</span>
+                        </div>
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot cleaning"></span>
+                            <span>In Cleaning</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.cleaning}</span>
+                        </div>
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot maintenance"></span>
+                            <span>Maintenance</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.maintenance}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="empty-td">No bed metrics available.</div>
+                  )}
+                </div>
+
+                {/* 3. Pharmacy Stock Alert & Low-Stock Indicator */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><Package size={18} className="text-teal-600" /> Pharmacy Inventory Stock Alerts</h3>
+                    <span className="header-badge">Reorder Status</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.pharmacy_stock ? (
+                    <>
+                      <div className="stock-summary-cards">
+                        <div className="stock-summary-card">
+                          <div className="stock-summary-icon out">0</div>
+                          <div className="stock-summary-text">
+                            <div className="stock-summary-val">{analyticsData.pharmacy_stock.out_of_stock}</div>
+                            <div className="stock-summary-lbl pulse-badge">
+                              <span className="pulse-dot red"></span> Out of Stock
+                            </div>
+                          </div>
+                        </div>
+                        <div className="stock-summary-card">
+                          <div className="stock-summary-icon low">!</div>
+                          <div className="stock-summary-text">
+                            <div className="stock-summary-val">{analyticsData.pharmacy_stock.low_stock}</div>
+                            <div className="stock-summary-lbl pulse-badge">
+                              <span className="pulse-dot amber"></span> Low Stock Items
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="stock-warning-list">
+                        {analyticsData.pharmacy_stock.low_stock_items.map((item: any, idx: number) => {
+                          const isOut = item.stock_qty === 0;
+                          const ratio = isOut ? 0 : Math.min(100, Math.round((item.stock_qty / item.reorder_level) * 100));
+                          
+                          return (
+                            <div className="stock-warning-item" key={idx}>
+                              <div className="stock-item-info">
+                                <span className="stock-item-name">{item.name}</span>
+                                <span className="stock-item-sub">{item.category} • Reorder Level: {item.reorder_level} {item.unit}</span>
+                              </div>
+                              <div className="stock-item-progress">
+                                <div className="progress-track">
+                                  <div 
+                                    className={`progress-bar ${isOut ? 'out-of-stock' : 'low-stock'}`} 
+                                    style={{ width: `${ratio}%` }} 
+                                  />
+                                </div>
+                                <span className={`stock-qty-badge ${isOut ? 'out' : 'low'}`}>
+                                  {item.stock_qty} {item.unit}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-td">No inventory metrics available.</div>
+                  )}
+                </div>
+
+                {/* 4. Branch-wise Patient Comparison Bar Chart */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><Users size={18} className="text-teal-600" /> Branch-wise Patient Comparison</h3>
+                    <span className="header-badge">Total Registered</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.branch_patient_comparison ? (
+                    <>
+                      <div className="chart-visual-container">
+                        {(() => {
+                          const data = analyticsData.branch_patient_comparison;
+                          const maxVal = Math.max(...data.map((d: any) => d.patient_count), 50) * 1.15;
+                          const width = 450;
+                          const height = 180;
+                          const barWidth = 45;
+                          const gap = 35;
+                          const startX = 60;
+                          
+                          return (
+                            <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
+                              <defs>
+                                <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#0d9488" stopOpacity="0.85" />
+                                  <stop offset="100%" stopColor="#0f766e" stopOpacity="0.25" />
+                                </linearGradient>
+                              </defs>
+                              
+                              {/* Grid lines */}
+                              {[0.25, 0.5, 0.75, 1.0].map((ratio, idx) => {
+                                const yVal = (height - 30) - ratio * (height - 50);
+                                return (
+                                  <line 
+                                    key={idx} 
+                                    x1="40" 
+                                    y1={yVal} 
+                                    x2={width - 20} 
+                                    y2={yVal} 
+                                    className="chart-grid-line" 
+                                  />
+                                );
+                              })}
+                              
+                              {/* Bars */}
+                              {data.map((d: any, idx: number) => {
+                                const x = startX + idx * (barWidth + gap);
+                                const barHeight = (d.patient_count / maxVal) * (height - 50);
+                                const y = (height - 30) - barHeight;
+                                
+                                return (
+                                  <g key={idx} className="chart-point-container">
+                                    <rect 
+                                      x={x} 
+                                      y={y} 
+                                      width={barWidth} 
+                                      height={barHeight} 
+                                      rx="6"
+                                      fill="url(#bar-gradient)"
+                                      style={{ transition: 'all 0.3s ease', cursor: 'pointer' }}
+                                    />
+                                    <text x={x + barWidth / 2} y={height - 10} textAnchor="middle" className="chart-axis-text">
+                                      {d.branch_name.replace(' Branch', '')}
+                                    </text>
+                                    
+                                    {/* Value label on top of bar */}
+                                    <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" style={{ fill: '#0f172a', fontSize: '11px', fontWeight: 'bold' }}>
+                                      {d.patient_count}
+                                    </text>
+
+                                    {/* Tooltip */}
+                                    <g className="chart-tooltip-group" transform={`translate(${x - 22}, ${y - 35})`}>
+                                      <rect width="90" height="24" className="chart-tooltip-rect" />
+                                      <text x="45" y="15" textAnchor="middle" className="chart-tooltip-text">
+                                        {d.patient_count} Patients
+                                      </text>
+                                    </g>
+                                  </g>
+                                );
+                              })}
+                            </svg>
+                          );
+                        })()}
+                      </div>
+                      
+                      <div className="chart-stats-row">
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val" style={{ color: '#0f766e' }}>
+                            {analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0)}
+                          </div>
+                          <div className="chart-stat-lbl">Total Patients</div>
+                        </div>
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val">
+                            {(analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0) / analyticsData.branch_patient_comparison.length).toFixed(0)}
+                          </div>
+                          <div className="chart-stat-lbl">Average per Branch</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-td">No branch patient metrics available.</div>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          )}
 
         {/* ADMISSION HISTORY FULL SUMMARY MODAL */}
       {isHistoryDetailsModalOpen && (

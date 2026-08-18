@@ -72,6 +72,19 @@ class ConnectionManager:
                 except Exception as e:
                     logger.warning(f"Error sending message to branch {branch_id}: {e}")
 
+    async def send_to_role_in_branch(self, role: str, branch_id: str, message: dict):
+        target_connections = [
+            ws for ws, meta in self.connection_metadata.items()
+            if meta.get("role") == role and meta.get("branch_id") == branch_id
+        ]
+        if target_connections:
+            logger.info(f"Sending message to role {role} in branch {branch_id} on {len(target_connections)} connections: {message}")
+            for connection in target_connections:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.warning(f"Error sending message to role {role} in branch {branch_id}: {e}")
+
     async def broadcast(self, message: dict):
         all_connections = list(self.connection_metadata.keys())
         logger.info(f"Broadcasting message to all {len(all_connections)} connections: {message}")

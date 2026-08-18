@@ -97,7 +97,7 @@ class NotificationService:
             push_enabled = patient.notification_push
 
         # 1. In-App notification (Always write to DB so it populates the bell dropdown history)
-        await self.repo.create({
+        db_noti = await self.repo.create({
             "user_id": user_id,
             "title": title,
             "message": message,
@@ -105,6 +105,26 @@ class NotificationService:
             "is_read": False
         })
         logger.info(f"[In-App] Created database notification record for user {user_id}: {title} - {message}")
+
+        # Send via WebSocket realtime channel
+        try:
+            from app.core.websocket import manager as ws_manager
+            await ws_manager.send_to_user(
+                str(user_id),
+                {
+                    "event": "new_notification",
+                    "data": {
+                        "id": str(db_noti.id),
+                        "title": title,
+                        "message": message,
+                        "type": type,
+                        "is_read": False,
+                        "created_at": db_noti.created_at.isoformat() if (hasattr(db_noti, "created_at") and db_noti.created_at) else None
+                    }
+                }
+            )
+        except Exception as ws_err:
+            logger.warning(f"Failed to send realtime notification to user {user_id} via WebSocket: {ws_err}")
 
         # 2. Email
         if email_enabled and user.email:
