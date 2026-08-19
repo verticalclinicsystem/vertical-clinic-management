@@ -58,8 +58,8 @@ class ClinicManagerService:
         lunch_end: str = "14:00",
     ) -> dict[str, Any]:
         """Onboard a new Doctor: Create User + Doctor Profile + Default Slots."""
-        # 1. Check existing email/phone
-        stmt_user = select(User).where((User.email == email) | (User.phone == phone))
+        clean_email = email.lower().strip()
+        stmt_user = select(User).where((func.lower(User.email) == clean_email) | (User.phone == phone))
         res_user = await self.db.execute(stmt_user)
         if res_user.scalar_one_or_none():
             raise EmailAlreadyExistsError()
@@ -74,7 +74,7 @@ class ClinicManagerService:
         hashed_pwd = hash_password(password)
         user = User(
             id=uuid.uuid4(),
-            email=email,
+            email=clean_email,
             phone=phone,
             hashed_password=hashed_pwd,
             full_name=cleaned_name,
@@ -158,8 +158,8 @@ class ClinicManagerService:
         shift_timing: str = "Morning Shift (09:00 - 17:00)",
     ) -> dict[str, Any]:
         """Onboard a new Receptionist: Create User + Receptionist Profile."""
-        # 1. Check existing user
-        stmt_user = select(User).where((User.email == email) | (User.phone == phone))
+        clean_email = email.lower().strip()
+        stmt_user = select(User).where((func.lower(User.email) == clean_email) | (User.phone == phone))
         res_user = await self.db.execute(stmt_user)
         if res_user.scalar_one_or_none():
             raise EmailAlreadyExistsError()
@@ -167,7 +167,7 @@ class ClinicManagerService:
         hashed_pwd = hash_password(password)
         user = User(
             id=uuid.uuid4(),
-            email=email,
+            email=clean_email,
             phone=phone,
             hashed_password=hashed_pwd,
             full_name=full_name,
@@ -401,8 +401,8 @@ class ClinicManagerService:
         branch_id: uuid.UUID | None = None,
         employee_code: str | None = None,
     ) -> dict[str, Any]:
-        """Onboard a new Pharmacist user."""
-        stmt_user = select(User).where((User.email == email) | (User.phone == phone))
+        clean_email = email.lower().strip()
+        stmt_user = select(User).where((func.lower(User.email) == clean_email) | (User.phone == phone))
         res_user = await self.db.execute(stmt_user)
         if res_user.scalar_one_or_none():
             raise EmailAlreadyExistsError()
@@ -410,7 +410,7 @@ class ClinicManagerService:
         hashed_pwd = hash_password(password)
         user = User(
             id=uuid.uuid4(),
-            email=email,
+            email=clean_email,
             phone=phone,
             hashed_password=hashed_pwd,
             full_name=full_name,
@@ -457,7 +457,9 @@ class ClinicManagerService:
         if is_active is not None:
             user.is_active = is_active
         if password is not None:
-            user.hashed_password = hash_password(password)
+            clean_pwd = password.strip()
+            if clean_pwd:
+                user.hashed_password = hash_password(clean_pwd)
 
         # Profile updates
         if user.role == UserRole.DOCTOR:

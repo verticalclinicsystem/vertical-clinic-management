@@ -5,7 +5,7 @@ All DB interaction lives here; the service layer only calls these methods.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -18,8 +18,9 @@ class UserRepository(BaseRepository[User]):
 
     # ── Lookups ────────────────────────────────────────────────────────────────
     async def get_by_email(self, email: str) -> User | None:
+        clean_email = email.lower().strip()
         result = await self.db.execute(
-            select(User).where(User.email == email.lower().strip())
+            select(User).where(func.lower(User.email) == clean_email)
         )
         return result.scalar_one_or_none()
 
@@ -42,8 +43,9 @@ class UserRepository(BaseRepository[User]):
         return list(result.scalars().all())
 
     async def email_exists(self, email: str) -> bool:
+        clean_email = email.lower().strip()
         return await self.exists(
-            [User.email == email.lower().strip()]
+            [func.lower(User.email) == clean_email]
         )
 
     async def phone_exists(self, phone: str) -> bool:
