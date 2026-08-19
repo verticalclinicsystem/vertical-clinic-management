@@ -424,6 +424,15 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
   }, [dashboardData]);
 
+  // Groq Whisper & Allergy Safety States
+  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const [allergyWarnings, setAllergyWarnings] = useState<string[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+
   const handleSaveDoctorProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileForm.full_name?.trim()) {
@@ -727,7 +736,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Voice dictation & AI states
   const [selectedScenario, setSelectedScenario] = useState<string>('');
-  const [isListening, setIsListening] = useState<boolean>(false);
+  const [, setIsListening] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [isEditingSummary, setIsEditingSummary] = useState<boolean>(false);
@@ -1246,11 +1255,25 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const triggerAIAnalysis = async (textToAnalyze: string, scenarioKey?: string) => {
     setIsAnalyzing(true);
     setApproved(false);
+    setAllergyWarnings([]);
     try {
+      // Gather active patient allergies if present
+      let patientAllergies: string[] = [];
+      if (activePatientDetails?.allergies) {
+        if (Array.isArray(activePatientDetails.allergies)) {
+          patientAllergies = activePatientDetails.allergies;
+        } else if (typeof activePatientDetails.allergies === 'string') {
+          patientAllergies = [activePatientDetails.allergies];
+        }
+      }
+
       const res = await api.post('/ai/analyze-notes', {
         text: textToAnalyze,
-        scenario: scenarioKey
+        scenario: scenarioKey,
+        patient_allergies: patientAllergies,
+        patient_id: activeAppt?.patient_id
       });
+
       if (res.data && res.data.success) {
         const result = res.data.data;
         let vitals = { bp: '120/80', pulse: 72, temperature: 98.6 };
@@ -1272,7 +1295,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           clinical_summary: result.summary || textToAnalyze,
           treatment_notes: result.treatment_plan_notes || '',
           medications: result.suggested_medications || [],
-          suggested_treatment: result.suggested_treatment_plan || ''
+          suggested_treatment: result.suggested_treatment_plan || '',
+          allergy_warnings: result.allergy_warnings || []
         };
 
         setAiSummary(summaryObj);
@@ -1280,18 +1304,22 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         setSuggestedMeds(result.suggested_medications || []);
         setSuggestedTreatment(result.suggested_treatment_plan || '');
         setSuggestedTreatmentNotes(result.treatment_plan_notes || '');
-
+        setAllergyWarnings(result.allergy_warnings || []);
+        
         // Auto-populate consultation form fields from AI result
         setDiagnosis(result.suggested_treatment_plan || '');
-        // Only populate notes if doctor hasn't already typed something
         if (!notes.trim()) {
           setNotes(result.treatment_plan_notes || result.summary || '');
         }
-        // Auto-populate symptoms from the AI clinical summary if symptoms field is empty
         if (!symptoms.trim() && result.summary) {
           setSymptoms(result.summary);
         }
-        showToast('AI Clinical Analysis loaded — review and accept below.');
+
+        if (result.allergy_warnings && result.allergy_warnings.length > 0) {
+          showToast('⚠️ ALLERGY ALERT: AI detected medication conflict with patient allergies!', 'error');
+        } else {
+          showToast('AI Clinical Analysis loaded — review and accept below.');
+        }
       }
     } catch (err) {
       console.error('Error in AI analysis request:', err);
@@ -1312,6 +1340,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setIsEditingSummary(false);
     setSuggestedMeds([]);
     setSuggestedTreatment('');
+    setAllergyWarnings([]);
 
     const fullText = CLINICAL_SCENARIOS[scenarioKey].notes;
     let currentIdx = 0;
@@ -1322,57 +1351,103 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       } else {
         clearInterval(interval);
         setIsListening(false);
-        // Automatically trigger AI analysis
         triggerAIAnalysis(fullText, scenarioKey);
       }
     }, 15);
   };
 
-  // Voice dictation using Web Speech API or simulated fallback
-  const handleStartVoiceDictation = () => {
-    setApproved(false);
-    setAiSummary('');
-    setEditedSummaryText('');
-    setIsEditingSummary(false);
-    setSuggestedMeds([]);
-    setSuggestedTreatment('');
+  // Groq Whisper Large V3 MediaRecorder voice dictation
+  const startMediaRecorder = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        setSymptoms('');
-      };
-
-      recognition.onresult = (event: any) => {
-        const resultText = event.results[0][0].transcript;
-        setSymptoms(resultText);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-        showToast('Speech recognition failed. Running simulated voice dictation.', 'error');
-        runSimulatedVoice();
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-        // Trigger AI analysis when speech ends
-        if (symptoms.trim()) {
-          triggerAIAnalysis(symptoms);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
         }
       };
 
-      recognition.start();
-    } else {
-      // Fallback simulated voice dictation
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+        }
+        setRecordingSeconds(0);
+        setIsRecordingAudio(false);
+        setIsListening(false);
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioBlob.size === 0) {
+          showToast('No audio recorded.', 'error');
+          return;
+        }
+
+        setIsTranscribing(true);
+        showToast('Transcribing voice dictation via Groq Whisper Large V3...');
+
+        try {
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'dictation.webm');
+
+          const response = await api.post('/ai/transcribe', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          if (response.data && response.data.success) {
+            const transcribedText = response.data.data.text;
+            if (transcribedText) {
+              setSymptoms(transcribedText);
+              showToast('Voice transcribed successfully! Running AI analysis...');
+              triggerAIAnalysis(transcribedText);
+            } else {
+              showToast('No speech detected in recording.', 'error');
+            }
+          } else {
+            showToast('Voice transcription failed.', 'error');
+          }
+        } catch (err: any) {
+          console.error('Error transcribing audio:', err);
+          showToast('Whisper transcription failed. Please verify Groq API Key.', 'error');
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorder.start(200);
+      setIsRecordingAudio(true);
+      setIsListening(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      showToast('Could not access microphone. Please grant mic permissions.', 'error');
       runSimulatedVoice();
+    }
+  };
+
+  const stopMediaRecorder = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const handleStartVoiceDictation = () => {
+    if (isRecordingAudio) {
+      stopMediaRecorder();
+    } else {
+      setApproved(false);
+      setAiSummary('');
+      setEditedSummaryText('');
+      setIsEditingSummary(false);
+      setSuggestedMeds([]);
+      setSuggestedTreatment('');
+      setAllergyWarnings([]);
+      startMediaRecorder();
     }
   };
 
@@ -4188,14 +4263,78 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 <option value="extraction">💉 Extraction</option>
                                 <option value="scaling">🧼 Scaling</option>
                               </select>
-                              <button
-                                type="button"
-                                onClick={handleStartVoiceDictation}
-                                className="doc-btn-secondary"
-                                style={{ height: '30px', padding: '0 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: isListening ? '#ef4444' : '#cbd5e1' }}
+                              <button 
+                                type="button" 
+                                onClick={handleStartVoiceDictation} 
+                                className="doc-btn-secondary" 
+                                disabled={isTranscribing}
+                                style={{ 
+                                  height: '30px', 
+                                  padding: '0 12px', 
+                                  fontSize: '0.75rem', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: '6px', 
+                                  borderColor: isRecordingAudio ? '#ef4444' : isTranscribing ? '#0284c7' : '#cbd5e1',
+                                  backgroundColor: isRecordingAudio ? '#fef2f2' : isTranscribing ? '#f0f9ff' : '#ffffff',
+                                  color: isRecordingAudio ? '#dc2626' : isTranscribing ? '#0284c7' : '#334155',
+                                  fontWeight: 700
+                                }}
                               >
-                                {isListening ? <MicOff size={14} color="#ef4444" /> : <Mic size={14} />}
-                                <span>{isListening ? 'Listening...' : 'Speak'}</span>
+                                {isRecordingAudio ? (
+                                  <>
+                                    <span style={{
+                                      width: '8px',
+                                      height: '8px',
+                                      borderRadius: '50%',
+                                      backgroundColor: '#ef4444',
+                                      animation: 'pulse 1s infinite'
+                                    }} />
+                                    <MicOff size={14} color="#ef4444" />
+                                    <span>Stop ({String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')})</span>
+                                  </>
+                                ) : isTranscribing ? (
+                                  <>
+                                    <RefreshCw size={14} className="spin" color="#0284c7" />
+                                    <span>Transcribing...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Mic size={14} />
+                                    <span>Speak</span>
+                                  </>
+                                )}
+                              </button>
+
+                              {/* MANUAL EDIT RE-ANALYZE / AI SUMMARIZE BUTTON */}
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  if (!symptoms.trim()) {
+                                    showToast('Please speak or type clinical notes first.', 'error');
+                                    return;
+                                  }
+                                  showToast('Re-analyzing clinical notes with Groq AI...');
+                                  triggerAIAnalysis(symptoms);
+                                }} 
+                                className="doc-btn-primary" 
+                                disabled={isAnalyzing || isTranscribing}
+                                style={{ 
+                                  height: '30px', 
+                                  padding: '0 12px', 
+                                  fontSize: '0.75rem', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: '4px', 
+                                  backgroundColor: '#0d9488',
+                                  borderColor: '#0d9488',
+                                  color: '#ffffff',
+                                  fontWeight: 700
+                                }}
+                                title="Click to generate or update AI summary after manually editing text"
+                              >
+                                <Sparkles size={13} />
+                                <span>{isAnalyzing ? 'Analyzing...' : 'AI Summarize'}</span>
                               </button>
                             </div>
                           </div>
@@ -4210,12 +4349,28 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           />
 
                           {/* AI AMBIENT COPILOT DRAFT CARD */}
-                          {(isAnalyzing || aiSummary) && (
-                            <div style={{ marginTop: '10px', padding: '12px', borderRadius: '10px', backgroundColor: '#f0fdfa', border: '1px solid #99f6e4' }}>
+                          {(isAnalyzing || aiSummary || allergyWarnings.length > 0) && (
+                            <div style={{ marginTop: '10px', padding: '12px', borderRadius: '10px', backgroundColor: allergyWarnings.length > 0 ? '#fef2f2' : '#f0fdfa', border: allergyWarnings.length > 0 ? '1px solid #fca5a5' : '1px solid #99f6e4' }}>
+                              
+                              {/* ALLERGY WARNING ALERT BANNER */}
+                              {allergyWarnings.length > 0 && (
+                                <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#fee2e2', border: '1px solid #f87171', color: '#991b1b' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.82rem' }}>
+                                    <AlertTriangle size={16} color="#dc2626" />
+                                    <span>⚠️ CRITICAL PATIENT ALLERGY ALERT</span>
+                                  </div>
+                                  {allergyWarnings.map((warn, idx) => (
+                                    <div key={idx} style={{ fontSize: '0.78rem', marginTop: '4px', fontWeight: 600 }}>
+                                      • {warn}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <Sparkles size={16} color="#0d9488" />
-                                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f766e' }}>AI Clinical Assistant</span>
+                                  <Sparkles size={16} color={allergyWarnings.length > 0 ? '#dc2626' : '#0d9488'} />
+                                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: allergyWarnings.length > 0 ? '#991b1b' : '#0f766e' }}>AI Clinical Assistant</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   {!approved && (
@@ -4277,7 +4432,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 </div>
                               </div>
                               {isAnalyzing ? (
-                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#0d9488' }}>Analyzing voice stream & synthesizing clinical record...</p>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#0d9488' }}>Analyzing voice stream & synthesizing clinical record via Groq LLM...</p>
                               ) : (
                                 <div style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                   {isEditingSummary ? (
@@ -4296,7 +4451,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                   )}
                                   {aiSummary?.medications && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                                      <span style={{ color: '#0f766e', fontWeight: 700 }}>Suggested Medicines Available</span>
+                                      <span style={{ color: '#0f766e', fontWeight: 700 }}>Suggested Medicines Available ({aiSummary.medications.length})</span>
                                       <button type="button" onClick={applyAISuggestions} style={{ fontSize: '0.72rem', backgroundColor: '#ffffff', border: '1px solid #99f6e4', color: '#0f766e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}>
                                         + Apply to Prescription
                                       </button>
@@ -6159,7 +6314,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 className="doc-btn-primary"
                 style={{ padding: '8px 24px', fontSize: '0.85rem', fontWeight: 700 }}
               >
-                Close EMR File
+                Close
               </button>
             </div>
           </div>

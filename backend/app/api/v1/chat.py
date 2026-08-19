@@ -3,6 +3,7 @@ Direct Messaging & Patient Chat Router — Separate modular section for patient-
 """
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from app.models.user import User
 from app.schemas.chat import ChatMessageCreate, ChatMessageOut
 from app.utils.response import ApiResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -55,58 +57,69 @@ async def send_chat_message(
     patient_user_id = appt.patient.user_id if (appt.patient and appt.patient.user_id) else None
     doctor_user_id = appt.doctor.user_id if (appt.doctor and appt.doctor.user_id) else None
 
-    receiver_id = request.receiver_id
+    # Fallback to admin if doctor or patient user link is missing
+    if not doctor_user_id:
+        admin_res = await db.execute(select(User.id).where(User.role == "admin").limit(1))
+        doctor_user_id = admin_res.scalar_one_or_none()
 
-    if current_user.id == patient_user_id:
-        # Sender is patient, default receiver is doctor
-        if not receiver_id:
-            receiver_id = doctor_user_id
-    elif current_user.id == doctor_user_id or current_user.role in ("doctor", "receptionist", "admin"):
-        # Sender is clinician/staff, default receiver is patient
-        if not receiver_id:
-            receiver_id = patient_user_id
+    if current_user.role == "patient" or current_user.id == patient_user_id:
+        patient_user_id = current_user.id
+        receiver_id = request.receiver_id or doctor_user_id
+    elif current_user.id == doctor_user_id or current_user.role in ("doctor", "receptionist", "admin", "clinic_manager"):
+        receiver_id = request.receiver_id or patient_user_id
     else:
         raise PermissionDeniedError("You do not have permission to chat regarding this appointment.")
 
-    # 3. Create and persist message
-    new_msg = ChatMessage(
-        appointment_id=request.appointment_id,
-        sender_id=current_user.id,
-        receiver_id=receiver_id,
-        message_text=request.message_text.strip(),
-        is_read=False,
-    )
-    db.add(new_msg)
-    await db.commit()
-    await db.refresh(new_msg)
+    if not receiver_id:
+        # Emergency fallback receiver: any admin/manager
+        admin_res = await db.execute(select(User.id).where(User.role.in_(["admin", "clinic_manager"])).limit(1))
+        receiver_id = admin_res.scalar_one_or_none()
 
-    # 3b. Automatic Clinic Desk Responder (Auto-reply when Patient messages Clinic/Doctor)
-    if current_user.id == patient_user_id and receiver_id:
-        msg_text_lower = request.message_text.lower()
-        patient_first_name = (current_user.full_name or "Patient").split()[0]
-        doc_raw_name = appt.doctor.user.full_name if (appt.doctor and appt.doctor.user) else "Doctor"
-        doc_clean_name = doc_raw_name if doc_raw_name.startswith("Dr.") else f"Dr. {doc_raw_name}"
-
-        if any(w in msg_text_lower for w in ["x-ray", "xray", "report", "file", "document", "pdf"]):
-            reply_text = f"Hello {patient_first_name}! Thank you for notifying us. {doc_clean_name} has received your diagnostic report update and will review it prior to your consultation session."
-        elif any(w in msg_text_lower for w in ["hi", "hii", "hello", "hey", "greetings"]):
-            reply_text = f"Hello {patient_first_name}! Welcome to Clinic Support. How can we assist you with your upcoming consultation with {doc_clean_name}?"
-        elif any(w in msg_text_lower for w in ["pain", "emergency", "severe", "bleeding", "swelling"]):
-            reply_text = f"Notice: We have flagged your symptoms for urgent review. If this is an acute dental emergency, please visit the nearest clinic emergency desk or call our helpline."
-        elif any(w in msg_text_lower for w in ["time", "timing", "late", "reschedule", "delay"]):
-            reply_text = f"Hello {patient_first_name}! Your time request has been forwarded to the clinic desk. You can also reschedule directly from the Appointments section."
-        else:
-            reply_text = f"Hello {patient_first_name}! Your message has been logged for {doc_clean_name} and the clinic desk. We will assist you promptly during your consultation."
-
-        auto_reply_msg = ChatMessage(
+    try:
+        # 3. Create and persist message
+        new_msg = ChatMessage(
             appointment_id=request.appointment_id,
-            sender_id=receiver_id,
-            receiver_id=current_user.id,
-            message_text=reply_text,
+            sender_id=current_user.id,
+            receiver_id=receiver_id,
+            message_text=request.message_text.strip(),
             is_read=False,
         )
-        db.add(auto_reply_msg)
+        db.add(new_msg)
         await db.commit()
+        await db.refresh(new_msg)
+
+        # 3b. Automatic Clinic Desk Responder (Auto-reply when Patient messages Clinic/Doctor)
+        if (current_user.id == patient_user_id or current_user.role == "patient") and receiver_id:
+            msg_text_lower = request.message_text.lower()
+            patient_first_name = (current_user.full_name or "Patient").split()[0]
+            doc_raw_name = appt.doctor.user.full_name if (appt.doctor and appt.doctor.user and appt.doctor.user.full_name) else "Doctor"
+            doc_clean_name = doc_raw_name if doc_raw_name.startswith("Dr.") else f"Dr. {doc_raw_name}"
+
+            if any(w in msg_text_lower for w in ["x-ray", "xray", "report", "file", "document", "pdf"]):
+                reply_text = f"Hello {patient_first_name}! Thank you for notifying us. {doc_clean_name} has received your diagnostic report update and will review it prior to your consultation session."
+            elif any(w in msg_text_lower for w in ["hi", "hii", "hello", "hey", "greetings"]):
+                reply_text = f"Hello {patient_first_name}! Welcome to Clinic Support. How can we assist you with your upcoming consultation with {doc_clean_name}?"
+            elif any(w in msg_text_lower for w in ["pain", "emergency", "severe", "bleeding", "swelling"]):
+                reply_text = f"Notice: We have flagged your symptoms for urgent review. If this is an acute dental emergency, please visit the nearest clinic emergency desk or call our helpline."
+            elif any(w in msg_text_lower for w in ["time", "timing", "late", "reschedule", "delay"]):
+                reply_text = f"Hello {patient_first_name}! Your time request has been forwarded to the clinic desk. You can also reschedule directly from the Appointments section."
+            else:
+                reply_text = f"Hello {patient_first_name}! Your message has been logged for {doc_clean_name} and the clinic desk. We will assist you promptly during your consultation."
+
+            auto_reply_msg = ChatMessage(
+                appointment_id=request.appointment_id,
+                sender_id=receiver_id,
+                receiver_id=current_user.id,
+                message_text=reply_text,
+                is_read=False,
+            )
+            db.add(auto_reply_msg)
+            await db.commit()
+
+    except Exception as err:
+        await db.rollback()
+        logger.error(f"Error persisting chat message or auto-reply: {err}")
+        raise BadRequestError("Could not process chat message. Please try again.") from err
 
     # 4. Prepare clean output model
     msg_out = ChatMessageOut(
