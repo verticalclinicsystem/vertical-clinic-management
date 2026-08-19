@@ -25,6 +25,7 @@ import {
   Upload,
   Bed,
   Eye,
+  EyeOff,
   BarChart3,
   TrendingUp,
   Activity,
@@ -282,7 +283,10 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
     shift_timing: string;
     role: string;
     password?: string;
+    confirmPassword?: string;
   } | null>(null);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [showEditConfirmPassword, setShowEditConfirmPassword] = useState(false);
 
   // Doctor Emergency Block & Bulk Reschedule State
   const [emergencyForm, setEmergencyForm] = useState({
@@ -709,9 +713,24 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
   };
 
   // Handle Edit Staff Submission
-  const handleSaveEditStaff = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveEditStaff = async (e?: React.SyntheticEvent) => {
+    if (e) e.preventDefault();
     if (!editStaffModal) return;
+
+    const trimmedPassword = editStaffModal.password ? editStaffModal.password.replace(/[\t\r\n]/g, '').trim() : '';
+    const trimmedConfirmPassword = editStaffModal.confirmPassword ? editStaffModal.confirmPassword.replace(/[\t\r\n]/g, '').trim() : '';
+
+    if (trimmedPassword || trimmedConfirmPassword) {
+      if (trimmedPassword !== trimmedConfirmPassword) {
+        showToast('error', 'New password and confirm password do not match!');
+        return;
+      }
+      if (trimmedPassword.length < 6) {
+        showToast('error', 'New password must be at least 6 characters long!');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const res = await api.patch(`/clinic-manager/staff/${editStaffModal.user_id}`, {
@@ -721,7 +740,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         consultation_fee: editStaffModal.consultation_fee,
         specialization: editStaffModal.specialization,
         shift_timing: editStaffModal.shift_timing,
-        password: editStaffModal.password || undefined,
+        password: trimmedPassword || undefined,
       });
       showToast('success', res.data?.message || 'Staff updated successfully!');
       setEditStaffModal(null);
@@ -892,7 +911,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                 Updating details for <strong>{editStaffModal.full_name}</strong> ({editStaffModal.role})
               </p>
             </div>
-            <form onSubmit={handleSaveEditStaff}>
+            <div className="modal-form-content">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div className="custom-form-group" style={{ marginBottom: 0 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -903,6 +922,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                     className="custom-input"
                     value={editStaffModal.full_name}
                     onChange={(e) => setEditStaffModal({ ...editStaffModal, full_name: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
                     style={{ borderRadius: '10px', padding: '10px 14px' }}
                   />
                 </div>
@@ -916,6 +936,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                     className="custom-input"
                     value={editStaffModal.phone || ''}
                     onChange={(e) => setEditStaffModal({ ...editStaffModal, phone: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
                     style={{ borderRadius: '10px', padding: '10px 14px' }}
                   />
                 </div>
@@ -933,6 +954,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                         className="custom-input"
                         value={editStaffModal.specialization || ''}
                         onChange={(e) => setEditStaffModal({ ...editStaffModal, specialization: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
                         style={{ borderRadius: '10px', padding: '10px 14px' }}
                       />
                     </div>
@@ -945,6 +967,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                         className="custom-input"
                         value={editStaffModal.consultation_fee || 0}
                         onChange={(e) => setEditStaffModal({ ...editStaffModal, consultation_fee: parseFloat(e.target.value) || 0 })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
                         style={{ borderRadius: '10px', padding: '10px 14px' }}
                       />
                     </div>
@@ -961,27 +984,14 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                       className="custom-input"
                       value={editStaffModal.shift_timing || ''}
                       onChange={(e) => setEditStaffModal({ ...editStaffModal, shift_timing: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
                       style={{ borderRadius: '10px', padding: '10px 14px' }}
                     />
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-                <div className="custom-form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    <Lock size={14} style={{ color: '#0d9488' }} /> Reset Password
-                  </label>
-                  <input
-                    type="password"
-                    className="custom-input"
-                    placeholder="New password (optional)"
-                    value={editStaffModal.password || ''}
-                    onChange={(e) => setEditStaffModal({ ...editStaffModal, password: e.target.value })}
-                    style={{ borderRadius: '10px', padding: '10px 14px' }}
-                  />
-                </div>
-
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
                 <div className="custom-form-group" style={{ marginBottom: 0 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     <Activity size={14} style={{ color: '#0d9488' }} /> Account Status
@@ -998,13 +1008,103 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                 </div>
               </div>
 
+              {/* RESET PASSWORD SECTION */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Lock size={15} style={{ color: '#0d9488' }} /> Reset Password (Optional)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      New Password
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showEditPassword ? 'text' : 'password'}
+                        className="custom-input"
+                        placeholder="Enter new password"
+                        autoComplete="new-password"
+                        value={editStaffModal.password || ''}
+                        onChange={(e) => setEditStaffModal({ ...editStaffModal, password: e.target.value.replace(/[\t\r\n]/g, '') })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
+                        style={{ borderRadius: '10px', padding: '10px 40px 10px 14px', width: '100%' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEditPassword(!showEditPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px'
+                        }}
+                        title={showEditPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="custom-form-group" style={{ marginBottom: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Confirm Password
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showEditConfirmPassword ? 'text' : 'password'}
+                        className="custom-input"
+                        placeholder="Confirm new password"
+                        autoComplete="new-password"
+                        value={editStaffModal.confirmPassword || ''}
+                        onChange={(e) => setEditStaffModal({ ...editStaffModal, confirmPassword: e.target.value.replace(/[\t\r\n]/g, '') })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditStaff(e); }}
+                        style={{ borderRadius: '10px', padding: '10px 40px 10px 14px', width: '100%' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEditConfirmPassword(!showEditConfirmPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px'
+                        }}
+                        title={showEditConfirmPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showEditConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {Boolean(editStaffModal.password && editStaffModal.confirmPassword && editStaffModal.password !== editStaffModal.confirmPassword) && (
+                  <div style={{ fontSize: '0.76rem', color: '#ef4444', marginTop: '8px', fontWeight: 600 }}>
+                    ⚠️ Passwords do not match! Please make sure both passwords are identical.
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '20px' }}>
                 <button type="button" className="btn-secondary" onClick={() => setEditStaffModal(null)} style={{ padding: '10px 20px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 600 }}>Cancel</button>
-                <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ padding: '10px 22px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', border: 'none', color: '#ffffff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(13, 148, 136, 0.2)' }}>
+                <button type="button" className="btn-primary" onClick={handleSaveEditStaff} disabled={isSubmitting} style={{ padding: '10px 22px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', border: 'none', color: '#ffffff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(13, 148, 136, 0.2)' }}>
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

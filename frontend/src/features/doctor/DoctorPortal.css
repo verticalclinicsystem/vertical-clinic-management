@@ -414,7 +414,8 @@
   color: var(--doc-text-dark);
 }
 
-.doc-input, .doc-textarea {
+.doc-input,
+.doc-textarea {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--doc-border);
@@ -425,7 +426,8 @@
   background-color: #ffffff;
 }
 
-.doc-input:focus, .doc-textarea:focus {
+.doc-input:focus,
+.doc-textarea:focus {
   border-color: var(--doc-primary);
 }
 
@@ -590,15 +592,34 @@
   animation: pulse-wave-animation 1s ease-in-out infinite alternate;
 }
 
-.pulse-wave.wave1 { animation-delay: 0.1s; }
-.pulse-wave.wave2 { animation-delay: 0.3s; }
-.pulse-wave.wave3 { animation-delay: 0.5s; }
-.pulse-wave.wave4 { animation-delay: 0.2s; }
-.pulse-wave.wave5 { animation-delay: 0.4s; }
+.pulse-wave.wave1 {
+  animation-delay: 0.1s;
+}
+
+.pulse-wave.wave2 {
+  animation-delay: 0.3s;
+}
+
+.pulse-wave.wave3 {
+  animation-delay: 0.5s;
+}
+
+.pulse-wave.wave4 {
+  animation-delay: 0.2s;
+}
+
+.pulse-wave.wave5 {
+  animation-delay: 0.4s;
+}
 
 @keyframes pulse-wave-animation {
-  0% { height: 4px; }
-  100% { height: 20px; }
+  0% {
+    height: 4px;
+  }
+
+  100% {
+    height: 20px;
+  }
 }
 
 /* Shimmer Loader Card */
@@ -619,7 +640,7 @@
   right: 0;
   bottom: 0;
   left: 0;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 20%, rgba(255,255,255,0) 60%);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.6) 20%, rgba(255, 255, 255, 0) 60%);
   animation: shimmer-animation 1.5s infinite;
 }
 
@@ -630,15 +651,35 @@
   margin-bottom: 12px;
 }
 
-.shimmer-line.line1 { width: 40%; }
-.shimmer-line.line2 { width: 85%; }
-.shimmer-line.line3 { width: 70%; }
-.shimmer-line.line4 { width: 90%; }
-.shimmer-line.line5 { width: 50%; margin-bottom: 0; }
+.shimmer-line.line1 {
+  width: 40%;
+}
+
+.shimmer-line.line2 {
+  width: 85%;
+}
+
+.shimmer-line.line3 {
+  width: 70%;
+}
+
+.shimmer-line.line4 {
+  width: 90%;
+}
+
+.shimmer-line.line5 {
+  width: 50%;
+  margin-bottom: 0;
+}
 
 @keyframes shimmer-animation {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 /* Premium Rx Preview Styling */
@@ -831,17 +872,16 @@
   cursor: pointer;
   transition: all 0.2s ease-in-out;
   padding: 0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .doc-back-btn:hover {
   background-color: #f0fdf4;
   border-color: var(--doc-primary);
   transform: translateX(-2px);
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 .doc-back-btn:active {
   transform: scale(0.95) translateX(-2px);
 }
-
