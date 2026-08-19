@@ -189,7 +189,13 @@ class AuthService:
         if not user:
             raise UserNotFoundError()
 
-        if not verify_password(request.password, user.hashed_password):
+        raw_password = request.password
+        trimmed_password = request.password.strip() if request.password else ''
+        is_valid = verify_password(raw_password, user.hashed_password) or (
+            bool(trimmed_password) and trimmed_password != raw_password and verify_password(trimmed_password, user.hashed_password)
+        )
+
+        if not is_valid:
             logger.warning(f"Failed login attempt for: {identifier}")
             raise InvalidCredentialsError()
 

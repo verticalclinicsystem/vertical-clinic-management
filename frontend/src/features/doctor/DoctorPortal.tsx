@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Home, 
-  Users, 
-  Video, 
-  FileText, 
-  Clock, 
+import {
+  Home,
+  Users,
+  Video,
+  FileText,
+  Clock,
   Search,
-  Plus, 
+  Plus,
   Trash2,
   Mic,
   MicOff,
@@ -240,7 +240,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  
+
   // Local Queue Search & Global EMR Search
   const [queueSearch, setQueueSearch] = useState<string>('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
@@ -319,10 +319,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
 
     let active = true;
-    const url = viewingReport.file_url.startsWith('http') 
-      ? viewingReport.file_url 
+    const url = viewingReport.file_url.startsWith('http')
+      ? viewingReport.file_url
       : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${viewingReport.file_url}`;
-    
+
     setLoadingReportFile(true);
     setReportError('');
 
@@ -775,7 +775,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       if (res.data && res.data.success) {
         const data = res.data.data;
         setDashboardData(data);
-        
+
         // Load existing availability settings from metadata
         if (data.doctor && data.doctor.availability_metadata) {
           try {
@@ -1280,7 +1280,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         setSuggestedMeds(result.suggested_medications || []);
         setSuggestedTreatment(result.suggested_treatment_plan || '');
         setSuggestedTreatmentNotes(result.treatment_plan_notes || '');
-        
+
         // Auto-populate consultation form fields from AI result
         setDiagnosis(result.suggested_treatment_plan || '');
         // Only populate notes if doctor hasn't already typed something
@@ -1336,7 +1336,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setIsEditingSummary(false);
     setSuggestedMeds([]);
     setSuggestedTreatment('');
-    
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
@@ -1441,14 +1441,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       const consRes = await api.get(`/consultations/?patient_id=${patient.id}`);
       const prescRes = await api.get(`/prescriptions/?patient_id=${patient.id}`);
       const reportsRes = await api.get(`/medical-reports/patient/${patient.id}`);
-      
+
       const historyData = {
         patient,
         consultations: consRes.data?.data?.items || [],
         prescriptions: prescRes.data?.data?.items || [],
         reports: reportsRes.data?.data || []
       };
-      
+
       setSelectedPatientHistory(historyData);
       setEmrLookupPatient(historyData);
     } catch (err) {
@@ -1463,23 +1463,23 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     setViewingReport(report);
     setLoadingReportFile(false);
     setReportError('');
-    
-    const url = report.file_url.startsWith('http') 
-      ? report.file_url 
+
+    const url = report.file_url.startsWith('http')
+      ? report.file_url
       : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`;
-      
+
     setReportFileUrl(url);
-    
+
     const urlLower = report.file_url.toLowerCase();
     const isImg = !urlLower.includes('.pdf') && (
-                  urlLower.endsWith('.png') || 
-                  urlLower.endsWith('.jpg') || 
-                  urlLower.endsWith('.jpeg') || 
-                  urlLower.endsWith('.gif') || 
-                  urlLower.endsWith('.webp') ||
-                  urlLower.includes('/image/')
-                );
-                  
+      urlLower.endsWith('.png') ||
+      urlLower.endsWith('.jpg') ||
+      urlLower.endsWith('.jpeg') ||
+      urlLower.endsWith('.gif') ||
+      urlLower.endsWith('.webp') ||
+      urlLower.includes('/image/')
+    );
+
     if (isImg) {
       setReportContentType('image/jpeg');
     } else {
@@ -1489,10 +1489,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   const downloadReportFile = async (url: string, filename: string) => {
     try {
-      const absoluteUrl = url.startsWith('http') 
-        ? url 
+      const absoluteUrl = url.startsWith('http')
+        ? url
         : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${url}`;
-      
+
       const response = await fetch(absoluteUrl);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1653,7 +1653,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       if (res.data && res.data.success) {
         showToast('Prescription updated successfully!', 'success');
         const updatedPresc = res.data.data;
-        
+
         setSelectedPrescription((prev: any) => ({
           ...prev,
           ...updatedPresc,
@@ -1709,7 +1709,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       };
 
       const consultRes = await api.post('/consultations/', consultPayload);
-      
+
       if (consultRes.data && consultRes.data.success) {
         const newConsultationId = consultRes.data.data.id;
 
@@ -1821,50 +1821,50 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
         <nav className="doc-sidebar-nav">
           <div className="doc-nav-group-label">MAIN</div>
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('dashboard'); setSelectedPatientHistory(null); }}
           >
             <Home size={18} /> Dashboard
           </div>
 
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'queue' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('queue'); setSelectedPatientHistory(null); }}
           >
             <List size={18} /> Queue
           </div>
-          
+
           <div className="doc-nav-group-label">CONSULTATION</div>
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'consultation' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('consultation'); }}
           >
             <Stethoscope size={18} /> Consultation
           </div>
 
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'prescriptions' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('prescriptions'); setSelectedPatientHistory(null); }}
           >
             <FileText size={18} /> Prescription
           </div>
 
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'treatment' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('treatment'); setSelectedPatientHistory(null); }}
           >
             <Activity size={18} /> Treatment Plan
           </div>
 
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'followup' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('followup'); setSelectedPatientHistory(null); }}
           >
             <Clock size={18} /> Follow-up
           </div>
 
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'availability' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('availability'); setSelectedPatientHistory(null); }}
           >
@@ -1872,7 +1872,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           </div>
 
           <div className="doc-nav-group-label">IN-PATIENT (IPD)</div>
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'ipd' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('ipd'); setSelectedPatientHistory(null); }}
           >
@@ -1880,7 +1880,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           </div>
 
           <div className="doc-nav-group-label">PROFILE</div>
-          <div 
+          <div
             className={`doc-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => { handleRootTabChange('profile'); setSelectedPatientHistory(null); }}
           >
@@ -1901,9 +1901,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         <header className="doc-topbar">
           <div className="doc-title-area" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px' }}>
             {tabHistory.length > 0 && (
-              <button 
-                onClick={goBackTab} 
-                className="doc-back-btn" 
+              <button
+                onClick={goBackTab}
+                className="doc-back-btn"
                 title="Go Back"
               >
                 <ArrowLeft size={18} />
@@ -1928,11 +1928,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
           <div ref={globalSearchRef} style={{ flex: 1, maxWidth: '380px', margin: '0 32px', position: 'relative' }}>
             <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} size={16} />
-            <input 
-              type="text" 
-              className="doc-input" 
-              style={{ paddingLeft: '38px', height: '38px', width: '100%', borderRadius: '10px', fontSize: '0.85rem', margin: 0 }} 
-              placeholder="Global Patient EMR Search..." 
+            <input
+              type="text"
+              className="doc-input"
+              style={{ paddingLeft: '38px', height: '38px', width: '100%', borderRadius: '10px', fontSize: '0.85rem', margin: 0 }}
+              placeholder="Global Patient EMR Search..."
               value={globalSearchQuery}
               onChange={(e) => handleGlobalSearch(e.target.value)}
             />
@@ -1957,9 +1957,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   </div>
                 ) : (
                   globalSearchResults.map((pat: any) => (
-                    <div 
-                      key={pat.id} 
-                      className="global-search-item" 
+                    <div
+                      key={pat.id}
+                      className="global-search-item"
                       onClick={() => handleSelectEmrPatient(pat)}
                       style={{
                         padding: '10px 16px',
@@ -1991,7 +1991,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
-              <button 
+              <button
                 onClick={() => setIsNotiDropdownOpen(!isNotiDropdownOpen)}
                 style={{ border: 'none', background: 'none', position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
               >
@@ -2026,8 +2026,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Notifications</h4>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       {notifications.filter(n => !n.is_read).length > 0 && (
-                        <button 
-                          className="notifications-clear-btn" 
+                        <button
+                          className="notifications-clear-btn"
                           onClick={() => { handleMarkAllNotificationsRead(); }}
                           style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: 'var(--primary-teal, #0c6e8c)', cursor: 'pointer', fontWeight: 500 }}
                         >
@@ -2035,8 +2035,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         </button>
                       )}
                       {notifications.length > 0 && (
-                        <button 
-                          className="notifications-clear-btn" 
+                        <button
+                          className="notifications-clear-btn"
                           onClick={() => { handleClearAllNotifications(); setIsNotiDropdownOpen(false); }}
                           style={{ background: 'none', border: 'none', fontSize: '0.75rem', color: '#d9534f', cursor: 'pointer', fontWeight: 500 }}
                         >
@@ -2086,8 +2086,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
             </div>
 
             <div className="profile-dropdown-wrapper" ref={profileDropdownRef}>
-              <div 
-                className="doc-profile-badge" 
+              <div
+                className="doc-profile-badge"
                 onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
                 style={{ cursor: 'pointer' }}
               >
@@ -2246,28 +2246,28 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     <span style={{ width: '5px', height: '5px', backgroundColor: '#1d4ed8', borderRadius: '50%' }} /> Confirmed
                                   </span>
                                 )}
-                                
+
                                 {isCompleted ? (
-                                  <button 
-                                    onClick={() => handleViewHistory({ 
-                                      id: appt.patient_id, 
-                                      user: { full_name: appt.patient_name }, 
-                                      patient_code: appt.patient_code 
-                                    })} 
-                                    className="doc-btn-secondary" 
+                                  <button
+                                    onClick={() => handleViewHistory({
+                                      id: appt.patient_id,
+                                      user: { full_name: appt.patient_name },
+                                      patient_code: appt.patient_code
+                                    })}
+                                    className="doc-btn-secondary"
                                     style={{ height: '32px', padding: '0 16px', borderRadius: '6px', fontSize: '0.8rem', backgroundColor: '#f0fdf4', color: '#16a34a', borderColor: '#bbf7d0', cursor: 'pointer', fontWeight: '600' }}
                                   >
                                     View History
                                   </button>
                                 ) : (
-                                  <button 
-                                    onClick={() => handleStartConsultation({ 
-                                      id: appt.id, 
-                                      patient_name: appt.patient_name, 
-                                      patient_id: appt.patient_id || 'd9bfa4b1-8b01-44bb-bc74-672ef9198642', 
-                                      treatment_type: appt.treatment_type 
-                                    })} 
-                                    className="doc-btn-primary" 
+                                  <button
+                                    onClick={() => handleStartConsultation({
+                                      id: appt.id,
+                                      patient_name: appt.patient_name,
+                                      patient_id: appt.patient_id || 'd9bfa4b1-8b01-44bb-bc74-672ef9198642',
+                                      treatment_type: appt.treatment_type
+                                    })}
+                                    className="doc-btn-primary"
                                     style={{ height: '32px', padding: '0 16px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600' }}
                                   >
                                     {isInConsult ? 'Resume' : 'Open'}
@@ -2300,12 +2300,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             return (
                               <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '12%', position: 'relative' }}>
                                 <span style={{ fontSize: '0.72rem', fontWeight: '600', marginBottom: '6px', color: 'var(--doc-text-muted)' }}>{d.count}</span>
-                                <div 
-                                  style={{ 
-                                    width: '100%', 
-                                    height: `${heightPx}px`, 
-                                    background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)', 
-                                    borderRadius: '4px', 
+                                <div
+                                  style={{
+                                    width: '100%',
+                                    height: `${heightPx}px`,
+                                    background: 'linear-gradient(180deg, #06b6d4 0%, #0f766e 100%)',
+                                    borderRadius: '4px',
                                     cursor: 'pointer',
                                     transition: 'all 0.3s ease'
                                   }}
@@ -2329,9 +2329,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Active Waiting Queue</h3>
                     <div style={{ position: 'relative', width: '280px' }}>
                       <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} size={16} />
-                      <input 
-                        type="text" 
-                        className="doc-input" 
+                      <input
+                        type="text"
+                        className="doc-input"
                         style={{ paddingLeft: '36px', height: '36px', width: '100%', fontSize: '0.85rem', margin: 0 }}
                         placeholder="Search patient name..."
                         list="doctor-queue-suggestions"
@@ -2377,12 +2377,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           const statusLower = appt.status.toLowerCase();
                           const isCompleted = statusLower === 'completed';
                           const isInConsultation = statusLower === 'in_consultation' || statusLower === 'in consultation';
-                          
+
                           // Status badge colors
                           let badgeBg = '#eff6ff';
                           let badgeText = '#1d4ed8';
                           let badgeLabel = 'Confirmed';
-                          
+
                           if (statusLower === 'waiting' || statusLower === 'pending' || statusLower === 'checked_in') {
                             badgeBg = '#fff7ed';
                             badgeText = '#ea580c';
@@ -2396,7 +2396,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             badgeText = '#16a34a';
                             badgeLabel = 'Completed';
                           }
-                          
+
                           const colors = [
                             { bg: '#e0f2fe', text: '#0369a1' },
                             { bg: '#fef3c7', text: '#d97706' },
@@ -2407,12 +2407,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           const color = colors[idx % colors.length];
 
                           return (
-                            <div key={appt.id || idx} className="doc-card" style={{ 
-                              margin: 0, 
-                              padding: '24px', 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '16px', 
+                            <div key={appt.id || idx} className="doc-card" style={{
+                              margin: 0,
+                              padding: '24px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '16px',
                               justifyContent: 'space-between',
                               opacity: isCompleted ? 0.8 : 1,
                               borderLeft: isCompleted ? '4px solid #22c55e' : isInConsultation ? '4px solid #3b82f6' : '4px solid transparent'
@@ -2420,15 +2420,15 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               {/* Card Header */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                  <div style={{ 
-                                    width: '44px', 
-                                    height: '44px', 
-                                    borderRadius: '50%', 
-                                    backgroundColor: color.bg, 
-                                    color: color.text, 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center', 
+                                  <div style={{
+                                    width: '44px',
+                                    height: '44px',
+                                    borderRadius: '50%',
+                                    backgroundColor: color.bg,
+                                    color: color.text,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
                                     fontWeight: '700',
                                     fontSize: '0.95rem'
                                   }}>
@@ -2448,16 +2448,16 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     </span>
                                   </div>
                                 </div>
-                                <span style={{ 
-                                  backgroundColor: badgeBg, 
-                                  color: badgeText, 
-                                  padding: '4px 10px', 
-                                  borderRadius: '20px', 
-                                  fontSize: '0.72rem', 
-                                  fontWeight: '700', 
-                                  display: 'inline-flex', 
-                                  alignItems: 'center', 
-                                  gap: '4px' 
+                                <span style={{
+                                  backgroundColor: badgeBg,
+                                  color: badgeText,
+                                  padding: '4px 10px',
+                                  borderRadius: '20px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: '700',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
                                 }}>
                                   <span style={{ width: '5px', height: '5px', backgroundColor: badgeText, borderRadius: '50%' }} />
                                   {badgeLabel}
@@ -2504,15 +2504,15 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     <FolderOpen size={16} /> View History
                                   </button>
                                 ) : (
-                                  <button 
-                                    onClick={() => handleStartConsultation(appt)} 
-                                    className="doc-btn-primary" 
-                                    style={{ 
-                                      flex: 1, 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      justifyContent: 'center', 
-                                      gap: '8px', 
+                                  <button
+                                    onClick={() => handleStartConsultation(appt)}
+                                    className="doc-btn-primary"
+                                    style={{
+                                      flex: 1,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '8px',
                                       height: '40px',
                                       fontSize: '0.85rem',
                                       fontWeight: '600',
@@ -2525,61 +2525,61 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     <Stethoscope size={16} /> {isInConsultation ? 'Resume Consultation' : 'Start Consultation'}
                                   </button>
                                 )}
-                                
+
                                 {appt.consultation_type === 'teleconsultation' && !isCompleted && (
-                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flex: 1 }}>
-                                     {appt.tele_status === 'patient_ready' && (
-                                       <span style={{ 
-                                         display: 'inline-flex', 
-                                         alignItems: 'center', 
-                                         gap: '4px', 
-                                         fontSize: '0.7rem', 
-                                         color: '#10b981', 
-                                         fontWeight: '700',
-                                         backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                         padding: '2px 8px',
-                                         borderRadius: '12px',
-                                         border: '1px solid rgba(16, 185, 129, 0.2)',
-                                         marginBottom: '2px',
-                                         animation: 'pulse-badge 2s infinite'
-                                       }}>
-                                         <style>{`
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flex: 1 }}>
+                                    {appt.tele_status === 'patient_ready' && (
+                                      <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        fontSize: '0.7rem',
+                                        color: '#10b981',
+                                        fontWeight: '700',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                                        marginBottom: '2px',
+                                        animation: 'pulse-badge 2s infinite'
+                                      }}>
+                                        <style>{`
                                            @keyframes pulse-badge {
                                              0% { opacity: 0.8; }
                                              50% { opacity: 1; transform: scale(1.02); }
                                              100% { opacity: 0.8; }
                                            }
                                          `}</style>
-                                         <span style={{ width: '6px', height: '6px', backgroundColor: '#10b981', borderRadius: '50%' }} />
-                                         Patient Ready
-                                       </span>
-                                     )}
-                                     <button 
-                                       onClick={() => handleJoinVideo(appt)} 
-                                       className="doc-btn-primary" 
-                                       style={{ 
-                                         width: '100%',
-                                         padding: '0 14px',
-                                         height: '40px',
-                                         display: 'inline-flex', 
-                                         alignItems: 'center', 
-                                         justifyContent: 'center', 
-                                         gap: '6px',
-                                         backgroundColor: appt.tele_status === 'patient_ready' ? '#10b981' : '#0284c7',
-                                         color: '#ffffff',
-                                         fontWeight: '600',
-                                         fontSize: '0.85rem',
-                                         borderRadius: '8px',
-                                         cursor: 'pointer',
-                                         border: 'none',
-                                         boxShadow: appt.tele_status === 'patient_ready' ? '0 0 12px rgba(16, 185, 129, 0.4)' : '0 2px 6px rgba(2, 132, 199, 0.25)',
-                                         transition: 'all 0.3s ease'
-                                       }}
-                                       title="Join Teleconsultation Video Call"
-                                     >
-                                       <Video size={16} /> Join Video Call
-                                     </button>
-                                   </div>
+                                        <span style={{ width: '6px', height: '6px', backgroundColor: '#10b981', borderRadius: '50%' }} />
+                                        Patient Ready
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() => handleJoinVideo(appt)}
+                                      className="doc-btn-primary"
+                                      style={{
+                                        width: '100%',
+                                        padding: '0 14px',
+                                        height: '40px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '6px',
+                                        backgroundColor: appt.tele_status === 'patient_ready' ? '#10b981' : '#0284c7',
+                                        color: '#ffffff',
+                                        fontWeight: '600',
+                                        fontSize: '0.85rem',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        border: 'none',
+                                        boxShadow: appt.tele_status === 'patient_ready' ? '0 0 12px rgba(16, 185, 129, 0.4)' : '0 2px 6px rgba(2, 132, 199, 0.25)',
+                                        transition: 'all 0.3s ease'
+                                      }}
+                                      title="Join Teleconsultation Video Call"
+                                    >
+                                      <Video size={16} /> Join Video Call
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -2634,13 +2634,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                   {/* Read-only availability parameters */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginBottom: '24px' }}>
-                    
+
                     {/* Working Hours Card */}
-                    <div className="doc-card" style={{ 
-                      padding: '24px', 
-                      marginBottom: 0, 
-                      borderRadius: '16px', 
-                      background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)', 
+                    <div className="doc-card" style={{
+                      padding: '24px',
+                      marginBottom: 0,
+                      borderRadius: '16px',
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
                       border: '1px solid #bbf7d0',
                       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
                       transition: 'transform 0.2s, box-shadow 0.2s',
@@ -2649,24 +2649,24 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       flexDirection: 'column',
                       justifyContent: 'space-between'
                     }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
-                    }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
+                      }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '12px', 
-                          backgroundColor: '#dcfce7', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '12px',
+                          backgroundColor: '#dcfce7',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}>
                           <Clock size={20} color="#16a34a" />
                         </div>
@@ -2679,11 +2679,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     </div>
 
                     {/* Operational Breaks Card */}
-                    <div className="doc-card" style={{ 
-                      padding: '24px', 
-                      marginBottom: 0, 
-                      borderRadius: '16px', 
-                      background: 'linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)', 
+                    <div className="doc-card" style={{
+                      padding: '24px',
+                      marginBottom: 0,
+                      borderRadius: '16px',
+                      background: 'linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)',
                       border: '1px solid #fde68a',
                       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
                       transition: 'transform 0.2s, box-shadow 0.2s',
@@ -2692,24 +2692,24 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       flexDirection: 'column',
                       justifyContent: 'space-between'
                     }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
-                    }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
+                      }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '12px', 
-                          backgroundColor: '#fef3c7', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '12px',
+                          backgroundColor: '#fef3c7',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}>
                           <Clock size={20} color="#d97706" />
                         </div>
@@ -2722,11 +2722,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     </div>
 
                     {/* Teleconsultation Window Card */}
-                    <div className="doc-card" style={{ 
-                      padding: '24px', 
-                      marginBottom: 0, 
-                      borderRadius: '16px', 
-                      background: 'linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%)', 
+                    <div className="doc-card" style={{
+                      padding: '24px',
+                      marginBottom: 0,
+                      borderRadius: '16px',
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%)',
                       border: '1px solid #bae6fd',
                       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
                       transition: 'transform 0.2s, box-shadow 0.2s',
@@ -2735,24 +2735,24 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       flexDirection: 'column',
                       justifyContent: 'space-between'
                     }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
-                    }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
+                      }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '12px', 
-                          backgroundColor: '#e0f2fe', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '12px',
+                          backgroundColor: '#e0f2fe',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}>
                           <Video size={20} color="#0284c7" />
                         </div>
@@ -2901,18 +2901,18 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       <h4 style={{ margin: '0 0 16px 0', fontSize: '0.9rem', color: 'var(--doc-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Profile Picture
                       </h4>
-                      <div 
-                        style={{ 
-                          position: 'relative', 
-                          width: '130px', 
-                          height: '130px', 
-                          borderRadius: '50%', 
-                          border: '4px solid #f1f5f9', 
-                          overflow: 'hidden', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          backgroundColor: '#e2e8f0', 
+                      <div
+                        style={{
+                          position: 'relative',
+                          width: '130px',
+                          height: '130px',
+                          borderRadius: '50%',
+                          border: '4px solid #f1f5f9',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: '#e2e8f0',
                           marginBottom: '16px',
                           cursor: 'pointer',
                           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
@@ -2927,7 +2927,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             {profileForm.full_name ? profileForm.full_name.split(' ').map((n: string) => n[0]).join('') : 'DR'}
                           </span>
                         )}
-                        <div 
+                        <div
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -3166,9 +3166,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} size={16} />
-                          <input 
-                            type="text" 
-                            className="doc-input" 
+                          <input
+                            type="text"
+                            className="doc-input"
                             style={{ paddingLeft: '36px' }}
                             placeholder="Search patients by name, code, or phone number..."
                             list="doctor-patients-suggestions"
@@ -3213,8 +3213,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                   <td>{pat.date_of_birth || 'N/A'}</td>
                                   <td style={{ textTransform: 'capitalize' }}>{pat.gender || 'N/A'}</td>
                                   <td>
-                                    <button 
-                                      onClick={() => handleViewHistory(pat)} 
+                                    <button
+                                      onClick={() => handleViewHistory(pat)}
                                       className="doc-btn-primary"
                                     >
                                       Open Case History
@@ -3313,11 +3313,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       <h2 className="doc-card-title" style={{ margin: 0 }}>Prescription Logs</h2>
                       <div style={{ position: 'relative', width: '220px' }}>
                         <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--doc-text-muted)' }} />
-                        <input 
-                          type="text" 
-                          className="doc-input" 
+                        <input
+                          type="text"
+                          className="doc-input"
                           style={{ paddingLeft: '32px', height: '32px', fontSize: '0.8rem', marginBottom: 0 }}
-                          placeholder="Search patient name..." 
+                          placeholder="Search patient name..."
                           list="doctor-prescriptions-suggestions"
                           value={prescriptionSearch}
                           onChange={(e) => setPrescriptionSearch(e.target.value)}
@@ -3420,9 +3420,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         </div>
 
                         <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-                          <button 
-                            onClick={() => handleOpenEditPrescription(selectedPrescription)} 
-                            className="doc-btn-secondary" 
+                          <button
+                            onClick={() => handleOpenEditPrescription(selectedPrescription)}
+                            className="doc-btn-secondary"
                             style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#f0fdf4', color: '#16a34a', borderColor: '#bbf7d0', cursor: 'pointer', fontWeight: 600 }}
                           >
                             <Edit3 size={14} /> Edit Prescription
@@ -3452,9 +3452,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     <h3 className="doc-card-title" style={{ marginBottom: '16px' }}>Select Patient</h3>
                     <div className="doc-form-group">
                       <label className="doc-form-label">Patient</label>
-                      <select 
-                        className="doc-input" 
-                        value={treatmentPatientId} 
+                      <select
+                        className="doc-input"
+                        value={treatmentPatientId}
                         onChange={(e) => {
                           setTreatmentPatientId(e.target.value);
                           fetchPatientTreatmentPlan(e.target.value);
@@ -3472,8 +3472,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     {!activePlan && treatmentPatientId && !loadingPlan && (
                       <div style={{ padding: '16px', backgroundColor: '#f0fdf4', border: '1px dashed #22c55e', borderRadius: '8px', textAlign: 'center' }}>
                         <p style={{ fontSize: '0.85rem', margin: '0 0 12px 0' }}>No active treatment plan found for this patient.</p>
-                        <button 
-                          className="doc-btn-primary" 
+                        <button
+                          className="doc-btn-primary"
                           style={{ fontSize: '0.8rem', padding: '6px 12px' }}
                           onClick={() => handleCreateTreatmentPlan(treatmentPatientId, 'Comprehensive Dental Plan', 'Generated from doctor clinical panel')}
                         >
@@ -3491,20 +3491,20 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                           <div>
                             <h3 style={{ fontSize: '1.1rem', fontWeight: '800', margin: 0, color: 'var(--doc-primary)' }}>{activePlan.title}</h3>
-                             <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                               Status: 
-                               <strong style={{ 
-                                 color: activePlan.status?.toLowerCase() === 'completed' ? '#047857' : activePlan.status?.toLowerCase() === 'cancelled' ? '#b91c1c' : '#0d9488',
-                                 backgroundColor: activePlan.status?.toLowerCase() === 'completed' ? '#d1fae5' : activePlan.status?.toLowerCase() === 'cancelled' ? '#fee2e2' : '#ccfbf1',
-                                 padding: '2px 8px',
-                                 borderRadius: '4px',
-                                 fontSize: '0.75rem',
-                                 fontWeight: 800,
-                                 letterSpacing: '0.5px'
-                               }}>
-                                 {activePlan.status?.toLowerCase() === 'completed' ? '✓ COMPLETED' : activePlan.status?.toUpperCase()}
-                               </strong>
-                             </span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              Status:
+                              <strong style={{
+                                color: activePlan.status?.toLowerCase() === 'completed' ? '#047857' : activePlan.status?.toLowerCase() === 'cancelled' ? '#b91c1c' : '#0d9488',
+                                backgroundColor: activePlan.status?.toLowerCase() === 'completed' ? '#d1fae5' : activePlan.status?.toLowerCase() === 'cancelled' ? '#fee2e2' : '#ccfbf1',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                letterSpacing: '0.5px'
+                              }}>
+                                {activePlan.status?.toLowerCase() === 'completed' ? '✓ COMPLETED' : activePlan.status?.toUpperCase()}
+                              </strong>
+                            </span>
                           </div>
                           <div style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--doc-text-dark)' }}>
                             Total: ₹{activePlan.total_cost}
@@ -3517,20 +3517,19 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <span>Treatment Progress</span>
                             <span>
                               {Math.round(
-                                (activePlan.procedures?.filter((p: any) => p.status === 'completed').length / 
-                                (activePlan.procedures?.length || 1)) * 100
+                                (activePlan.procedures?.filter((p: any) => p.status === 'completed').length /
+                                  (activePlan.procedures?.length || 1)) * 100
                               )}%
                             </span>
                           </div>
                           <div className="progress-bar-container">
-                            <div 
-                              className="progress-bar-fill" 
-                              style={{ 
-                                width: `${
-                                  (activePlan.procedures?.filter((p: any) => p.status === 'completed').length / 
-                                  (activePlan.procedures?.length || 1)) * 100
-                                }%` 
-                              }} 
+                            <div
+                              className="progress-bar-fill"
+                              style={{
+                                width: `${(activePlan.procedures?.filter((p: any) => p.status === 'completed').length /
+                                    (activePlan.procedures?.length || 1)) * 100
+                                  }%`
+                              }}
                             />
                           </div>
                         </div>
@@ -3558,9 +3557,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     <td style={{ fontWeight: '600' }}>{proc.procedure_name}</td>
                                     <td>₹{proc.cost}</td>
                                     <td>
-                                      <select 
-                                        value={proc.status} 
-                                        className="doc-input" 
+                                      <select
+                                        value={proc.status}
+                                        className="doc-input"
                                         style={{ height: '28px', padding: '0 4px', fontSize: '0.75rem', marginBottom: 0 }}
                                         onChange={(e) => handleUpdateProcedureStatus(idx, e.target.value)}
                                       >
@@ -3583,10 +3582,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         <form onSubmit={handleAddProcedure} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 1.2fr 80px', gap: '10px', alignItems: 'flex-end' }}>
                           <div className="doc-form-group" style={{ marginBottom: 0 }}>
                             <label className="doc-form-label" style={{ fontSize: '0.7rem' }}>Procedure Name</label>
-                            <input 
-                              type="text" 
-                              className="doc-input" 
-                              style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }} 
+                            <input
+                              type="text"
+                              className="doc-input"
+                              style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }}
                               placeholder="e.g. Tooth Scaling"
                               value={newProcName}
                               onChange={(e) => setNewProcName(e.target.value)}
@@ -3595,10 +3594,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           </div>
                           <div className="doc-form-group" style={{ marginBottom: 0 }}>
                             <label className="doc-form-label" style={{ fontSize: '0.7rem' }}>Cost (₹)</label>
-                            <input 
-                              type="number" 
-                              className="doc-input" 
-                              style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }} 
+                            <input
+                              type="number"
+                              className="doc-input"
+                              style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }}
                               placeholder="₹"
                               value={newProcCost || ''}
                               onChange={(e) => setNewProcCost(Number(e.target.value))}
@@ -3607,10 +3606,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           </div>
                           <div className="doc-form-group" style={{ marginBottom: 0 }}>
                             <label className="doc-form-label" style={{ fontSize: '0.7rem' }}>Procedure Notes</label>
-                            <input 
-                              type="text" 
-                              className="doc-input" 
-                              style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }} 
+                            <input
+                              type="text"
+                              className="doc-input"
+                              style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }}
                               placeholder="e.g. Mandibular quadrant"
                               value={newProcNotes}
                               onChange={(e) => setNewProcNotes(e.target.value)}
@@ -3635,7 +3634,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               {activeTab === 'followup' && (
                 <div className="doc-card" style={{ width: '100%' }}>
                   <h3 className="doc-card-title" style={{ marginBottom: '16px' }}>Upcoming Clinical Follow-ups</h3>
-                  
+
                   <div style={{ marginBottom: '24px' }}>
                     <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--doc-text)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span>📅</span> Booked Follow-ups ({bookedFollowups.length})
@@ -4177,8 +4176,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               Chief Complaint & Clinical Notes
                             </h3>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <select 
-                                className="doc-input" 
+                              <select
+                                className="doc-input"
                                 style={{ width: '140px', height: '30px', padding: '0 8px', fontSize: '0.75rem', marginBottom: 0 }}
                                 value={selectedScenario || ''}
                                 onChange={(e) => handleStartScenario(e.target.value)}
@@ -4189,10 +4188,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 <option value="extraction">💉 Extraction</option>
                                 <option value="scaling">🧼 Scaling</option>
                               </select>
-                              <button 
-                                type="button" 
-                                onClick={handleStartVoiceDictation} 
-                                className="doc-btn-secondary" 
+                              <button
+                                type="button"
+                                onClick={handleStartVoiceDictation}
+                                className="doc-btn-secondary"
                                 style={{ height: '30px', padding: '0 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: isListening ? '#ef4444' : '#cbd5e1' }}
                               >
                                 {isListening ? <MicOff size={14} color="#ef4444" /> : <Mic size={14} />}
@@ -4201,8 +4200,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             </div>
                           </div>
 
-                          <textarea 
-                            className="doc-textarea" 
+                          <textarea
+                            className="doc-textarea"
                             rows={3}
                             value={symptoms}
                             onChange={(e) => setSymptoms(e.target.value)}
@@ -4236,7 +4235,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                       {isEditingSummary ? 'Save' : 'Edit'}
                                     </button>
                                   )}
-                                  
+
                                   {approved ? (
                                     <button
                                       type="button"
@@ -4244,13 +4243,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                         setApproved(false);
                                         showToast('Approval revoked.');
                                       }}
-                                      style={{ 
-                                        fontSize: '0.72rem', 
-                                        backgroundColor: '#dcfce7', 
-                                        color: '#15803d', 
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        backgroundColor: '#dcfce7',
+                                        color: '#15803d',
                                         border: '1px solid #bbf7d0',
-                                        padding: '3px 8px', 
-                                        borderRadius: '4px', 
+                                        padding: '3px 8px',
+                                        borderRadius: '4px',
                                         fontWeight: 700,
                                         cursor: 'pointer',
                                         display: 'inline-flex',
@@ -4262,8 +4261,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                       Approved ✓ <X size={10} style={{ marginLeft: '2px' }} />
                                     </button>
                                   ) : (
-                                    <button 
-                                      type="button" 
+                                    <button
+                                      type="button"
                                       onClick={() => {
                                         setApproved(true);
                                         setNotes(editedSummaryText || aiSummary?.clinical_summary || '');
@@ -4323,10 +4322,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>
                               Prescription Builder
                             </h3>
-                            <button 
-                              type="button" 
-                              onClick={addPrescriptionItem} 
-                              className="doc-btn-primary" 
+                            <button
+                              type="button"
+                              onClick={addPrescriptionItem}
+                              className="doc-btn-primary"
                               style={{ height: '32px', padding: '0 14px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                             >
                               <Plus size={14} /> Add Medicine Row
@@ -4355,48 +4354,48 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                   {prescriptionItems.map((item, idx) => (
                                     <tr key={idx}>
                                       <td style={{ padding: '6px 8px' }}>
-                                        <input 
-                                          type="text" 
-                                          className="doc-input" 
-                                          value={item.medicine_name} 
+                                        <input
+                                          type="text"
+                                          className="doc-input"
+                                          value={item.medicine_name}
                                           onChange={(e) => updatePrescriptionItem(idx, 'medicine_name', e.target.value)}
                                           placeholder="e.g. Amoxicillin 500mg"
                                           style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
                                         />
                                       </td>
                                       <td style={{ padding: '6px 8px' }}>
-                                        <input 
-                                          type="text" 
-                                          className="doc-input" 
-                                          value={item.dosage} 
+                                        <input
+                                          type="text"
+                                          className="doc-input"
+                                          value={item.dosage}
                                           onChange={(e) => updatePrescriptionItem(idx, 'dosage', e.target.value)}
                                           placeholder="1-0-1"
                                           style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
                                         />
                                       </td>
                                       <td style={{ padding: '6px 8px' }}>
-                                        <input 
-                                          type="text" 
-                                          className="doc-input" 
-                                          value={item.duration} 
+                                        <input
+                                          type="text"
+                                          className="doc-input"
+                                          value={item.duration}
                                           onChange={(e) => updatePrescriptionItem(idx, 'duration', e.target.value)}
                                           placeholder="5 Days"
                                           style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
                                         />
                                       </td>
                                       <td style={{ padding: '6px 8px' }}>
-                                        <input 
-                                          type="text" 
-                                          className="doc-input" 
-                                          value={item.instructions} 
+                                        <input
+                                          type="text"
+                                          className="doc-input"
+                                          value={item.instructions}
                                           onChange={(e) => updatePrescriptionItem(idx, 'instructions', e.target.value)}
                                           placeholder="Take after meals"
                                           style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
                                         />
                                       </td>
                                       <td style={{ padding: '6px 4px', textAlign: 'center' }}>
-                                        <button 
-                                          type="button" 
+                                        <button
+                                          type="button"
                                           onClick={() => removePrescriptionItem(idx)}
                                           style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
                                         >
@@ -4602,10 +4601,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                               <span style={{ color: '#64748b', fontWeight: 600 }}>Blood Pressure</span>
-                              <input 
-                                type="text" 
-                                value={vitalsBp} 
-                                onChange={(e) => setVitalsBp(e.target.value)} 
+                              <input
+                                type="text"
+                                value={vitalsBp}
+                                onChange={(e) => setVitalsBp(e.target.value)}
                                 style={{ width: '90px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                               />
                             </div>
@@ -4613,10 +4612,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                               <span style={{ color: '#64748b', fontWeight: 600 }}>Pulse Rate</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input 
-                                  type="number" 
-                                  value={vitalsPulse} 
-                                  onChange={(e) => setVitalsPulse(Number(e.target.value))} 
+                                <input
+                                  type="number"
+                                  value={vitalsPulse}
+                                  onChange={(e) => setVitalsPulse(Number(e.target.value))}
                                   style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                                 />
                                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>bpm</span>
@@ -4626,10 +4625,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                               <span style={{ color: '#64748b', fontWeight: 600 }}>Oxygen Saturation (SpO2)</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input 
-                                  type="number" 
-                                  value={vitalsSpo2} 
-                                  onChange={(e) => setVitalsSpo2(Number(e.target.value))} 
+                                <input
+                                  type="number"
+                                  value={vitalsSpo2}
+                                  onChange={(e) => setVitalsSpo2(Number(e.target.value))}
                                   style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                                 />
                                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>%</span>
@@ -4639,11 +4638,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                               <span style={{ color: '#64748b', fontWeight: 600 }}>Body Temperature</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input 
-                                  type="number" 
+                                <input
+                                  type="number"
                                   step="0.1"
-                                  value={vitalsTemp} 
-                                  onChange={(e) => setVitalsTemp(Number(e.target.value))} 
+                                  value={vitalsTemp}
+                                  onChange={(e) => setVitalsTemp(Number(e.target.value))}
                                   style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                                 />
                                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>°F</span>
@@ -4653,10 +4652,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                               <span style={{ color: '#64748b', fontWeight: 600 }}>Height</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input 
-                                  type="text" 
-                                  value={vitalsHeight} 
-                                  onChange={(e) => setVitalsHeight(e.target.value)} 
+                                <input
+                                  type="text"
+                                  value={vitalsHeight}
+                                  onChange={(e) => setVitalsHeight(e.target.value)}
                                   style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                                 />
                                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>cm</span>
@@ -4666,10 +4665,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                               <span style={{ color: '#64748b', fontWeight: 600 }}>Weight</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input 
-                                  type="text" 
-                                  value={vitalsWeight} 
-                                  onChange={(e) => setVitalsWeight(e.target.value)} 
+                                <input
+                                  type="text"
+                                  value={vitalsWeight}
+                                  onChange={(e) => setVitalsWeight(e.target.value)}
                                   style={{ width: '70px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', textAlign: 'right', fontWeight: '700', fontSize: '0.82rem' }}
                                 />
                                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>kg</span>
@@ -4754,13 +4753,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               </div>
                             ) : (
                               selectedPatientHistory.reports.map((report: any) => (
-                                <div 
-                                  key={report.id} 
-                                  style={{ 
-                                    border: '1px solid #bfdbfe', 
-                                    borderRadius: '10px', 
-                                    padding: '12px', 
-                                    backgroundColor: '#eff6ff' 
+                                <div
+                                  key={report.id}
+                                  style={{
+                                    border: '1px solid #bfdbfe',
+                                    borderRadius: '10px',
+                                    padding: '12px',
+                                    backgroundColor: '#eff6ff'
                                   }}
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
@@ -4774,8 +4773,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                       </span>
                                     </div>
                                   </div>
-                                  <button 
-                                    className="doc-btn-secondary" 
+                                  <button
+                                    className="doc-btn-secondary"
                                     onClick={() => handlePreviewReport(report)}
                                     style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
                                   >
@@ -4816,7 +4815,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             try {
                               const d = new Date(since);
                               since = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-                            } catch (err) {}
+                            } catch (err) { }
                           }
 
                           return (
@@ -4928,26 +4927,26 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         Active Patient: <strong style={{ color: '#0f172a' }}>{activeAppt.patient_name}</strong> ({activePatientDetails?.patient_code || activeAppt.patient_code || 'PT-10007'})
                       </div>
                       <div style={{ display: 'flex', gap: '12px' }}>
-                        <button 
-                          type="button" 
-                          className="doc-btn-secondary" 
+                        <button
+                          type="button"
+                          className="doc-btn-secondary"
                           style={{ height: '40px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '700' }}
                           onClick={() => setActiveTab('treatment')}
                         >
                           <Activity size={16} /> Treatment Plan
                         </button>
 
-                        <button 
-                          type="button" 
-                          className="doc-btn-primary" 
+                        <button
+                          type="button"
+                          className="doc-btn-primary"
                           disabled={savingConsultation}
-                          style={{ 
-                            height: '40px', 
+                          style={{
+                            height: '40px',
                             padding: '0 20px',
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '8px', 
-                            fontSize: '0.85rem', 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '0.85rem',
                             fontWeight: '700',
                             backgroundColor: '#16a34a',
                             borderColor: '#16a34a',
@@ -4960,7 +4959,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               showToast('Please enter a clinical diagnosis / assessment first.', 'error');
                               return;
                             }
-                            await handleSaveConsultation({ preventDefault: () => {} } as any);
+                            await handleSaveConsultation({ preventDefault: () => { } } as any);
                           }}
                         >
                           <CheckCircle size={16} /> {savingConsultation ? 'Saving...' : 'Complete Consultation'}
@@ -5150,7 +5149,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <button 
+                  <button
                     onClick={() => {
                       const matchedAppt = dashboardData?.today_appointments?.find((a: any) => a.id === videoApptId);
                       if (matchedAppt) {
@@ -5161,14 +5160,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         handleStartConsultation({ id: videoApptId, patient_name: videoPatientName, patient_id: 'd9bfa4b1-8b01-44bb-bc74-672ef9198642' });
                         setInVideoCall(false);
                       }
-                    }} 
+                    }}
                     className="doc-btn-primary"
                     style={{ width: '100%', justifyContent: 'center' }}
                   >
                     <FileText size={16} /> Write Prescription & Finish
                   </button>
-                  <button 
-                    onClick={() => setInVideoCall(false)} 
+                  <button
+                    onClick={() => setInVideoCall(false)}
                     className="doc-btn-secondary"
                     style={{ width: '100%', justifyContent: 'center', backgroundColor: '#334155', color: 'white', borderColor: '#475569' }}
                   >
@@ -5215,7 +5214,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: 'var(--doc-text-dark)' }}>
                 Request Schedule Change
               </h3>
-              <button 
+              <button
                 onClick={() => setIsRequestingChange(false)}
                 style={{
                   border: 'none',
@@ -5230,10 +5229,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
             </div>
             <form onSubmit={handleSubmitChangeRequest} style={{ padding: '24px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
+
                 <div className="doc-form-group">
                   <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Request Type</label>
-                  <select 
+                  <select
                     className="doc-input"
                     value={requestType}
                     onChange={(e) => {
@@ -5262,14 +5261,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Start Date</label>
-                      <CustomDatePicker 
+                      <CustomDatePicker
                         value={reqStartDate}
                         onChange={setReqStartDate}
                       />
                     </div>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>End Date</label>
-                      <CustomDatePicker 
+                      <CustomDatePicker
                         value={reqEndDate}
                         onChange={setReqEndDate}
                       />
@@ -5279,8 +5278,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Proposed Start Time</label>
-                      <input 
-                        type="time" 
+                      <input
+                        type="time"
                         required
                         className="doc-input"
                         value={reqStartTime}
@@ -5290,8 +5289,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     </div>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Proposed End Time</label>
-                      <input 
-                        type="time" 
+                      <input
+                        type="time"
                         required
                         className="doc-input"
                         value={reqEndTime}
@@ -5304,7 +5303,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                 <div className="doc-form-group">
                   <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Describe your issue / Reason for change</label>
-                  <textarea 
+                  <textarea
                     rows={4}
                     required
                     className="doc-input"
@@ -5324,15 +5323,15 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 borderTop: '1px solid var(--doc-border)',
                 paddingTop: '16px'
               }}>
-                <button 
-                  type="button" 
-                  className="doc-btn-secondary" 
+                <button
+                  type="button"
+                  className="doc-btn-secondary"
                   onClick={() => setIsRequestingChange(false)}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="doc-btn-primary"
                   disabled={submittingRequest}
                   style={{ backgroundColor: 'var(--doc-primary)', color: '#ffffff' }}
@@ -5387,7 +5386,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   Category: {viewingReport.report_type}
                 </span>
               </div>
-              <button 
+              <button
                 onClick={handleCloseReportModal}
                 style={{
                   border: 'none',
@@ -5425,17 +5424,17 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 (() => {
                   const fileUrlLower = viewingReport.file_url?.toLowerCase() || '';
                   const isImg = !fileUrlLower.includes('.pdf') && (
-                                fileUrlLower.includes('/image/') || 
-                                fileUrlLower.match(/\.(jpg|jpeg|png|webp|gif)$/) ||
-                                reportContentType?.toLowerCase().startsWith('image/')
-                              );
+                    fileUrlLower.includes('/image/') ||
+                    fileUrlLower.match(/\.(jpg|jpeg|png|webp|gif)$/) ||
+                    reportContentType?.toLowerCase().startsWith('image/')
+                  );
                   if (isImg) {
                     return (
                       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', backgroundColor: '#0f172a', borderRadius: '8px', padding: '16px' }}>
-                        <img 
-                          src={reportFileUrl} 
-                          alt={viewingReport.report_name} 
-                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                        <img
+                          src={reportFileUrl}
+                          alt={viewingReport.report_name}
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                         />
                       </div>
                     );
@@ -5471,9 +5470,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               >
                 <Download size={14} /> Download File
               </button>
-              <button 
-                onClick={handleCloseReportModal} 
-                className="doc-btn-primary" 
+              <button
+                onClick={handleCloseReportModal}
+                className="doc-btn-primary"
                 style={{ fontSize: '0.85rem', backgroundColor: '#0f766e', borderColor: '#0f766e', color: 'white' }}
               >
                 Close
@@ -5528,7 +5527,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   Patient: <strong>{activeAppt?.patient_name || 'Rohan Deshmukh'}</strong> ({activePatientDetails?.patient_code || activeAppt?.patient_code || 'PT-10234'})
                 </span>
               </div>
-              <button 
+              <button
                 onClick={() => setActiveQuickDrawer(null)}
                 style={{ border: 'none', background: '#f1f5f9', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
@@ -5594,8 +5593,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               </span>
                             </div>
                           </div>
-                          <button 
-                            className="doc-btn-secondary" 
+                          <button
+                            className="doc-btn-secondary"
                             onClick={() => handlePreviewReport(report)}
                             style={{ width: '100%', fontSize: '0.78rem', height: '30px', backgroundColor: '#ffffff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
                           >
@@ -5714,7 +5713,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   </span>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowClinicalProfileModal(false)}
                 style={{ border: 'none', background: 'rgba(255, 255, 255, 0.2)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ffffff' }}
               >
@@ -5930,13 +5929,13 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   try {
                     const d = new Date(since);
                     since = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-                  } catch (err) {}
+                  } catch (err) { }
                 }
                 if (rxDate && rxDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
                   try {
                     const d = new Date(rxDate);
                     rxDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-                  } catch (err) {}
+                  } catch (err) { }
                 }
 
                 return (
@@ -6012,9 +6011,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
             {/* Modal Footer */}
             <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', textAlign: 'right' }}>
-              <button 
-                onClick={() => setShowClinicalProfileModal(false)} 
-                className="doc-btn-primary" 
+              <button
+                onClick={() => setShowClinicalProfileModal(false)}
+                className="doc-btn-primary"
                 style={{ padding: '8px 24px', fontSize: '0.85rem', fontWeight: 700 }}
               >
                 Close Profile
@@ -6068,7 +6067,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   Patient Code: <strong>{emrLookupPatient.patient?.patient_code}</strong> · Gender: {emrLookupPatient.patient?.gender || 'N/A'} · Phone: {emrLookupPatient.patient?.user?.phone || emrLookupPatient.patient?.phone_number || 'N/A'}
                 </span>
               </div>
-              <button 
+              <button
                 onClick={() => setEmrLookupPatient(null)}
                 style={{ border: 'none', background: 'rgba(255, 255, 255, 0.2)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ffffff' }}
               >
@@ -6155,9 +6154,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
             {/* Modal Footer */}
             <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', textAlign: 'right' }}>
-              <button 
-                onClick={() => setEmrLookupPatient(null)} 
-                className="doc-btn-primary" 
+              <button
+                onClick={() => setEmrLookupPatient(null)}
+                className="doc-btn-primary"
                 style={{ padding: '8px 24px', fontSize: '0.85rem', fontWeight: 700 }}
               >
                 Close EMR File
@@ -6188,7 +6187,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                   <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>Modify prescribed medications, dosage, and doctor instructions</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setIsEditPrescriptionModalOpen(false)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#64748b' }}
               >
