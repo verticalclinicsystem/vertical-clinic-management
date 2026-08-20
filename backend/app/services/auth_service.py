@@ -401,7 +401,7 @@ class AuthService:
             await doc_repo.create({
                 "user_id": user.id,
                 "branch_id": user.branch_id,
-                "specialization": "General Dentist",
+                "specialization": "General Physician",
                 "consultation_fee": 500.0,
                 "is_available": True,
             })
