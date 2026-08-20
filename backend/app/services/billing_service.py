@@ -181,7 +181,7 @@ class BillingService:
             completed_count = sum(1 for p in invoice.treatment_plan.procedures if p.status == "completed")
             if completed_count > 0:
                 pdf_items.append({
-                    "description": "Used Dental Materials & Sterile Consumables",
+                    "description": "Medical Consumables & Sterile Clinical Supplies",
                     "amount": completed_count * 200.0
                 })
         elif invoice.consultation and not invoice.admission:

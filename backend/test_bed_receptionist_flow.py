@@ -59,7 +59,7 @@ async def test_receptionist_bed_flow():
             "bed_id": target_bed["id"],
             "patient_id": patient["id"],
             "admitting_doctor_id": doctor["id"],
-            "diagnosis": "Severe dental abscess and fever under observations",
+            "diagnosis": "Severe acute gastroenteritis and fever under observations",
             "initial_deposit": 1500.0
         }
         admit_res = await client.post(f"{BASE_URL}/ipd/admissions", json=admit_payload, headers=headers)

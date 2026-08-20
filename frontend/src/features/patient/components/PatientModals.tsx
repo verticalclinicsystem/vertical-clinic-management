@@ -762,7 +762,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                     type="text"
                     value={uploadTitle}
                     onChange={(e) => setUploadTitle(e.target.value)}
-                    placeholder="e.g. Dental OPG X-Ray, Blood Test"
+                    placeholder="e.g. Diagnostic Chest X-Ray, Blood Test"
                     className="form-input"
                     required
                   />

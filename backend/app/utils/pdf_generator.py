@@ -353,7 +353,7 @@ def generate_invoice_pdf(invoice_data: dict) -> bytes:
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td>Dental Treatment / Procedure Charges</td>
+                        <td>Clinical Treatment / Procedure Charges</td>
                         <td style="text-align: right; font-weight: 600;">₹{{ "%.2f"|format(total_amount) }}</td>
                     </tr>
                 {% endif %}
@@ -393,7 +393,7 @@ def generate_invoice_pdf(invoice_data: dict) -> bytes:
 
         <div class="footer">
             Report generated automatically from Vertical Clinic System<br>
-            Thank you for choosing Vertical Clinic. Wish you a healthy smile!
+            Thank you for choosing Vertical Clinic. Wish you good health!
         </div>
     </body>
     </html>

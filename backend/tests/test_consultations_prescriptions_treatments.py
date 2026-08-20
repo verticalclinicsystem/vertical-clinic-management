@@ -184,21 +184,21 @@ async def test_ai_clinical_assistance(client: AsyncClient):
     # 2. Test analysis with a scenario
     res_scenario = await client.post(
         "/api/v1/ai/analyze-notes",
-        json={"text": "Adjusting braces for patient", "scenario": "braces"},
+        json={"text": "Patient has high grade fever", "scenario": "fever"},
         headers={"Authorization": f"Bearer {token_doc}"},
     )
     assert res_scenario.status_code == 200
     data = res_scenario.json()["data"]
-    assert "braces" in data["summary"].lower() or "braces" in data["suggested_treatment_plan"].lower()
+    assert "fever" in data["summary"].lower() or "viral" in data["suggested_treatment_plan"].lower()
 
     # 3. Test analysis with keyword fallback
     res_keyword = await client.post(
         "/api/v1/ai/analyze-notes",
-        json={"text": "Patient has severe pain in molar tooth 19 and wants root canal treatment", "scenario": None},
+        json={"text": "Patient blood pressure is high and complains of hypertension", "scenario": None},
         headers={"Authorization": f"Bearer {token_doc}"},
     )
     assert res_keyword.status_code == 200
     data_kw = res_keyword.json()["data"]
-    assert "root canal" in data_kw["suggested_treatment_plan"].lower()
+    assert "hypertension" in data_kw["suggested_treatment_plan"].lower() or "blood pressure" in data_kw["summary"].lower()
     assert len(data_kw["suggested_medications"]) > 0
 

@@ -326,7 +326,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
         setDoctorReadyNotification({
           appointmentId: tele.id,
           doctorName: tele.doctor?.user?.full_name || tele.doctor_name || 'Clinician',
-          specialty: tele.doctor?.specialization || tele.specialty || 'Dentist'
+          specialty: tele.doctor?.specialization || tele.specialty || 'General Physician'
         });
         setGlobalVideoAppt(tele);
       } else {
@@ -944,7 +944,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
               <>
                 <span className="summary-sidebar-val">{cleanDoctorName}</span>
                 <span className="summary-sidebar-val" style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                  {selectedDoctor.specialization || 'General Dentist'}
+                  {selectedDoctor.specialization || 'General Physician'}
                 </span>
               </>
             ) : (

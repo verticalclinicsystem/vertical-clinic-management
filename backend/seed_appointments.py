@@ -46,17 +46,17 @@ async def seed():
                 "doctor_id": doctor.id,
                 "branch_id": doctor.branch_id,
                 "appointment_datetime": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=11, minutes=0),
-                "treatment_type": "Braces Adjustment",
+                "treatment_type": "Cardiology Evaluation",
                 "consultation_type": "in_person",
                 "status": "confirmed",
-                "notes": "Orthodontic monthly follow-up"
+                "notes": "Cardiology monthly follow-up"
             },
             {
                 "patient_id": patient.id,
                 "doctor_id": doctor.id,
                 "branch_id": doctor.branch_id,
                 "appointment_datetime": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=14, minutes=30),
-                "treatment_type": "Scaling & Polishing",
+                "treatment_type": "General Consultation",
                 "consultation_type": "teleconsultation",
                 "status": "checked_in",
                 "notes": "Requires online consultation first"
@@ -66,10 +66,10 @@ async def seed():
                 "doctor_id": doctor.id,
                 "branch_id": doctor.branch_id,
                 "appointment_datetime": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=16, minutes=0),
-                "treatment_type": "Tooth Extraction",
+                "treatment_type": "Health Monitoring Panel",
                 "consultation_type": "in_person",
                 "status": "pending",
-                "notes": "Decayed molar"
+                "notes": "Routine wellness review"
             }
         ]
 

@@ -78,7 +78,7 @@ class PrescriptionService:
                 "branch_address": doctor_obj.branch.address if (doctor_obj and doctor_obj.branch) else "Ahmedabad Branch",
                 "branch_phone": doctor_obj.branch.phone if (doctor_obj and doctor_obj.branch) else "+91 99999 88888",
                 "doctor_name": doctor_obj.user.full_name if (doctor_obj and doctor_obj.user) else "Doctor",
-                "doctor_specialization": doctor_obj.specialization if doctor_obj else "General Dentist",
+                "doctor_specialization": doctor_obj.specialization if doctor_obj else "General Physician",
                 "doctor_reg_no": doctor_obj.registration_number if doctor_obj else "N/A",
                 "patient_name": patient.user.full_name,
                 "patient_code": patient.patient_code,
