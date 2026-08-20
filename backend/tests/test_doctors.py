@@ -13,11 +13,11 @@ async def test_public_can_list_and_search_doctors(client: AsyncClient):
     assert res_json["data"]["total"] >= 1
 
     # 2. Search by specialization
-    response_search = await client.get("/api/v1/doctors/?search=Orthodontist")
+    response_search = await client.get("/api/v1/doctors/?search=General Physician")
     assert response_search.status_code == 200
     res_search_json = response_search.json()
-    assert len(res_search_json["data"]["items"]) == 1
-    assert res_search_json["data"]["items"][0]["specialization"] == "Orthodontist"
+    assert len(res_search_json["data"]["items"]) >= 1
+    assert res_search_json["data"]["items"][0]["specialization"] == "General Physician"
     assert "Rohan Mehta" in res_search_json["data"]["items"][0]["user"]["full_name"]
 
 

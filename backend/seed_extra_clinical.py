@@ -33,10 +33,10 @@ async def seed():
             id=uuid.uuid4(),
             patient_id=patient.id,
             doctor_id=doctor.id,
-            title="Full Mouth Orthodontic Alignment",
+            title="Hypertension & Cardiovascular Wellness Plan",
             status="active",
-            total_cost=25000.00,
-            notes="Treatment expected to take 12-18 months. Patient to wear elastic bands."
+            total_cost=4500.00,
+            notes="Comprehensive 6-month blood pressure control & lipid management plan."
         )
         db.add(tp)
         await db.flush()
@@ -45,26 +45,26 @@ async def seed():
         proc1 = TreatmentProcedure(
             id=uuid.uuid4(),
             treatment_plan_id=tp.id,
-            procedure_name="Diagnostic Models & OPG",
+            procedure_name="Cardiovascular Risk Assessment & ECG",
             cost=1500.00,
             status="completed",
-            notes="OPG taken and dental casts prepared."
+            notes="12-lead ECG completed. Normal sinus rhythm."
         )
         proc2 = TreatmentProcedure(
             id=uuid.uuid4(),
             treatment_plan_id=tp.id,
-            procedure_name="Bonding Upper & Lower Arches",
-            cost=12000.00,
+            procedure_name="Comprehensive Lipid & Blood Panel",
+            cost=1500.00,
             status="completed",
-            notes="Metal brackets bonded."
+            notes="Fasting lipid profile and HbA1c panel completed."
         )
         proc3 = TreatmentProcedure(
             id=uuid.uuid4(),
             treatment_plan_id=tp.id,
-            procedure_name="Monthly Wire Changes & Elastics",
-            cost=11500.00,
+            procedure_name="Monthly BP & Lifestyle Monitoring",
+            cost=1500.00,
             status="in_progress",
-            notes="Scheduled adjustments."
+            notes="Scheduled monthly BP monitoring."
         )
         db.add(proc1)
         db.add(proc2)
@@ -75,7 +75,7 @@ async def seed():
             id=uuid.uuid4(),
             user_id=patient.user_id,
             title="Upcoming Checkup Reminder",
-            message="Hi Priya, this is a reminder for your dental checkup today at 11:00 AM.",
+            message="Hi Priya, this is a reminder for your medical health checkup today at 11:00 AM.",
             type="appointment",
             is_read=False
         )
@@ -83,7 +83,7 @@ async def seed():
             id=uuid.uuid4(),
             user_id=patient.user_id,
             title="Invoice Generated",
-            message="Invoice INV-2026-0002 has been generated for your recent braces checkup.",
+            message="Invoice INV-2026-0002 has been generated for your recent health consultation.",
             type="billing",
             is_read=True
         )

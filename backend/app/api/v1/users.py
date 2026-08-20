@@ -265,12 +265,12 @@ async def update_user(
                     user_id=user_id,
                     name=updated_user.full_name,
                     branch_id=branch_id,
-                    specialization="General Dentist",
-                    qualification="BDS",
+                    specialization="General Physician",
+                    qualification="MBBS",
                     experience_years=5,
                     consultation_fee=500.0,
                     rating=4.8,
-                    bio="Experienced dentist specializing in general dentistry and patient care.",
+                    bio="Experienced physician specializing in general medicine and family healthcare.",
                     is_available=True,
                     availability_metadata=json.dumps(default_meta)
                 )

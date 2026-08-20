@@ -29,7 +29,7 @@ async def test_create_branch_admin_success(client: AsyncClient):
             "address": "123 Test Street",
             "city": "Ahmedabad",
             "phone": "+919999911111",
-            "email": "testing@suvidhadental.com",
+            "email": "testing@verticalclinic.com",
             "gst_number": "24AACCS1234K1ZP",
         },
     )
@@ -55,7 +55,7 @@ async def test_create_branch_duplicate_code_rejected(client: AsyncClient):
             "address": "456 Test Street",
             "city": "Ahmedabad",
             "phone": "+919999922222",
-            "email": "satdup@suvidhadental.com",
+            "email": "satdup@verticalclinic.com",
             "gst_number": "24AACCS1234K1ZP",
         },
     )
@@ -76,7 +76,7 @@ async def test_create_branch_invalid_gst_rejected(client: AsyncClient):
             "address": "123 Test Street",
             "city": "Ahmedabad",
             "phone": "+919999933333",
-            "email": "invgst@suvidhadental.com",
+            "email": "invgst@verticalclinic.com",
             "gst_number": "invalid-gst-format",
         },
     )
@@ -96,7 +96,7 @@ async def test_create_branch_patient_forbidden(client: AsyncClient):
             "address": "123 Test Street",
             "city": "Ahmedabad",
             "phone": "+919999944444",
-            "email": "forbid@suvidhadental.com",
+            "email": "forbid@verticalclinic.com",
             "gst_number": "24AACCS1234K1ZP",
         },
     )

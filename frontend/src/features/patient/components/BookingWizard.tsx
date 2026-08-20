@@ -305,7 +305,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
           {/* Step 3: Doctor Selection */}
           {bookingStep === 3 && (() => {
-            const uniqueSpecs = Array.from(new Set(safeDoctors.map(d => d.specialization || d.specialty || 'General Dentist')));
+            const uniqueSpecs = Array.from(new Set(safeDoctors.map(d => d.specialization || d.specialty || 'General Physician')));
             return (
               <div className="doctor-selection-layout" style={{ animation: 'fadeIn 0.3s ease-out' }}>
                 <div className="doctor-filters-card">
@@ -333,7 +333,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="e.g. Sneha or Orthodontist"
+                      placeholder="e.g. Dr. Sneha or Cardiologist"
                       className="filter-select"
                       style={{ background: 'var(--surface-2)' }}
                     />
@@ -410,7 +410,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                               </h4>
                               <span className="doctor-verified-badge">✓ Verified</span>
                             </div>
-                            <p className="doctor-card-specialization">{doc.specialization || 'General Dentist'}</p>
+                            <p className="doctor-card-specialization">{doc.specialization || 'General Physician'}</p>
 
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                               <span className="doctor-card-mode-pill">👤 {inferredGender}</span>
@@ -420,7 +420,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                               <strong>{doc.rating || '4.8'}</strong>&nbsp;({doc.experience_years * 12 + 15} reviews)
                             </div>
                             <p className="doctor-card-meta-details" style={{ marginTop: '8px', lineHeight: '1.4' }}>
-                              {doc.bio || 'Dedicated clinician offering comprehensive services and personalized dental/medical treatments.'}
+                              {doc.bio || 'Dedicated clinician offering comprehensive healthcare services and personalized medical care.'}
                             </p>
                           </div>
                           <div className="doctor-card-right-info">
@@ -480,7 +480,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             const doctorName = activeDoctor?.user?.full_name?.toLowerCase().startsWith('dr')
               ? activeDoctor.user.full_name
               : `Dr. ${activeDoctor?.user?.full_name || 'Clinician'}`;
-            const doctorSpecialty = activeDoctor?.specialization || 'General Dentist';
+            const doctorSpecialty = activeDoctor?.specialization || 'General Physician';
             const getSlotTime = (s: any): string => {
               if (!s) return '';
               if (typeof s === 'string') return s;
@@ -806,11 +806,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       style={{ background: 'var(--surface-2)' }}
                     >
                       <option value="Routine Checkup">Routine Checkup</option>
-                      <option value="Scaling & Polishing">Scaling & Polishing</option>
-                      <option value="Root Canal Treatment (RCT)">Root Canal Treatment (RCT)</option>
-                      <option value="Tooth Extraction">Tooth Extraction</option>
-                      <option value="Braces Adjustment">Braces Adjustment</option>
-                      <option value="Teeth Whitening">Teeth Whitening</option>
+                      <option value="General Consultation">General Consultation</option>
+                      <option value="Cardiology Evaluation">Cardiology Evaluation</option>
+                      <option value="Pediatric Care Plan">Pediatric Care Plan</option>
+                      <option value="Dermatology Consult">Dermatology Consult</option>
+                      <option value="Health Monitoring Panel">Health Monitoring Panel</option>
                       <option value="Other (Custom Concern)">Other (Custom Concern)</option>
                     </select>
                   </div>
@@ -822,7 +822,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                         type="text"
                         value={customTreatmentText}
                         onChange={(e) => setCustomTreatmentText(e.target.value)}
-                        placeholder="Please specify your dental/clinical concern..."
+                        placeholder="Please specify your medical symptoms or clinical concern..."
                         className="form-input"
                         required
                       />

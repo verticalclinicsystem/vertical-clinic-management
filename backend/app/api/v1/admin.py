@@ -520,7 +520,7 @@ async def get_admin_reports(
             rows.append({
                 "id": str(d.id),
                 "doctor_name": d.full_name,
-                "specialization": doc_prof.specialization or "General Dentist",
+                "specialization": doc_prof.specialization or "General Physician",
                 "completed_consultations": len(completed_appts),
                 "consultation_fee": float(doc_prof.consultation_fee or 500.0),
                 "total_revenue": doc_rev,

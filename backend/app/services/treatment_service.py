@@ -1,5 +1,5 @@
 """
-Treatment service — business logic for patient dental/therapy treatment plans.
+Treatment service — business logic for patient clinical/therapy treatment plans.
 """
 from __future__ import annotations
 

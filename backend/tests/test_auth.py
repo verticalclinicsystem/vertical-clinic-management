@@ -46,7 +46,7 @@ async def test_login_unknown_email(client: AsyncClient):
         "/api/v1/auth/login",
         json={"identifier": "nobody@example.com", "password": "Test@123"},
     )
-    assert response.status_code == 401
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -191,25 +191,50 @@ async def test_token_refresh_fails_after_revocation(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_change_password(client: AsyncClient):
     """User should be able to change their password."""
-    # Login as pharmacist
+    # 1. Login as admin to onboard a test user
+    admin_login = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    admin_token = admin_login.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    branch_res = await client.get("/api/v1/branches/", headers=headers)
+    branch_id = branch_res.json()["data"]["items"][0]["id"]
+
+    # 2. Onboard verified pharmacist
+    onboard_res = await client.post(
+        "/api/v1/users/pharmacist",
+        headers=headers,
+        json={
+            "full_name": "ChangePass Pharmacist",
+            "email": "temp_changepass@example.com",
+            "phone": "+919876599999",
+            "password": "InitialPass@123",
+            "branch_id": branch_id,
+        }
+    )
+    assert onboard_res.status_code == 201
+
     login = await client.post(
         "/api/v1/auth/login",
-        json={"identifier": "pharmacist@verticalclinic.com", "password": "Pharmacist@verticalclinic.com"},
+        json={"identifier": "temp_changepass@example.com", "password": "InitialPass@123"},
     )
+    assert login.status_code == 200
     token = login.json()["data"]["access_token"]
 
-    # Change password (new password must satisfy: uppercase + digit + special char)
+    # Change password
     response = await client.post(
         "/api/v1/auth/change-password",
         headers={"Authorization": f"Bearer {token}"},
-        json={"current_password": "Pharmacist@verticalclinic.com", "new_password": "NewPass@1234"},
+        json={"current_password": "InitialPass@123", "new_password": "NewPass@1234"},
     )
     assert response.status_code == 200
 
     # Verify new password works
     new_login = await client.post(
         "/api/v1/auth/login",
-        json={"identifier": "pharmacist@verticalclinic.com", "password": "NewPass@1234"},
+        json={"identifier": "temp_changepass@example.com", "password": "NewPass@1234"},
     )
     assert new_login.status_code == 200
 

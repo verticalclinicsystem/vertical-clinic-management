@@ -2683,7 +2683,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 <div className="form-group full-width">
                   <label>Front Desk Notes</label>
                   <textarea 
-                    placeholder="E.g., Walk-in, patient complaining of toothache."
+                    placeholder="E.g., Walk-in, patient complaining of fever/headache."
                     value={bookingForm.notes} 
                     onChange={e => setBookingForm({ ...bookingForm, notes: e.target.value })}
                   />
