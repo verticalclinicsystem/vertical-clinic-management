@@ -17,7 +17,7 @@ export const JitsiVideoModal: React.FC<JitsiVideoModalProps> = ({
   appointmentId,
   doctorName = 'Doctor',
   patientName = 'Patient',
-  specialty = 'General Dentistry',
+  specialty = 'General Medicine',
   isDoctor = false,
   onClose,
 }) => {

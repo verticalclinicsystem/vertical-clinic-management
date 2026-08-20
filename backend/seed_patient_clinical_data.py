@@ -70,12 +70,12 @@ async def seed():
             doctor_id=doctor.id,
             branch_id=doctor.branch_id,
             consultation_datetime=today - timedelta(days=15),
-            symptoms="Mild toothache on lower left molar, sensitivity to cold beverages.",
-            diagnosis="Incipient dental caries on tooth #37 (occlusal surface). No root exposure.",
-            notes="Advised restoration (composite filling) and fluoride mouthwash twice daily.",
+            symptoms="Mild fever (100.2 F), body ache, and persistent cough for 2 days.",
+            diagnosis="Acute Viral Upper Respiratory Infection (URI). No chest congestion.",
+            notes="Advised rest, adequate hydration, paracetamol twice daily, and steam inhalation.",
             vitals_bp="118/76",
             vitals_pulse=72,
-            vitals_temperature=98.4
+            vitals_temperature=100.2
         )
         db.add(c1)
         await db.flush()
@@ -87,9 +87,9 @@ async def seed():
             doctor_id=doctor.id,
             branch_id=doctor.branch_id,
             consultation_datetime=today - timedelta(days=5),
-            symptoms="Orthodontic checkup. Routine monthly follow-up.",
-            diagnosis="Malocclusion Class I. Braces alignment progressing as expected.",
-            notes="Tightened upper archwire. Elastic band usage continued. Next checkup in 4 weeks.",
+            symptoms="Routine health checkup and hypertension follow-up.",
+            diagnosis="Primary Hypertension (Controlled). BP within target range.",
+            notes="Continue low sodium diet and daily morning walking. Next checkup in 4 weeks.",
             vitals_bp="120/80",
             vitals_pulse=70,
             vitals_temperature=98.6
@@ -135,7 +135,7 @@ async def seed():
             id=uuid.uuid4(),
             patient_id=patient.id,
             report_type="X-Ray",
-            report_name="OPG Dental Panoramic X-Ray",
+            report_name="Chest Diagnostic X-Ray (PA View)",
             file_url=report_url
         )
         r2 = MedicalReport(

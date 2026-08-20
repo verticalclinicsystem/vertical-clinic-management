@@ -272,7 +272,7 @@ async def test_queue_token_assignment(client: AsyncClient, db_session: AsyncSess
             "appointment_datetime": booking_time.isoformat(),
             "treatment_type": "Checkup",
             "consultation_type": "in_person",
-            "notes": "Regular dental cleaning"
+            "notes": "Regular medical health checkup"
         },
         headers=headers
     )

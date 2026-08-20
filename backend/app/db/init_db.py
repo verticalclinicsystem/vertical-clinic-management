@@ -152,7 +152,7 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
             "address": "2nd Floor, Shivalik Highstreet, Satellite",
             "city": "Ahmedabad",
             "phone": "+917940123456",
-            "email": "satellite@suvidhadental.com",
+            "email": "satellite@verticalclinic.com",
             "gst_number": "24AACCS1234K1ZP",
             "opening_hour": "09:00",
             "closing_hour": "21:00",
@@ -165,7 +165,7 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
             "address": "Shop 12, South Bopal Circle",
             "city": "Ahmedabad",
             "phone": "+917940987654",
-            "email": "bopal@suvidhadental.com",
+            "email": "bopal@verticalclinic.com",
             "gst_number": "24AACCS1234K1ZP",
             "opening_hour": "09:00",
             "closing_hour": "21:00",
@@ -178,7 +178,7 @@ async def _seed_branches(db: AsyncSession) -> dict[str, uuid.UUID]:
             "address": "C.G. Road, Navrangpura",
             "city": "Ahmedabad",
             "phone": "+917926461122",
-            "email": "navrangpura@suvidhadental.com",
+            "email": "navrangpura@verticalclinic.com",
             "gst_number": "24AACCS1234K1ZP",
             "opening_hour": "09:00",
             "closing_hour": "21:00",
@@ -242,16 +242,16 @@ async def _seed_users_and_profiles(
 
     if test_mode:
         doctors_to_seed = [
-            ("Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "Orthodontist", "BDS, MDS (Orthodontics)", 12, 900.0, "Specialist in braces, aligners, and bite correction."),
-            ("Aarav Patel", "doctor2_sat@verticalclinic.com", "+919820011112", "SAT", "Pediatric Dentist", "BDS, MDS (Pedodontics)", 8, 700.0, "Specialist in pediatric dentistry and preventative care."),
-            ("Vikram Shah", "doctor1_bop@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma."),
-            ("Sneha Rao", "doctor2_bop@verticalclinic.com", "+919820022222", "BOP", "Periodontist", "BDS, MDS (Periodontics)", 9, 750.0, "Specializes in gum health, implants, and laser gum therapy."),
-            ("Rajesh Nair", "doctor1_nav@verticalclinic.com", "+919820033331", "NAV", "General Dentist", "BDS", 6, 500.0, "Comprehensive dental care, cleanings, fillings, and extractions."),
-            ("Anjali Desai", "doctor2_nav@verticalclinic.com", "+919820033332", "NAV", "Prosthodontist", "BDS, MDS (Prosthodontics)", 11, 850.0, "Specialist in crowns, bridges, dentures, and cosmetic restorations.")
+            ("Rohan Mehta", "doctor@verticalclinic.com", "+919820011111", "SAT", "General Physician", "MBBS, MD (Internal Medicine)", 12, 900.0, "Specialist in internal medicine, chronic disease management, and preventative care."),
+            ("Aarav Patel", "doctor2_sat@verticalclinic.com", "+919820011112", "SAT", "Pediatrician", "MBBS, MD (Pediatrics)", 8, 700.0, "Specialist in child health, growth monitoring, and pediatric care."),
+            ("Vikram Shah", "doctor1_bop@verticalclinic.com", "+919820022221", "BOP", "Cardiologist", "MBBS, DM (Cardiology)", 10, 800.0, "Expert in cardiovascular health, hypertension, and preventive cardiology."),
+            ("Sneha Rao", "doctor2_bop@verticalclinic.com", "+919820022222", "BOP", "Dermatologist", "MBBS, MD (Dermatology)", 9, 750.0, "Specializes in skin conditions, allergies, and clinical dermatology."),
+            ("Rajesh Nair", "doctor1_nav@verticalclinic.com", "+919820033331", "NAV", "General Physician", "MBBS", 6, 500.0, "Comprehensive primary care, routine health checkups, and diagnostic consultations."),
+            ("Anjali Desai", "doctor2_nav@verticalclinic.com", "+919820033332", "NAV", "Orthopedic Specialist", "MBBS, MS (Orthopedics)", 11, 850.0, "Specialist in joint care, bone health, and musculoskeletal care.")
         ]
     else:
         doctors_to_seed = [
-            ("Vikram Shah", "doctor1_bopal@verticalclinic.com", "+919820022221", "BOP", "Endodontist", "BDS, MDS (Endodontics)", 10, 800.0, "Expert in root canals, microscopic dentistry, and dental trauma.")
+            ("Vikram Shah", "doctor1_bopal@verticalclinic.com", "+919820022221", "BOP", "Cardiologist", "MBBS, DM (Cardiology)", 10, 800.0, "Expert in cardiovascular health, hypertension, and preventive cardiology.")
         ]
 
     doctor_ids: dict[str, uuid.UUID] = {}
@@ -520,19 +520,19 @@ async def _seed_clinical_records(
             "pat_email": "patient1_bopal@verticalclinic.com",
             "treatments": [
                 {
-                    "title": "Root Canal & Crown Therapy",
+                    "title": "Hypertension & Cardiovascular Management Plan",
                     "total_cost": 15000.00,
-                    "notes": "Complete cleaning, shaping, and obduration followed by porcelain crown.",
+                    "notes": "Comprehensive cardiovascular risk assessment and therapeutic blood pressure control.",
                     "procedures": [
-                        ("Pulpectomy and Debridement", 3000.00, "completed", "Access cavity prepared, infected pulp removed."),
-                        ("Canal Obturation & Temporary Restoration", 5000.00, "completed", "Gutta-percha obturation verified on radiograph."),
-                        ("Porcelain Fused to Metal Crown Placement", 7000.00, "in_progress", "Crown preparation complete. Fabrication in lab.")
+                        ("Cardiovascular Risk Screening & ECG", 3000.00, "completed", "12-lead ECG performed; sinusal rhythm normal."),
+                        ("Echocardiogram & Lipid Panel Review", 5000.00, "completed", "Lipid profile analyzed; cholesterol elevated."),
+                        ("Lifestyle & Anti-hypertensive Therapy Protocol", 7000.00, "in_progress", "Medication initiated with weekly BP monitoring.")
                     ]
                 }
             ],
-            "consult_symptoms": "Severe continuous throbbing pain on right upper jaw.",
-            "consult_diagnosis": "Irreversible acute pulpitis on tooth #16 with apical periodontitis.",
-            "consult_notes": "Prescribed antibiotic coverage and scheduled immediate root canal therapy."
+            "consult_symptoms": "Persistent headache and elevated BP reading.",
+            "consult_diagnosis": "Essential Hypertension (Stage 2) with mild tension headache.",
+            "consult_notes": "Initiated anti-hypertensive medication and advised low-sodium diet."
         }
     ]
 
@@ -567,14 +567,14 @@ async def _seed_clinical_records(
                 "treatment_type": "Consultation",
                 "consultation_type": "in_person",
                 "status": "confirmed",
-                "notes": "Orthodontic monthly follow-up"
+                "notes": "Cardiology monthly follow-up"
             },
             {
                 "patient_id": pat_id_1,
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
                 "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=14, minutes=30),
-                "treatment_type": "Scaling & Polishing",
+                "treatment_type": "General Consultation",
                 "consultation_type": "teleconsultation",
                 "status": "checked_in",
                 "notes": "Requires online consultation first"
@@ -584,10 +584,10 @@ async def _seed_clinical_records(
                 "doctor_id": doc_id,
                 "branch_id": branch_id,
                 "appointment_datetime": datetime.combine(today_date, datetime.min.time(), tzinfo=UTC) + timedelta(hours=16, minutes=0),
-                "treatment_type": "Tooth Extraction",
+                "treatment_type": "Health Monitoring Panel",
                 "consultation_type": "in_person",
                 "status": "pending",
-                "notes": "Decayed molar"
+                "notes": "Routine wellness review"
             }
         ]
 
@@ -688,7 +688,7 @@ async def _seed_clinical_records(
             id=uuid.uuid4(),
             patient_id=pat_id,
             report_type="X-Ray",
-            report_name=f"Panoramic Dental OPG - {branch_code}",
+            report_name=f"Chest Diagnostic X-Ray (PA View) - {branch_code}",
             file_url=report_url
         )
         db.add(r1)

@@ -29,8 +29,6 @@ import {
   LogOut,
   User,
   Edit3,
-  Bed,
-  Eye,
   RefreshCw,
   Download
 } from 'lucide-react';
@@ -74,44 +72,43 @@ const formatDocName = (name?: string): string => {
 };
 
 const CLINICAL_SCENARIOS: Record<string, { notes: string; aiSummary: string; suggestedMeds: any[]; suggestedTreatment: string }> = {
-  braces: {
-    notes: "Patient reports mild discomfort in upper-right molar area. Requesting routine braces adjustment.",
-    aiSummary: "Summary: Patient presents for scheduled orthodontic adjustment. No signs of infection or swelling. Wire tension increased on upper arch; lower arch elastics replaced. Mild sensitivity reported on tooth #14, recommend monitoring.\n\nSuggested next step: Continue 2-week adjustment cycle. Consider fluoride varnish if sensitivity persists.",
-    suggestedMeds: [{ medicine_name: 'Paracetamol 650mg', dosage: '1 tab if pain', duration: '3 days', instructions: 'Take twice a day' }],
-    suggestedTreatment: "Braces Adjustment"
+  fever: {
+    notes: "Patient presents with high-grade fever, body ache, and fatigue for 2 days.",
+    aiSummary: "Summary: Patient presents with high fever (101.5°F), generalized malaise, and acute viral symptoms. Chest clear on auscultation, no focal infection noted.\n\nSuggested next step: Prescribe antipyretics, hydration, and schedule CBC follow-up if fever persists past 3 days.",
+    suggestedMeds: [{ medicine_name: 'Paracetamol 650mg', dosage: '1-1-1', duration: '3 days', instructions: 'Take after food' }],
+    suggestedTreatment: "General OPD Consultation"
   },
-  root_canal: {
-    notes: "Patient complains of severe throbbing pain in the lower left molar for 3 days, sensitive to hot and cold liquids, swelling in gums.",
-    aiSummary: "Summary: Patient presents with severe acute pulpitis in tooth #19 (lower left first molar) persisting for 3 days. Marked hypersensitivity to thermal stimuli and mild localized gingival inflammation. Recommend initiating root canal therapy.\n\nSuggested next step: Root canal preparation and pulp extirpation. Follow up in 1 week.",
+  hypertension: {
+    notes: "Patient reports persistent morning headaches and dizziness. Recorded BP: 145/95 mmHg.",
+    aiSummary: "Summary: Stage 1 Essential Hypertension diagnosed during routine checkup. Patient displays mild arterial stiffness. Recommend baseline ECG and lipid profile.\n\nSuggested next step: Initiate anti-hypertensive regimen and lifestyle modifications.",
     suggestedMeds: [
-      { medicine_name: 'Amoxicillin 500mg', dosage: '1-1-1', duration: '5 days', instructions: 'Take after meals' },
-      { medicine_name: 'Ibuprofen 400mg', dosage: '1-0-1', duration: '3 days', instructions: 'Take if pain persists' }
+      { medicine_name: 'Amlodipine 5mg', dosage: '1-0-0', duration: '30 days', instructions: 'Take in the morning' },
+      { medicine_name: 'Telmisartan 40mg', dosage: '0-0-1', duration: '30 days', instructions: 'Take after dinner' }
     ],
-    suggestedTreatment: "Root Canal Therapy"
+    suggestedTreatment: "Cardiology Evaluation"
   },
-  extraction: {
-    notes: "Patient complains of pressure and pain in the back of the mouth, lower jaw. Localized swelling, third molar impacted.",
-    aiSummary: "Summary: Clinical exam reveals partially erupted and mesioangularly impacted lower left third molar (tooth #17) causing pressure, local pain, and pericoronitis. Recommend surgical extraction.\n\nSuggested next step: Schedule surgical extraction. Advise cold compress and soft diet post-op.",
+  diabetes: {
+    notes: "Patient complains of excessive thirst, frequent urination, and unexplained weight loss.",
+    aiSummary: "Summary: Clinical findings indicate Type 2 Diabetes Mellitus exacerbation. Fasting glucose: 180 mg/dL, HbA1c: 8.2%. Recommend dietary counseling and glycemic control protocol.\n\nSuggested next step: Initiate oral hypoglycemic therapy and repeat blood glucose log in 2 weeks.",
     suggestedMeds: [
-      { medicine_name: 'Diclofenac 50mg', dosage: '1-0-1', duration: '3 days', instructions: 'Take after food' },
-      { medicine_name: 'Chlorhexidine Mouthwash 100ml', dosage: 'Rinse twice a day', duration: '7 days', instructions: 'Use after brushing' }
+      { medicine_name: 'Metformin 500mg', dosage: '1-0-1', duration: '30 days', instructions: 'Take with meals' }
     ],
-    suggestedTreatment: "Tooth Extraction"
+    suggestedTreatment: "Endocrinology Consult"
   },
-  scaling: {
-    notes: "Patient complains of bleeding gums while brushing and yellow tartar buildup.",
-    aiSummary: "Summary: Patient presents with generalized mild gingivitis. Visible supra- and subgingival calculus buildup on mandibular anterior teeth. Moderate bleeding on probing. Recommend full mouth scaling and polishing.\n\nSuggested next step: Full mouth scaling and oral hygiene counseling. Review brushing technique.",
+  allergy: {
+    notes: "Patient presents with sneezing, watery eyes, and skin rash following seasonal allergy exposure.",
+    aiSummary: "Summary: Acute allergic rhinitis and mild urticaria. No signs of respiratory distress or anaphylaxis.\n\nSuggested next step: Prescribe oral antihistamines and allergen avoidance guidance.",
     suggestedMeds: [
-      { medicine_name: 'Chlorhexidine Mouthwash 100ml', dosage: 'Rinse twice a day', duration: '10 days', instructions: 'Use after food' }
+      { medicine_name: 'Cetirizine 10mg', dosage: '0-0-1', duration: '5 days', instructions: 'Take before sleep' }
     ],
-    suggestedTreatment: "Scaling & Polishing"
+    suggestedTreatment: "Dermatology & Allergy Care"
   }
 };
 
 export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTabInternal] = useState<string>(() => {
     const saved = localStorage.getItem('doctor_portal_tab');
-    const validTabs = ['dashboard', 'queue', 'consultation', 'prescriptions', 'treatment', 'followup', 'availability', 'ipd', 'profile', 'workflow', 'patients'];
+    const validTabs = ['dashboard', 'queue', 'consultation', 'prescriptions', 'treatment', 'followup', 'availability', 'profile', 'workflow', 'patients'];
     return saved && validTabs.includes(saved) ? saved : 'dashboard';
   });
   const [tabHistory, setTabHistory] = useState<string[]>([]);
@@ -1091,8 +1088,6 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [ipdBeds, setIpdBeds] = useState<any[]>([]);
   const [ipdCategories, setIpdCategories] = useState<any[]>([]);
   const [loadingIpdBeds, setLoadingIpdBeds] = useState<boolean>(false);
-  const [selectedWardCategory, setSelectedWardCategory] = useState<string>('all');
-  const [ipdSearchQuery, setIpdSearchQuery] = useState<string>('');
 
   // History Detail Modal State for Doctor
   const [isHistoryDetailsModalOpen, setIsHistoryDetailsModalOpen] = useState<boolean>(false);
@@ -1141,8 +1136,6 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       }
     } catch (err) {
       console.error('Error fetching IPD beds for doctor rounds:', err);
-    } finally {
-      setLoadingIpdBeds(false);
     }
   };
 
@@ -1208,7 +1201,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Fetch all tab contents on change
   useEffect(() => {
-    if (activeTab === 'ipd' || activeTab === 'consultation') {
+    if (activeTab === 'consultation') {
       fetchIpdBeds();
     } else if (activeTab === 'prescriptions') {
       fetchPrescriptions();
@@ -1279,19 +1272,19 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         let vitals = { bp: '120/80', pulse: 72, temperature: 98.6 };
         const lowerText = textToAnalyze.toLowerCase();
         const scKey = scenarioKey || '';
-        if (lowerText.includes('canal') || lowerText.includes('pulpitis') || scKey === 'root_canal') {
-          vitals = { bp: '130/85', pulse: 88, temperature: 99.1 };
-        } else if (lowerText.includes('extract') || scKey === 'extraction') {
-          vitals = { bp: '125/82', pulse: 80, temperature: 98.8 };
-        } else if (lowerText.includes('brace') || scKey === 'braces') {
-          vitals = { bp: '118/76', pulse: 70, temperature: 98.4 };
-        } else if (lowerText.includes('scale') || lowerText.includes('scaling') || scKey === 'scaling') {
+        if (lowerText.includes('fever') || scKey === 'fever') {
+          vitals = { bp: '118/76', pulse: 92, temperature: 101.5 };
+        } else if (lowerText.includes('hypertension') || scKey === 'hypertension') {
+          vitals = { bp: '145/95', pulse: 84, temperature: 98.6 };
+        } else if (lowerText.includes('diabetes') || scKey === 'diabetes') {
+          vitals = { bp: '130/82', pulse: 78, temperature: 98.4 };
+        } else if (lowerText.includes('allergy') || scKey === 'allergy') {
           vitals = { bp: '120/80', pulse: 72, temperature: 98.6 };
         }
 
         const summaryObj = {
           vitals,
-          diagnosis: result.suggested_treatment_plan || 'General Dental Consultation',
+          diagnosis: result.suggested_treatment_plan || 'General OPD Consultation',
           clinical_summary: result.summary || textToAnalyze,
           treatment_notes: result.treatment_plan_notes || '',
           medications: result.suggested_medications || [],
@@ -1946,13 +1939,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
             <Calendar size={18} /> Availability
           </div>
 
-          <div className="doc-nav-group-label">IN-PATIENT (IPD)</div>
-          <div
-            className={`doc-nav-item ${activeTab === 'ipd' ? 'active' : ''}`}
-            onClick={() => { handleRootTabChange('ipd'); setSelectedPatientHistory(null); }}
-          >
-            <Bed size={18} /> IPD Ward Rounds
-          </div>
+
 
           <div className="doc-nav-group-label">PROFILE</div>
           <div
@@ -1993,7 +1980,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 {activeTab === 'treatment' && 'Treatment Plans'}
                 {activeTab === 'followup' && 'Follow-up Center'}
                 {activeTab === 'availability' && 'Availability Settings'}
-                {activeTab === 'ipd' && 'IPD Ward Rounds'}
+
                 {activeTab === 'workflow' && 'Full Clinic Workflow'}
                 {activeTab === 'profile' && 'My Profile'}
               </h1>
@@ -3550,7 +3537,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         <button
                           className="doc-btn-primary"
                           style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-                          onClick={() => handleCreateTreatmentPlan(treatmentPatientId, 'Comprehensive Dental Plan', 'Generated from doctor clinical panel')}
+                          onClick={() => handleCreateTreatmentPlan(treatmentPatientId, 'General Clinical Care Plan', 'Generated from doctor clinical panel')}
                         >
                           Initiate Plan
                         </button>
@@ -3661,7 +3648,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               type="text"
                               className="doc-input"
                               style={{ height: '32px', fontSize: '0.8rem', padding: '4px 8px', marginBottom: 0 }}
-                              placeholder="e.g. Tooth Scaling"
+                              placeholder="e.g. ECG & Blood Screening"
                               value={newProcName}
                               onChange={(e) => setNewProcName(e.target.value)}
                               required
@@ -3776,270 +3763,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 </div>
               )}
 
-              {/* TAB: IPD WARD ROUNDS */}
-              {activeTab === 'ipd' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {/* Header & Controls */}
-                  <div className="doc-card" style={{ padding: '20px', marginBottom: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                      <div>
-                        <h2 className="doc-card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <Bed size={22} style={{ color: '#0d9488' }} /> In-Patient (IPD) Ward Rounds
-                        </h2>
-                        <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
-                          Monitor live occupied beds, review clinical vitals & MAC medication logs, and record daily doctor round progress notes.
-                        </p>
-                      </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ position: 'relative', width: '240px' }}>
-                          <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                          <input
-                            type="text"
-                            className="doc-input"
-                            style={{ height: '36px', paddingLeft: '32px', fontSize: '0.84rem', width: '100%', margin: 0 }}
-                            placeholder="Search patient / bed..."
-                            value={ipdSearchQuery}
-                            onChange={(e) => setIpdSearchQuery(e.target.value)}
-                          />
-                        </div>
-
-                        <button
-                          type="button"
-                          className="doc-btn-secondary"
-                          onClick={fetchIpdBeds}
-                          style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem' }}
-                        >
-                          <RefreshCw size={15} className={loadingIpdBeds ? 'spin-animation' : ''} /> Refresh Wards
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Category Filter Pills */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', overflowX: 'auto' }}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedWardCategory('all')}
-                        style={{
-                          padding: '6px 16px',
-                          borderRadius: '20px',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          border: selectedWardCategory === 'all' ? '1px solid #0d9488' : '1px solid #e2e8f0',
-                          background: selectedWardCategory === 'all' ? '#0d9488' : '#ffffff',
-                          color: selectedWardCategory === 'all' ? '#ffffff' : '#64748b',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        All Wards ({ipdBeds.length} Beds)
-                      </button>
-                      {ipdCategories.map((cat: any) => {
-                        const count = ipdBeds.filter((b: any) => b.category?.id === cat.id).length;
-                        const isSelected = selectedWardCategory === cat.id;
-                        return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => setSelectedWardCategory(cat.id)}
-                            style={{
-                              padding: '6px 16px',
-                              borderRadius: '20px',
-                              fontSize: '0.82rem',
-                              fontWeight: 700,
-                              border: isSelected ? '1px solid #0d9488' : '1px solid #e2e8f0',
-                              background: isSelected ? '#0d9488' : '#ffffff',
-                              color: isSelected ? '#ffffff' : '#64748b',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {cat.name} ({count})
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Ward Occupancy Content */}
-                  {loadingIpdBeds ? (
-                    <div style={{ textAlign: 'center', padding: '60px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                      <RefreshCw size={32} className="spin-animation" style={{ color: '#0d9488' }} />
-                      <p style={{ marginTop: '12px', fontSize: '0.9rem', color: '#64748b' }}>Loading live IPD ward status...</p>
-                    </div>
-                  ) : (
-                    (() => {
-                      const filteredCategories = selectedWardCategory === 'all'
-                        ? ipdCategories
-                        : ipdCategories.filter((c: any) => c.id === selectedWardCategory);
-
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                          {filteredCategories.map((cat: any) => {
-                            const categoryBeds = ipdBeds.filter((b: any) => {
-                              if (b.category?.id !== cat.id) return false;
-                              if (!ipdSearchQuery.trim()) return true;
-                              const query = ipdSearchQuery.toLowerCase();
-                              const bedNoMatch = b.bed_number.toLowerCase().includes(query);
-                              const patientMatch = b.active_admission?.patient_name?.toLowerCase().includes(query);
-                              const docMatch = b.active_admission?.admitting_doctor?.toLowerCase().includes(query);
-                              return bedNoMatch || patientMatch || docMatch;
-                            });
-
-                            if (categoryBeds.length === 0) return null;
-
-                            const occupiedCount = categoryBeds.filter((b: any) => b.status === 'occupied').length;
-
-                            return (
-                              <div key={cat.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
-                                {/* Ward Section Header */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '10px', borderBottom: '2px solid #f1f5f9' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>{cat.name}</h3>
-                                    <span style={{ fontSize: '0.78rem', background: '#f1f5f9', padding: '3px 10px', borderRadius: '12px', color: '#475569', fontWeight: 600 }}>
-                                      {cat.description || 'In-Patient Ward'}
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0d9488' }}>
-                                    Occupancy: {occupiedCount} / {categoryBeds.length} Beds
-                                  </div>
-                                </div>
-
-                                {/* Bed Cards Grid */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                                  {categoryBeds.map((bed: any) => {
-                                    const isOccupied = bed.status === 'occupied' && bed.active_admission;
-                                    const adm = bed.active_admission;
-
-                                    return (
-                                      <div
-                                        key={bed.id}
-                                        style={{
-                                          border: isOccupied ? '1px solid #cbd5e1' : '1px dashed #cbd5e1',
-                                          borderRadius: '14px',
-                                          padding: '16px',
-                                          background: isOccupied ? '#ffffff' : '#f8fafc',
-                                          boxShadow: isOccupied ? '0 4px 6px -1px rgba(0, 0, 0, 0.05)' : 'none',
-                                          display: 'flex',
-                                          flexDirection: 'column',
-                                          justifyContent: 'space-between'
-                                        }}
-                                      >
-                                        <div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                              <Bed size={18} style={{ color: isOccupied ? '#0d9488' : '#94a3b8' }} /> {formatBedNumber(bed.bed_number)}
-                                            </span>
-                                            <span style={{
-                                              fontSize: '0.72rem',
-                                              padding: '3px 8px',
-                                              borderRadius: '12px',
-                                              fontWeight: 700,
-                                              background: isOccupied ? '#dcfce7' : '#f1f5f9',
-                                              color: isOccupied ? '#15803d' : '#64748b',
-                                              border: isOccupied ? '1px solid #86efac' : '1px solid #cbd5e1'
-                                            }}>
-                                              {isOccupied ? 'Occupied' : 'Vacant'}
-                                            </span>
-                                          </div>
-
-                                          {isOccupied ? (
-                                            <div style={{ fontSize: '0.85rem' }}>
-                                              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.95rem' }}>
-                                                {adm.patient_name}
-                                              </div>
-                                              <div style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 8px' }}>
-                                                Code: <strong>{adm.patient_code}</strong> | Dr. {adm.admitting_doctor}
-                                              </div>
-
-                                              <div style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '10px' }}>
-                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>DIAGNOSIS</div>
-                                                <div style={{ fontSize: '0.82rem', color: '#334155', fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                  {adm.diagnosis || 'No diagnosis recorded'}
-                                                </div>
-                                              </div>
-
-                                              <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                                <span>Admitted: {new Date(adm.admission_datetime).toLocaleDateString()}</span>
-                                                <span style={{ fontWeight: 700, color: '#0f172a' }}>Day {adm.stay_days || 1}</span>
-                                              </div>
-                                            </div>
-                                          ) : (
-                                            <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem', fontStyle: 'italic' }}>
-                                              Bed is currently available for admission.
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {isOccupied && (
-                                          <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
-                                            <button
-                                              type="button"
-                                              onClick={() => fetchHistoryDetails(adm.id)}
-                                              style={{
-                                                flex: 1,
-                                                padding: '7px 8px',
-                                                fontSize: '0.78rem',
-                                                fontWeight: 700,
-                                                background: '#f0fdf4',
-                                                color: '#15803d',
-                                                border: '1px solid #bbf7d0',
-                                                borderRadius: '8px',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: '4px'
-                                              }}
-                                            >
-                                              <Eye size={14} /> Case Sheet
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setSelectedBedForRound(bed);
-                                                setRoundVitalsForm({
-                                                  temp: 98.6,
-                                                  pulse: 72,
-                                                  systolic_bp: 120,
-                                                  diastolic_bp: 80,
-                                                  spo2: 98,
-                                                  respiratory_rate: 16,
-                                                  doctor_notes: '',
-                                                });
-                                                setIsRoundNoteModalOpen(true);
-                                              }}
-                                              style={{
-                                                flex: 1,
-                                                padding: '7px 8px',
-                                                fontSize: '0.78rem',
-                                                fontWeight: 700,
-                                                background: '#0d9488',
-                                                color: '#ffffff',
-                                                border: '1px solid #0d9488',
-                                                borderRadius: '8px',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: '4px'
-                                              }}
-                                            >
-                                              <Edit3 size={14} /> Round Note
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()
-                  )}
-                </div>
-              )}
 
               {/* TAB: CONSULTATION WORKSPACE (ENTERPRISE EMR WORKSPACE) */}
               {activeTab === 'consultation' && (
@@ -4169,12 +3893,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                           {[
                             { id: 'vitals', title: 'Vitals', subtitle: 'BP, Pulse, Temp, BMI', icon: <Heart size={16} color="#ef4444" /> },
-                            { id: 'history', title: 'Medical History', subtitle: '28 Visits Logged', icon: <FileText size={16} color="#2563eb" /> },
-                            { id: 'reports', title: 'Reports', subtitle: 'OPG X-Ray & Blood Report', icon: <FolderOpen size={16} color="#16a34a" /> },
-                            { id: 'treatment', title: 'Current Treatment', subtitle: 'Tooth pain, Amoxicillin', icon: <Stethoscope size={16} color="#0f766e" /> },
+                            { id: 'history', title: 'Medical History', subtitle: 'Consultation logs', icon: <FileText size={16} color="#2563eb" /> },
+                            { id: 'reports', title: 'Reports', subtitle: 'Diagnostic Scans & Blood Report', icon: <FolderOpen size={16} color="#16a34a" /> },
+                            { id: 'treatment', title: 'Current Treatment', subtitle: 'General consultation care', icon: <Stethoscope size={16} color="#0f766e" /> },
                             { id: 'timeline', title: 'Timeline', subtitle: 'Lifecycle Activity', icon: <Activity size={16} color="#d97706" /> },
-                            { id: 'prescriptions', title: 'Previous Prescriptions', subtitle: '2 Prescriptions Logged', icon: <FileSpreadsheet size={16} color="#8b5cf6" /> },
-                            { id: 'imaging', title: 'Imaging', subtitle: 'Dental Scans & X-Rays', icon: <Camera size={16} color="#0284c7" /> },
+                            { id: 'prescriptions', title: 'Previous Prescriptions', subtitle: 'Historical records', icon: <FileSpreadsheet size={16} color="#8b5cf6" /> },
+                            { id: 'imaging', title: 'Imaging', subtitle: 'Medical Scans & X-Rays', icon: <Camera size={16} color="#0284c7" /> },
                           ].map((item) => {
                             const isActive = patientWorkspaceTab === item.id;
                             return (
@@ -4258,10 +3982,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 onChange={(e) => handleStartScenario(e.target.value)}
                               >
                                 <option value="">-- Demo Scenario --</option>
-                                <option value="rct">🦷 Root Canal</option>
-                                <option value="ortho">😬 Orthodontic</option>
-                                <option value="extraction">💉 Extraction</option>
-                                <option value="scaling">🧼 Scaling</option>
+                                <option value="fever">🌡️ Fever & Malaise</option>
+                                <option value="hypertension">❤️ BP & Hypertension</option>
+                                <option value="diabetes">🩸 Type 2 Diabetes</option>
+                                <option value="allergy">🌿 Seasonal Allergy</option>
                               </select>
                               <button 
                                 type="button" 
@@ -4575,7 +4299,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             className="doc-input"
                             value={diagnosis}
                             onChange={(e) => setDiagnosis(e.target.value)}
-                            placeholder="e.g. Tooth pain - Left Molar / Advised Root Canal Therapy (RCT)"
+                            placeholder="e.g. Stage 1 Essential Hypertension / Advised Cardiology Follow-up"
                             style={{ marginBottom: 0, height: '36px', fontSize: '0.84rem' }}
                           />
                         </div>
@@ -4726,11 +4450,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {patientWorkspaceTab === 'vitals' && '❤️ Patient Vitals & Health Metrics'}
                             {patientWorkspaceTab === 'history' && '📄 Consultation History Timeline'}
-                            {patientWorkspaceTab === 'reports' && '🧪 Lab Reports & OPG X-Rays'}
+                            {patientWorkspaceTab === 'reports' && '🧪 Lab Reports & Diagnostic Scans'}
                             {patientWorkspaceTab === 'treatment' && '💊 Active Treatment Plan'}
                             {patientWorkspaceTab === 'timeline' && '📈 Patient Lifecycle Timeline'}
                             {patientWorkspaceTab === 'prescriptions' && '📋 Historical Prescriptions Log'}
-                            {patientWorkspaceTab === 'imaging' && '📷 Dental Scans & Imaging'}
+                            {patientWorkspaceTab === 'imaging' && '📷 Medical Scans & Imaging'}
                             {patientWorkspaceTab === null && 'ℹ️ Dynamic Patient Information Panel'}
                           </h3>
                           <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
@@ -4873,8 +4597,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         {patientWorkspaceTab === 'history' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             {(selectedPatientHistory?.consultations || [
-                              { id: '1', date: '15 July 2026', diagnosis: 'Tooth Pain - Left Molar', symptoms: 'Sensitivity to cold and hot liquids', notes: 'Advised Root Canal Therapy' },
-                              { id: '2', date: '02 July 2026', diagnosis: 'Routine Oral Scaling', symptoms: 'Tartar buildup', notes: 'Full mouth scaling completed' }
+                              { id: '1', date: '15 July 2026', diagnosis: 'Stage 1 Essential Hypertension', symptoms: 'Persistent headache and elevated BP reading', notes: 'Advised Cardiology Follow-up & Low Sodium Diet' },
+                              { id: '2', date: '02 July 2026', diagnosis: 'Routine Medical Health Checkup', symptoms: 'Mild fatigue', notes: 'CBC and Lipid profile advised' }
                             ]).map((c: any, idx: number) => (
                               <div key={c.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: '#f8fafc' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -4944,7 +4668,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         {/* CURRENT TREATMENT VIEW */}
                         {patientWorkspaceTab === 'treatment' && (() => {
                           const rawDetails = activePatientDetails?.current_treatment_details;
-                          let problem = 'Tooth pain (Left Molar)';
+                          let problem = 'Stage 1 Essential Hypertension';
                           let medicines = 'Amoxicillin 500mg, Ibuprofen 400mg';
                           let since = '12 July 2026';
 
@@ -5005,12 +4729,12 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               <div style={{ color: '#64748b', fontSize: '0.72rem' }}>18:15 PM · {dashboardData?.doctor?.branch_name ? `${dashboardData.doctor.branch_name} Branch` : 'Satellite Branch'}</div>
                             </div>
                             <div style={{ borderLeft: '3px solid #2563eb', paddingLeft: '10px' }}>
-                              <div style={{ fontWeight: 700, color: '#0f172a' }}>15 July 2026 - OPG Scan Uploaded</div>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>15 July 2026 - Chest X-Ray Uploaded</div>
                               <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Uploaded by Radiologist</div>
                             </div>
                             <div style={{ borderLeft: '3px solid #16a34a', paddingLeft: '10px' }}>
                               <div style={{ fontWeight: 700, color: '#0f172a' }}>02 July 2026 - Initial Visit</div>
-                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Dr. Amit Shah · Oral Scaling</div>
+                              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>Dr. Amit Shah · General Consultation</div>
                             </div>
                           </div>
                         )}
@@ -5054,7 +4778,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: '#f8fafc', textAlign: 'center' }}>
                               <Camera size={32} color="#0284c7" style={{ marginBottom: '6px' }} />
-                              <h5 style={{ margin: '0 0 4px 0', fontSize: '0.85rem', fontWeight: 700 }}>Dental OPG Panoramic Scan</h5>
+                              <h5 style={{ margin: '0 0 4px 0', fontSize: '0.85rem', fontWeight: 700 }}>Diagnostic Chest X-Ray</h5>
                               <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Date: 15 July 2026</span>
                               <button className="doc-btn-secondary" style={{ width: '100%', marginTop: '8px', fontSize: '0.78rem', height: '30px' }}>
                                 Open Full Resolution X-Ray
@@ -5700,8 +5424,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                     </div>
                   ) : (
                     (selectedPatientHistory?.consultations || [
-                      { id: '1', date: '15 July 2026', diagnosis: 'Tooth Pain - Left Molar', symptoms: 'Sensitivity to cold and hot liquids', notes: 'Advised Root Canal Therapy' },
-                      { id: '2', date: '02 July 2026', diagnosis: 'Routine Oral Scaling', symptoms: 'Tartar buildup', notes: 'Full mouth scaling completed' }
+                      { id: '1', date: '15 July 2026', diagnosis: 'Stage 1 Essential Hypertension', symptoms: 'Persistent headache and elevated BP reading', notes: 'Advised Cardiology Follow-up & Low Sodium Diet' },
+                      { id: '2', date: '02 July 2026', diagnosis: 'Routine Medical Health Checkup', symptoms: 'Mild fatigue', notes: 'CBC and Lipid profile advised' }
                     ]).map((c: any, idx: number) => (
                       <div key={c.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -6054,7 +5778,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               {/* TAB 3: CURRENT TREATMENT */}
               {profileModalTab === 'treatment' && (() => {
                 const rawDetails = activePatientDetails?.current_treatment_details;
-                let problem = 'Tooth pain (Left Molar)';
+                let problem = 'Stage 1 Essential Hypertension';
                 let medicines = 'Amoxicillin 500mg, Ibuprofen 400mg';
                 let since = '12 July 2026';
                 let rxDate = '15 July 2026';

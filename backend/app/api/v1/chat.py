@@ -100,7 +100,7 @@ async def send_chat_message(
             elif any(w in msg_text_lower for w in ["hi", "hii", "hello", "hey", "greetings"]):
                 reply_text = f"Hello {patient_first_name}! Welcome to Clinic Support. How can we assist you with your upcoming consultation with {doc_clean_name}?"
             elif any(w in msg_text_lower for w in ["pain", "emergency", "severe", "bleeding", "swelling"]):
-                reply_text = f"Notice: We have flagged your symptoms for urgent review. If this is an acute dental emergency, please visit the nearest clinic emergency desk or call our helpline."
+                reply_text = f"Notice: We have flagged your symptoms for urgent review. If this is an acute medical emergency, please visit the nearest clinic emergency desk or call our helpline."
             elif any(w in msg_text_lower for w in ["time", "timing", "late", "reschedule", "delay"]):
                 reply_text = f"Hello {patient_first_name}! Your time request has been forwarded to the clinic desk. You can also reschedule directly from the Appointments section."
             else:

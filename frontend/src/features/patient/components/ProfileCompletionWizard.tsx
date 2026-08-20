@@ -181,8 +181,8 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
     setDisability('None');
 
     setUnderTreatment(true);
-    setCurrentProblem('Tooth pain (Left Molar)');
-    setCurrentMedicines('Amoxicillin 500mg, Ibuprofen 400mg');
+    setCurrentProblem('Persistent Headache & High BP');
+    setCurrentMedicines('Amlodipine 5mg, Paracetamol 650mg');
     setTreatmentSince('2026-07-12');
     setPrescriptionDate('2026-07-15');
 
@@ -810,7 +810,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     <span>🟢</span> Yes, I am under active treatment
                   </div>
                   <div className="choice-card-desc">
-                    I am currently taking medications, receiving dental/medical procedures, or consulting a specialist.
+                    I am currently taking medications, receiving medical procedures, or consulting a specialist.
                   </div>
                 </div>
 
@@ -839,7 +839,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     className="form-input"
                     value={currentProblem}
                     onChange={(e) => setCurrentProblem(e.target.value)}
-                    placeholder="e.g. Severe tooth pain (Left lower molar), Sensitivity"
+                    placeholder="e.g. Persistent Headache, High Blood Pressure"
                   />
                 </div>
 
@@ -917,7 +917,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Report Name (e.g. OPG Dental X-Ray)"
+                      placeholder="Report Name (e.g. Diagnostic Chest X-Ray)"
                       value={latestReportTitle}
                       onChange={(e) => setLatestReportTitle(e.target.value)}
                     />
@@ -990,7 +990,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
           <div className="wizard-step-content fade-in">
             <h3 className="wizard-sub-title">📁 Lifetime Medical Records & Reports</h3>
             <p className="wizard-sub-description">
-              Upload any historic dental reports, general wellness reports, or previous clinic files you want saved in your electronic medical health record. You may proceed even if you do not have files to upload.
+              Upload any historic medical reports, general wellness reports, or previous clinic files you want saved in your electronic medical health record. You may proceed even if you do not have files to upload.
             </p>
 
             <div className="upload-dropzone-card">
@@ -999,7 +999,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Report Name (e.g. Previous Dental X-Ray 2025)"
+                  placeholder="Report Name (e.g. Previous Medical Report 2025)"
                   value={lifetimeReportTitle}
                   onChange={(e) => setLifetimeReportTitle(e.target.value)}
                 />
