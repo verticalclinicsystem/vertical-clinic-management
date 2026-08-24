@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select, func
@@ -711,7 +711,7 @@ class ClinicManagerService:
 
         # 1. Monthly Revenue Trends
         # Fetch actual invoices from the last 180 days
-        six_months_ago = datetime.utcnow() - timedelta(days=180)
+        six_months_ago = datetime.now(timezone.utc) - timedelta(days=180)
         inv_stmt = select(Invoice).where(Invoice.created_at >= six_months_ago)
         inv_res = await self.db.execute(inv_stmt)
         invoices = inv_res.scalars().all()
@@ -726,7 +726,7 @@ class ClinicManagerService:
         }
 
         months_data = collections.OrderedDict()
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
         for i in range(5, -1, -1):
             m_date = today - timedelta(days=i * 30)
             m_name = m_date.strftime("%b")

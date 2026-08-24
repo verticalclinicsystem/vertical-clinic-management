@@ -134,6 +134,14 @@ class Settings(BaseSettings):
             raise ValueError("STRIPE_SECRET_KEY is required in production")
         return self
 
+    @model_validator(mode="after")
+    def ensure_async_database_url(self) -> Settings:
+        if self.DATABASE_URL.startswith("postgresql://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif self.DATABASE_URL.startswith("postgres://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+        return self
+
 
 @lru_cache
 def get_settings() -> Settings:
