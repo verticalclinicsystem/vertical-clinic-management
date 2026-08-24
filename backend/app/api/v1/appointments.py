@@ -3,21 +3,24 @@ Appointments router — REST API endpoints for booking and managing clinic sched
 """
 from __future__ import annotations
 
+from datetime import datetime, time as dt_time, timezone
 from typing import Annotated, Any
 from uuid import UUID
-from datetime import datetime, timezone, time as dt_time
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_current_user_optional
+from app.api.deps import get_current_user, get_current_user_optional, get_db
+from app.core.exceptions import BadRequestError, PermissionDeniedError
 from app.core.rbac import UserRole
-from app.core.exceptions import PermissionDeniedError, BadRequestError
 from app.models.user import User
-from app.schemas.appointment import AppointmentOut, AppointmentCreate, AppointmentUpdate
+from app.schemas.appointment import AppointmentCreate, AppointmentOut, AppointmentUpdate
 from app.services.appointment_service import AppointmentService
+from app.services.doctor_service import DoctorService
 from app.services.patient_service import PatientService
+from app.services.teleconsult_service import TeleConsultService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -83,7 +86,6 @@ async def get_available_slots(
 ) -> JSONResponse:
     """Retrieve all free availability slots (HH:MM) for a doctor on a specific date (YYYY-MM-DD)."""
     if branch_id:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor(doctor_id)
         if doctor.branch_id != branch_id:
@@ -95,7 +97,6 @@ async def get_available_slots(
         data=slots,
         message="Available slots retrieved successfully.",
     )
-
 
 
 # ── GET /appointments/calendar ────────────────────────────────────────────────
@@ -119,7 +120,6 @@ async def get_calendar(
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         doctor_id = doctor.id
@@ -153,7 +153,6 @@ async def get_waiting_queue(
     start_of_today = datetime.combine(today, dt_time.min, tzinfo=timezone.utc)
     end_of_today = datetime.combine(today, dt_time.max, tzinfo=timezone.utc)
 
-    # We fetch for today
     items, _ = await service.list_appointments(
         page=1,
         limit=100,
@@ -161,7 +160,6 @@ async def get_waiting_queue(
         end_date=end_of_today,
     )
 
-    # Filter to only checked_in, Waiting, or In Consultation status values
     queue_statuses = ["Waiting", "checked_in", "In Consultation", "in_consultation"]
     queue_items = [item for item in items if item.status in queue_statuses]
 
@@ -193,7 +191,6 @@ async def get_today_appointments(
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         doctor_id = doctor.id
@@ -244,7 +241,6 @@ async def list_appointments(
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         doctor_id = doctor.id
@@ -262,7 +258,6 @@ async def list_appointments(
         search=search,
     )
     pages = (total + limit - 1) // limit
-
 
     return ApiResponse.success(
         data={
@@ -296,7 +291,6 @@ async def get_appointment(
         if appointment.patient_id != patient.id:
             raise PermissionDeniedError("Access to this appointment is denied.")
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         if appointment.doctor_id != doctor.id:
@@ -445,12 +439,11 @@ async def cancel_appointment_api(
     return ApiResponse.success(data=to_appointment_out(updated, current_user.role), message="Appointment cancelled.")
 
 
-from pydantic import BaseModel
-
 class RescheduleRequest(BaseModel):
     new_datetime: datetime | None = None
     appointment_datetime: datetime | None = None
     consultation_type: str | None = None
+
 
 @router.patch("/{appointment_id}/reschedule")
 @router.post("/{appointment_id}/reschedule")
@@ -486,7 +479,6 @@ async def get_appointment_meeting_link(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Get meeting link for a teleconsultation appointment."""
-    from app.services.teleconsult_service import TeleConsultService
     tele_service = TeleConsultService(db)
     join_info = await tele_service.validate_and_join_meeting(appointment_id, current_user.id)
     room_name = join_info["meeting_url"]
@@ -503,6 +495,7 @@ async def get_appointment_meeting_link(
 
 class DoctorDelayRequest(BaseModel):
     delay_minutes: int
+
 
 @router.post("/doctor/{doctor_id}/delay", summary="Broadcast emergency delay for a doctor")
 async def broadcast_doctor_delay(
@@ -522,5 +515,3 @@ async def broadcast_doctor_delay(
         data={"notified_count": notified_count},
         message=f"Successfully broadcasted delay of {request.delay_minutes} minutes to {notified_count} patients."
     )
-
-

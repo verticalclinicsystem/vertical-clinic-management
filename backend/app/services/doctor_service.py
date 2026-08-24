@@ -5,17 +5,23 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone, time, timedelta
 from typing import Any
 
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from sqlalchemy import select, func
 
 from app.core.exceptions import DoctorNotFoundError, BranchNotFoundError
+from app.models.appointment import Appointment
+from app.models.consultation import Consultation
 from app.models.doctor import Doctor, DoctorSlot
+from app.models.patient import Patient
 from app.models.user import User
-from app.repositories.doctor_repo import DoctorRepository
+from app.repositories.appointment_repo import AppointmentRepository
 from app.repositories.branch_repo import BranchRepository
+from app.repositories.consultation_repo import ConsultationRepository
+from app.repositories.doctor_repo import DoctorRepository
 from app.schemas.doctor import DoctorUpdate, DoctorSlotCreate
 
 logger = logging.getLogger(__name__)
@@ -112,19 +118,16 @@ class DoctorService:
         doctor = await self.get_doctor_by_user_id(user_id)
         doctor_id = doctor.id
 
-        from datetime import datetime, timezone, time, timedelta
         today = datetime.now(timezone.utc).date()
         start_of_today = datetime.combine(today, time.min, tzinfo=timezone.utc)
         end_of_today = datetime.combine(today, time.max, tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
 
         # 2. Patients treated today (consultations recorded today)
-        from app.repositories.consultation_repo import ConsultationRepository
         consult_repo = ConsultationRepository(self.db)
         patients_treated_today = await consult_repo.get_doctor_treated_today_count(doctor_id, start_of_today)
 
         # 3. Upcoming appointments (future pending/confirmed)
-        from app.repositories.appointment_repo import AppointmentRepository
         appt_repo = AppointmentRepository(self.db)
         upcoming_appointments_count = await appt_repo.get_doctor_upcoming_appointments_count(doctor_id, now)
 
@@ -179,7 +182,6 @@ class DoctorService:
             })
 
         # 10. Weekly Consultation Load (last 7 days)
-        from app.models.consultation import Consultation
         seven_days_ago = datetime.combine(today - timedelta(days=7), time.min, tzinfo=timezone.utc)
         consult_stmt = (
             select(Consultation)
@@ -253,13 +255,6 @@ class DoctorService:
         """Retrieve lists of advised follow-ups (pending booking) and booked follow-ups for a doctor."""
         doctor = await self.get_doctor_by_user_id(user_id)
         doctor_id = doctor.id
-
-        from sqlalchemy import select
-        from sqlalchemy.orm import joinedload
-        from app.models.consultation import Consultation
-        from app.models.patient import Patient
-        from app.models.appointment import Appointment
-        from datetime import datetime, timezone, timedelta
 
         # We load patient, patient's user, and branch
         stmt = (

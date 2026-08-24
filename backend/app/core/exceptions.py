@@ -90,6 +90,12 @@ class AppointmentNotFoundError(NotFoundError):
         super().__init__("Appointment")
 
 
+class ConsultationNotFoundError(NotFoundError):
+    def __init__(self):
+        super().__init__("Consultation")
+
+
+
 class DoctorNotFoundError(NotFoundError):
     def __init__(self):
         super().__init__("Doctor")
@@ -113,6 +119,16 @@ class MedicineNotFoundError(NotFoundError):
 class InvoiceNotFoundError(NotFoundError):
     def __init__(self):
         super().__init__("Invoice")
+
+
+class TreatmentPlanNotFoundError(NotFoundError):
+    def __init__(self):
+        super().__init__("Treatment plan")
+
+
+class PaymentNotFoundError(NotFoundError):
+    def __init__(self):
+        super().__init__("Payment record")
 
 
 # ── 409 Conflict ─────────────────────────────────────────────────────────────

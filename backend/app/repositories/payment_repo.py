@@ -4,6 +4,7 @@ Payment repository — database queries on the payments table.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -50,7 +51,6 @@ class PaymentRepository(BaseRepository[Payment]):
 
     async def get_next_payment_number(self) -> str:
         """Generate a sequential payment number: PAY-YYYYMMDD-XXXX."""
-        from datetime import datetime, timezone
         today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
         
         # Count payments created today

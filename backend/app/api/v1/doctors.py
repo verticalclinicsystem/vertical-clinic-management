@@ -11,9 +11,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.exceptions import PermissionDeniedError
 from app.core.rbac import UserRole, require_roles
 from app.models.user import User
-from app.schemas.doctor import DoctorOut, DoctorUpdate, DoctorSlotCreate, DoctorSlotOut
+from app.schemas.doctor import DoctorOut, DoctorSlotCreate, DoctorSlotOut, DoctorUpdate
 from app.services.doctor_service import DoctorService
 from app.utils.response import ApiResponse
 
@@ -31,7 +32,6 @@ async def get_doctor_dashboard(
 ) -> JSONResponse:
     """Fetch dashboard metrics, today's schedule, patient queue, and recent consultations for the logged-in doctor."""
     if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("Only doctors can access the doctor dashboard.")
         
     service = DoctorService(db)
@@ -53,7 +53,6 @@ async def get_doctor_followups(
 ) -> JSONResponse:
     """Retrieve lists of advised follow-ups (pending booking) and booked follow-ups for the logged-in doctor."""
     if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("Only doctors can access follow-ups data.")
 
     service = DoctorService(db)
@@ -62,7 +61,6 @@ async def get_doctor_followups(
         data=followups_data,
         message="Doctor follow-ups data retrieved successfully."
     )
-
 
 
 # ── 1. GET /doctors ───────────────────────────────────────────────────────────
@@ -139,7 +137,6 @@ async def update_doctor(
     is_owner = doctor.user_id == current_user.id
 
     if not (is_admin or is_owner):
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("You do not have permission to update this doctor profile.")
 
     updated = await service.update_doctor_profile(doctor_id, request)
@@ -189,7 +186,6 @@ async def set_doctor_slots(
     is_owner = doctor.user_id == current_user.id
 
     if not (is_admin or is_owner):
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("You do not have permission to define slots for this doctor.")
 
     slots = await service.set_doctor_slots(doctor_id, request)

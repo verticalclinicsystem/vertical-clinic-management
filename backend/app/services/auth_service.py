@@ -24,7 +24,9 @@ import logging
 import random
 import string
 import uuid
+from datetime import date, datetime, timezone, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -47,9 +49,12 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.attendance import Attendance
 from app.models.user import User
+from app.repositories.doctor_repo import DoctorRepository
 from app.repositories.otp_repo import OtpRepository
 from app.repositories.patient_repo import PatientRepository
+from app.repositories.receptionist_repo import ReceptionistRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -203,7 +208,6 @@ class AuthService:
             raise AuthenticationError("Your account has been deactivated. Contact admin.")
         
         # Check suspension
-        from datetime import datetime, timezone, timedelta
         if user.suspended_until and user.suspended_until > datetime.now(timezone.utc):
             ist_tz = timezone(timedelta(hours=5, minutes=30))
             suspended_until_ist = user.suspended_until.astimezone(ist_tz)
@@ -223,12 +227,9 @@ class AuthService:
         # — Record automated daily attendance punch-in for staff —
         if user.role in ("doctor", "receptionist", "pharmacist", "clinic_manager", "admin"):
             try:
-                from datetime import date, datetime, timezone, timedelta
                 today_date = date.today()
                 now_dt = datetime.now(timezone.utc)
 
-                from app.models.attendance import Attendance
-                from sqlalchemy import select
                 att_res = await self.db.execute(
                     select(Attendance).where(Attendance.user_id == user.id, Attendance.date == today_date)
                 )
@@ -269,7 +270,6 @@ class AuthService:
             raise AuthenticationError("Session expired or revoked.")
 
         # Check suspension
-        from datetime import datetime, timezone, timedelta
         if user.suspended_until and user.suspended_until > datetime.now(timezone.utc):
             ist_tz = timezone(timedelta(hours=5, minutes=30))
             suspended_until_ist = user.suspended_until.astimezone(ist_tz)
@@ -392,11 +392,9 @@ class AuthService:
             branch_id=request.branch_id,
         )
         if request.role == "receptionist":
-            from app.repositories.receptionist_repo import ReceptionistRepository
             recep_repo = ReceptionistRepository(self.db)
             await recep_repo.create_for_user(user_id=user.id, branch_id=user.branch_id)
         elif request.role == "doctor":
-            from app.repositories.doctor_repo import DoctorRepository
             doc_repo = DoctorRepository(self.db)
             await doc_repo.create({
                 "user_id": user.id,
@@ -424,7 +422,6 @@ class AuthService:
             branch_id=request.branch_id,
         )
 
-        from app.repositories.doctor_repo import DoctorRepository
         doc_repo = DoctorRepository(self.db)
         await doc_repo.create({
             "user_id": user.id,
@@ -457,7 +454,6 @@ class AuthService:
             branch_id=request.branch_id,
         )
 
-        from app.repositories.receptionist_repo import ReceptionistRepository
         recep_repo = ReceptionistRepository(self.db)
         await recep_repo.create_for_user(
             user_id=user.id,

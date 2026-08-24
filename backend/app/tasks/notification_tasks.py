@@ -3,12 +3,14 @@ notification_tasks — handles periodic appointment reminders and teleconsultati
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, joinedload
+from twilio.rest import Client
 
 from app.config import settings
 from app.models.appointment import Appointment
@@ -16,7 +18,9 @@ from app.models.teleconsult import TeleConsultation
 from app.models.notification import Notification
 from app.models.patient import Patient
 from app.models.doctor import Doctor
+from app.models.user import User
 from app.tasks.celery_app import celery_app
+from app.utils.email import send_email
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +39,6 @@ def _send_sync_notification(
     attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> None:
     """Helper to dispatch multi-channel alerts synchronously inside a Celery task."""
-    from app.models.user import User
     user = session.execute(
         select(User).where(User.id == user_id)
     ).scalar_one_or_none()
@@ -77,8 +80,6 @@ def _send_sync_notification(
         else:
             logger.info(f"[Sync Email] Sending to {user.email}: {title}")
             try:
-                import asyncio
-                from app.utils.email import send_email
                 html_body = f"<h3>{title}</h3><p>{message}</p><br/><hr/><p style='font-size: 11px; color: #888;'>This is an automated notification from Vertical Clinic.</p>"
                 asyncio.run(send_email(
                     to=user.email,
@@ -93,7 +94,6 @@ def _send_sync_notification(
     # 3. SMS
     if sms_enabled and user.phone:
         logger.info(f"[Sync SMS] Sending to {user.phone}: {message}")
-        from app.config import settings
         if settings.SMS_PROVIDER == "twilio" and settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
             is_dummy = (
                 "dummy" in settings.TWILIO_ACCOUNT_SID.lower()
@@ -102,7 +102,6 @@ def _send_sync_notification(
             )
             if not is_dummy:
                 try:
-                    from twilio.rest import Client
                     client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                     to_phone = user.phone
                     if not to_phone.startswith("+"):

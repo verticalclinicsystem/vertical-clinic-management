@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Annotated
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,6 @@ router = APIRouter()
 
 def _require_admin(current_user: User) -> None:
     if current_user.role != UserRole.ADMIN:
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
@@ -758,7 +757,6 @@ async def revoke_user_session(
     user_res = await db.execute(select(User).where(User.id == user_id))
     user = user_res.scalar_one_or_none()
     if not user:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="User not found")
 
     user.token_version += 1
@@ -825,7 +823,6 @@ async def get_staff_attendance(
     display_users = display_users_res.scalars().all()
 
     # 3. Fetch approved leaves covering target_date
-    from app.models.doctor import Doctor
     leave_q = select(
         AvailabilityChangeRequest.user_id,
         Doctor.user_id.label("doctor_user_id")

@@ -3,18 +3,59 @@ Billing service — handles business logic and validations for clinic invoices.
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 import uuid
+from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import PatientNotFoundError, PermissionDeniedError
+from app.core.exceptions import PatientNotFoundError, PermissionDeniedError, InvoiceNotFoundError
 from app.models.invoice import Invoice
+from app.models.ipd import IpdBillItem
 from app.repositories.invoice_repo import InvoiceRepository
 from app.repositories.patient_repo import PatientRepository
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate
+from app.services.notification_service import NotificationService
+from app.utils.email import send_email
+from app.utils.pdf_generator import generate_invoice_pdf
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_medicine_qty(dosage: str, duration: str) -> int:
+    # Default to 10 if we can't parse
+    days = 5
+    m_dur = re.search(r'(\d+)\s*(day|week|month)', duration.lower())
+    if m_dur:
+        val = int(m_dur.group(1))
+        unit = m_dur.group(2)
+        if 'week' in unit:
+            days = val * 7
+        elif 'month' in unit:
+            days = val * 30
+        else:
+            days = val
+    else:
+        m_num = re.search(r'^(\d+)$', duration.strip())
+        if m_num:
+            days = int(m_num.group(1))
+            
+    daily = 2
+    if '-' in dosage:
+        parts = dosage.split('-')
+        try:
+            daily = sum(int(p) for p in parts if p.strip().isdigit())
+        except Exception:
+            daily = 2
+    else:
+        m_dos = re.search(r'(\d+)', dosage)
+        if m_dos:
+            daily = int(m_dos.group(1))
+            
+    return max(1, days * daily)
 
 
 class BillingService:
@@ -22,6 +63,7 @@ class BillingService:
         self.db = db
         self.invoice_repo = InvoiceRepository(db)
         self.patient_repo = PatientRepository(db)
+        self.noti_service = NotificationService(db)
 
     async def create_invoice(self, request: InvoiceCreate) -> Invoice:
         """Create a new invoice for a patient."""
@@ -37,7 +79,6 @@ class BillingService:
         grand_total = max(0.0, request.total_amount - request.discount_amount + request.tax_amount)
         
         # Support multiple selected admission IDs
-        import json
         adm_ids = [str(i) for i in request.admission_ids] if request.admission_ids else ([] if not request.admission_id else [str(request.admission_id)])
         primary_adm_id = adm_ids[0] if adm_ids else request.admission_id
         adm_ids_json = json.dumps(adm_ids) if adm_ids else None
@@ -64,9 +105,7 @@ class BillingService:
 
         # Send Invoice notification to patient
         try:
-            from app.services.notification_service import NotificationService
-            noti_service = NotificationService(self.db)
-            await noti_service.send_multichannel_notification(
+            await self.noti_service.send_multichannel_notification(
                 user_id=patient.user_id,
                 title="Invoice Generated",
                 message=f"A new invoice ({invoice_number}) of {grand_total} has been generated for your clinic visit.",
@@ -112,7 +151,6 @@ class BillingService:
             })
             
             # 2. Prescriptions / Medicines
-            from app.api.v1.billing import calculate_medicine_qty
             for presc in invoice.consultation.prescriptions:
                 for item in presc.items:
                     qty = item.quantity if (hasattr(item, "quantity") and item.quantity is not None) else calculate_medicine_qty(item.dosage, item.duration)
@@ -137,7 +175,6 @@ class BillingService:
         # 4. IPD Bed Stay & Charges
         if invoice.admission:
             adm = invoice.admission
-            from datetime import datetime, timezone
             end_t = adm.discharge_datetime or datetime.now(timezone.utc)
             hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
             bed = adm.bed
@@ -155,8 +192,6 @@ class BillingService:
                 })
 
             # Fetch past transferred bed bill items
-            from sqlalchemy import select
-            from app.models.ipd import IpdBillItem
             past_res = await self.db.execute(select(IpdBillItem).where(IpdBillItem.admission_id == adm.id))
             past_items = past_res.scalars().all()
             for item in past_items:
@@ -210,10 +245,7 @@ class BillingService:
             "balance_due": float(invoice.balance_due),
         }
 
-        from app.utils.pdf_generator import generate_invoice_pdf
         pdf_bytes = generate_invoice_pdf(invoice_data)
-
-        from datetime import datetime
         generated_time = datetime.now().strftime("%m/%d/%Y, %I:%M:%S %p")
 
         pay_mode = "UPI / Cash"
@@ -243,7 +275,6 @@ class BillingService:
 
         balance_color = "#15803d" if float(invoice.balance_due) == 0 else "#b91c1c"
 
-        from app.utils.email import send_email
         subject = f"Invoice {invoice.invoice_number} from Vertical Clinic"
         plain_body = (
             f"Dear {invoice.patient.user.full_name},\n\n"
@@ -426,14 +457,6 @@ class BillingService:
         """Fetch single invoice with details."""
         invoice = await self.invoice_repo.get_invoice_with_relations(invoice_id)
         if not invoice:
-            from app.core.exceptions import BaseAPIException
-            class InvoiceNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="INVOICE_NOT_FOUND",
-                        message="Invoice not found."
-                    )
             raise InvoiceNotFoundError()
         return invoice
 
@@ -485,7 +508,4 @@ class BillingService:
             else:
                 update_data["status"] = "unpaid"
 
-        updated = await self.invoice_repo.update(invoice, update_data)
-        await self.db.commit()
-        logger.info(f"Invoice updated: {updated.invoice_number}")
         return await self.get_invoice(updated.id)

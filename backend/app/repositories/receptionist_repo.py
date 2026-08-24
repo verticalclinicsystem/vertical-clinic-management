@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.models.receptionist import Receptionist
+from app.models.user import User
 from app.repositories.base import BaseRepository
 
 
@@ -48,7 +49,6 @@ class ReceptionistRepository(BaseRepository[Receptionist]):
         bio: str | None = None
     ) -> Receptionist:
         """Create receptionist profile linked to a user."""
-        from app.models.user import User
         user_res = await self.db.execute(select(User).where(User.id == user_id))
         user_obj = user_res.scalar_one_or_none()
         name = user_obj.full_name if user_obj else None
@@ -67,8 +67,6 @@ class ReceptionistRepository(BaseRepository[Receptionist]):
 
     async def search(self, query: str, skip: int = 0, limit: int = 20) -> list[Receptionist]:
         """Search receptionists by employee_id or name (via user join)."""
-        from app.models.user import User
-
         result = await self.db.execute(
             select(Receptionist)
             .options(joinedload(Receptionist.user), joinedload(Receptionist.branch))
@@ -85,8 +83,6 @@ class ReceptionistRepository(BaseRepository[Receptionist]):
 
     async def count_search(self, query: str) -> int:
         """Count search matches."""
-        from app.models.user import User
-
         result = await self.db.execute(
             select(func.count())
             .select_from(Receptionist)
