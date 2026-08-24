@@ -9,7 +9,10 @@ import shutil
 import logging
 from typing import Optional
 
-import boto3
+try:
+    import boto3
+except ImportError:
+    boto3 = None
 from PIL import Image
 from fastapi import UploadFile, HTTPException, Request
 
@@ -184,6 +187,8 @@ class StorageService:
         """
         Helper method to upload file to S3.
         """
+        if boto3 is None:
+            raise HTTPException(status_code=500, detail="boto3 library is not installed.")
         if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
             raise HTTPException(status_code=500, detail="AWS S3 credentials not configured.")
             
@@ -213,7 +218,7 @@ class StorageService:
         """
         Helper method to delete file from S3.
         """
-        if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
+        if boto3 is None or not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
             return False
             
         s3 = boto3.client(

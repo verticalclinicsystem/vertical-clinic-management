@@ -71,7 +71,7 @@ def invoice_to_out(invoice) -> dict:
                         items.append({
                             "medicine_name": item.medicine_name,
                             "dosage": item.dosage,
-                            "frequency": getattr(item, "frequency", None),
+                            "frequency": getattr(item, "frequency", item.dosage),
                             "duration": item.duration,
                             "instructions": item.instructions or "",
                         })
@@ -224,7 +224,7 @@ async def calculate_pending_charges(
                 items_list.append({
                     "medicine_name": item.medicine_name,
                     "dosage": item.dosage,
-                    "frequency": getattr(item, "frequency", None),
+                    "frequency": getattr(item, "frequency", item.dosage),
                     "duration": item.duration,
                     "quantity": qty,
                     "unit_price": unit_price,

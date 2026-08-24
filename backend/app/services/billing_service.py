@@ -508,4 +508,6 @@ class BillingService:
             else:
                 update_data["status"] = "unpaid"
 
+        updated = await self.invoice_repo.update(invoice, update_data)
+        await self.db.commit()
         return await self.get_invoice(updated.id)
