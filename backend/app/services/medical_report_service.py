@@ -9,6 +9,8 @@ from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.models.medical_report import MedicalReport
 from app.repositories.medical_report_repo import MedicalReportRepository
 from app.repositories.patient_repo import PatientRepository
+from app.services.notification_service import NotificationService
+from app.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,6 @@ class MedicalReportService:
 
         # Send Medical Report notification
         try:
-            from app.services.notification_service import NotificationService
             noti_service = NotificationService(self.db)
             await noti_service.send_multichannel_notification(
                 user_id=user_id,
@@ -70,7 +71,6 @@ class MedicalReportService:
 
         # Send Medical Report notification
         try:
-            from app.services.notification_service import NotificationService
             noti_service = NotificationService(self.db)
             await noti_service.send_multichannel_notification(
                 user_id=patient.user_id,
@@ -110,7 +110,6 @@ class MedicalReportService:
 
         # Delete actual file from storage
         try:
-            from app.services.storage_service import StorageService
             await StorageService.delete_medical_report(report.file_url)
         except Exception as e:
             logger.error(f"Failed to delete medical report file {report.file_url}: {e}")
@@ -118,3 +117,4 @@ class MedicalReportService:
         await self.report_repo.delete(report)
         await self.db.commit()
         logger.info(f"Medical report deleted: {report_id}")
+

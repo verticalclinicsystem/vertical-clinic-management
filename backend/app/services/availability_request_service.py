@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, time as dt_time
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
@@ -20,6 +20,7 @@ from app.schemas.availability_request import AvailabilityChangeRequestCreate, Av
 from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
+IST = timezone(timedelta(hours=5, minutes=30))  # UTC+5:30
 
 
 class AvailabilityRequestService:
@@ -167,11 +168,6 @@ class AvailabilityRequestService:
                 self.db.add(doctor)
  
                 # Check for conflicting appointments
-                import datetime as dt_module
-                from datetime import time as dt_time
-                IST = timezone(dt_module.timedelta(hours=5, minutes=30))  # UTC+5:30
-                
-                # Find confirmed/pending appointments
                 stmt_appt = select(Appointment).options(joinedload(Appointment.patient)).where(
                     Appointment.doctor_id == doctor.id,
                     Appointment.status.notin_(["cancelled", "rejected", "completed"])

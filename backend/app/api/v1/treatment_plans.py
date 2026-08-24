@@ -1,7 +1,10 @@
 """
 Treatment Plans router — endpoints for patient treatment plans and procedures.
 """
+from __future__ import annotations
+
 import uuid
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,13 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_active_user, get_db
 from app.core.exceptions import PermissionDeniedError
 from app.models.user import User, UserRole
-from app.utils.response import ApiResponse
 from app.schemas.treatment import TreatmentPlanCreate, TreatmentPlanOut, TreatmentPlanUpdate
-from app.services.treatment_service import TreatmentService
+from app.services.doctor_service import DoctorService
 from app.services.patient_service import PatientService
+from app.services.treatment_service import TreatmentService
+from app.utils.response import ApiResponse
 
 router = APIRouter()
-
 
 
 @router.post("/", response_class=JSONResponse, status_code=201)
@@ -63,7 +66,6 @@ async def list_treatment_plans(
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         doctor_id = doctor.id
@@ -110,7 +112,6 @@ async def get_treatment_plan(
         if plan.patient_id != patient.id:
             raise PermissionDeniedError("You cannot access this treatment plan.")
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         if plan.doctor_id != doctor.id:
@@ -138,7 +139,6 @@ async def update_treatment_plan(
     service = TreatmentService(db)
     # Re-verify doctor is the one who created it (if the current user is a doctor)
     if current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         plan = await service.get_treatment_plan(plan_id)
@@ -150,4 +150,3 @@ async def update_treatment_plan(
         data=TreatmentPlanOut.model_validate(updated_plan),
         message="Treatment plan updated successfully.",
     )
-

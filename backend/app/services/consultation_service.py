@@ -10,8 +10,9 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    DoctorNotFoundError, PatientNotFoundError, BranchNotFoundError
+    DoctorNotFoundError, PatientNotFoundError, BranchNotFoundError, ConsultationNotFoundError
 )
+from app.core.websocket import manager
 from app.models.consultation import Consultation
 from app.models.appointment import Appointment
 from app.repositories.consultation_repo import ConsultationRepository
@@ -76,7 +77,6 @@ class ConsultationService:
 
         # Broadcast queue update
         try:
-            from app.core.websocket import manager
             if request.appointment_id and appt:
                 await manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
             else:
@@ -91,14 +91,6 @@ class ConsultationService:
         """Fetch details of a single consultation."""
         consultation = await self.consultation_repo.get_consultation_with_relations(consultation_id)
         if not consultation:
-            from app.core.exceptions import BaseAPIException
-            class ConsultationNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="CONSULTATION_NOT_FOUND",
-                        message="Consultation record not found."
-                    )
             raise ConsultationNotFoundError()
         return consultation
 

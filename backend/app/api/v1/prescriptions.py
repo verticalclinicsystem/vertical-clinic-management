@@ -1,7 +1,11 @@
 """
 Prescriptions router — endpoints for patient prescriptions.
 """
+from __future__ import annotations
+
 import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_active_user, get_db
 from app.core.exceptions import PermissionDeniedError
 from app.models.user import User, UserRole
-from app.utils.response import ApiResponse
 from app.schemas.prescription import PrescriptionCreate, PrescriptionOut, PrescriptionUpdate
-from app.services.prescription_service import PrescriptionService
+from app.services.doctor_service import DoctorService
 from app.services.patient_service import PatientService
+from app.services.prescription_service import PrescriptionService
+from app.utils.pdf_generator import generate_prescription_pdf
+from app.utils.response import ApiResponse
 
 router = APIRouter()
 
@@ -62,7 +68,6 @@ async def list_prescriptions(
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         doctor_id = doctor.id
@@ -109,7 +114,6 @@ async def get_prescription(
         if prescription.patient_id != patient.id:
             raise PermissionDeniedError("You cannot access this prescription.")
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         if prescription.doctor_id != doctor.id:
@@ -132,8 +136,6 @@ async def get_prescription_pdf(
     - Patients can only download their own prescriptions.
     - Doctors can only download their own prescriptions.
     """
-    from fastapi import Response
-    
     service = PrescriptionService(db)
     prescription = await service.get_prescription(prescription_id)
 
@@ -144,7 +146,6 @@ async def get_prescription_pdf(
         if prescription.patient_id != patient.id:
             raise PermissionDeniedError("You cannot access this prescription.")
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         if prescription.doctor_id != doctor.id:
@@ -175,7 +176,6 @@ async def get_prescription_pdf(
         ]
     }
 
-    from app.utils.pdf_generator import generate_prescription_pdf
     pdf_bytes = generate_prescription_pdf(pdf_data)
 
     return Response(
@@ -198,13 +198,13 @@ async def dispense_prescription(
     - Restricted to Pharmacist, Receptionist, or Admin.
     """
     if current_user.role not in [UserRole.PHARMACIST, UserRole.RECEPTIONIST, UserRole.ADMIN]:
-        raise PermissionDeniedError("Only pharmacists, receptionists or admins can dispense prescriptions.")
+        raise PermissionDeniedError("Only pharmacists or staff can dispense prescriptions.")
 
     service = PrescriptionService(db)
-    prescription = await service.dispense_prescription(prescription_id, performed_by_id=current_user.id)
+    prescription = await service.dispense_prescription(prescription_id)
     return ApiResponse.success(
         data=PrescriptionOut.model_validate(prescription),
-        message="Prescription dispensed and stock updated successfully."
+        message="Prescription dispensed successfully.",
     )
 
 
@@ -216,16 +216,15 @@ async def update_prescription(
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """
-    Update prescription notes, status, and items.
-    - Restricted to Doctor, Pharmacist, Receptionist, or Admin.
+    Update an existing prescription.
+    - Restricted to Doctor who created it or Admin.
     """
-    if current_user.role not in [UserRole.DOCTOR, UserRole.PHARMACIST, UserRole.RECEPTIONIST, UserRole.ADMIN]:
-        raise PermissionDeniedError("Only authorized staff or doctors can update prescriptions.")
+    if current_user.role not in [UserRole.DOCTOR, UserRole.ADMIN]:
+        raise PermissionDeniedError("Only doctors can update prescriptions.")
 
     service = PrescriptionService(db)
     prescription = await service.update_prescription(prescription_id, request)
     return ApiResponse.success(
         data=PrescriptionOut.model_validate(prescription),
-        message="Prescription updated successfully."
+        message="Prescription updated successfully.",
     )
-

@@ -1,8 +1,11 @@
 """
 Consultation router — endpoints for patient visits and checkups.
 """
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,10 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_active_user, get_db
 from app.core.exceptions import PermissionDeniedError
 from app.models.user import User, UserRole
-from app.utils.response import ApiResponse
 from app.schemas.consultation import ConsultationCreate, ConsultationOut
 from app.services.consultation_service import ConsultationService
+from app.services.doctor_service import DoctorService
 from app.services.patient_service import PatientService
+from app.utils.response import ApiResponse
 
 router = APIRouter()
 
@@ -66,7 +70,6 @@ async def list_consultations(
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         doctor_id = doctor.id
@@ -116,7 +119,6 @@ async def get_consultation(
         if consultation.patient_id != patient.id:
             raise PermissionDeniedError("You cannot access this consultation record.")
     elif current_user.role == UserRole.DOCTOR:
-        from app.services.doctor_service import DoctorService
         doctor_service = DoctorService(db)
         doctor = await doctor_service.get_doctor_by_user_id(current_user.id)
         if consultation.doctor_id != doctor.id:

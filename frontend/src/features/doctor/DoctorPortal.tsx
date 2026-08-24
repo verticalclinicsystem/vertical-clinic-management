@@ -30,7 +30,9 @@ import {
   User,
   Edit3,
   RefreshCw,
-  Download
+  Download,
+  Pill,
+  BedDouble
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
@@ -1136,6 +1138,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       }
     } catch (err) {
       console.error('Error fetching IPD beds for doctor rounds:', err);
+    } finally {
+      setLoadingIpdBeds(false);
     }
   };
 
@@ -1162,6 +1166,17 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   void loadingIpdBeds;
   void setSelectedBedForRound;
   void fetchHistoryDetails;
+  useEffect(() => {
+    (window as any).doctorIpdActions = {
+      openRoundForBed: (bed: any) => {
+        setSelectedBedForRound(bed);
+        setIsRoundNoteModalOpen(true);
+      },
+      openHistoryDetails: (admissionId: string) => {
+        fetchHistoryDetails(admissionId);
+      }
+    };
+  }, [fetchHistoryDetails]);
 
   const handleSaveRoundNote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1469,14 +1484,37 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   // Apply suggested medicines to the prescription form
   const applyAISuggestions = () => {
-    const mappedItems = suggestedMeds.map((med: any) => ({
-      medicine_name: med.medicine_name,
-      dosage: med.dosage,
-      duration: med.duration,
-      instructions: med.instructions
-    }));
-    setPrescriptionItems([...prescriptionItems, ...mappedItems]);
+    const medsList = (aiSummary?.medications && aiSummary.medications.length > 0)
+      ? aiSummary.medications
+      : (suggestedMeds && suggestedMeds.length > 0 ? suggestedMeds : []);
+
+    if (!medsList || medsList.length === 0) return;
+
+    const mappedItems = medsList.map((med: any) => (
+      typeof med === 'string'
+        ? { medicine_name: med, dosage: '1-0-1', duration: '5 days', instructions: 'As directed' }
+        : {
+            medicine_name: med.medicine_name || med.name || 'Medicine',
+            dosage: med.dosage || '1-0-1',
+            duration: med.duration || '5 days',
+            instructions: med.instructions || 'As directed'
+          }
+    ));
+    setPrescriptionItems((prev) => [...prev, ...mappedItems]);
     showToast('AI Medicines applied to Prescription Builder!');
+  };
+
+  const applySingleAIMedicine = (med: any) => {
+    const medObj = typeof med === 'string'
+      ? { medicine_name: med, dosage: '1-0-1', duration: '5 days', instructions: 'As directed' }
+      : {
+          medicine_name: med.medicine_name || med.name || 'Medicine',
+          dosage: med.dosage || '1-0-1',
+          duration: med.duration || '5 days',
+          instructions: med.instructions || 'As directed'
+        };
+    setPrescriptionItems((prev) => [...prev, medObj]);
+    showToast(`${medObj.medicine_name} added to Prescription Builder!`);
   };
 
   // Add the AI treatment suggestion as a treatment plan
@@ -2298,20 +2336,20 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                                 {isWaiting ? (
-                                  <span style={{ backgroundColor: '#fff7ed', color: '#ea580c', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '5px', height: '5px', backgroundColor: '#ea580c', borderRadius: '50%' }} /> {statusLower === 'checked_in' ? 'Checked In' : 'Waiting'}
+                                  <span style={{ backgroundColor: '#fff7ed', color: '#ea580c', border: '1px solid #ffedd5', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    <span style={{ width: '6px', height: '6px', backgroundColor: '#ea580c', borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} /> {statusLower === 'checked_in' ? 'Checked In' : 'Waiting'}
                                   </span>
                                 ) : isCompleted ? (
-                                  <span style={{ backgroundColor: '#f0fdf4', color: '#16a34a', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '5px', height: '5px', backgroundColor: '#16a34a', borderRadius: '50%' }} /> Completed
+                                  <span style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    <span style={{ width: '6px', height: '6px', backgroundColor: '#16a34a', borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} /> Completed
                                   </span>
                                 ) : isInConsult ? (
-                                  <span style={{ backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '5px', height: '5px', backgroundColor: '#2563eb', borderRadius: '50%' }} /> In Consultation
+                                  <span style={{ backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0, boxShadow: '0 0 0 1px rgba(37, 99, 235, 0.1)' }}>
+                                    <span style={{ width: '6px', height: '6px', backgroundColor: '#2563eb', borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} /> In Consultation
                                   </span>
                                 ) : (
-                                  <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '5px', height: '5px', backgroundColor: '#1d4ed8', borderRadius: '50%' }} /> Confirmed
+                                  <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    <span style={{ width: '6px', height: '6px', backgroundColor: '#1d4ed8', borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} /> Confirmed
                                   </span>
                                 )}
 
@@ -2449,19 +2487,23 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           // Status badge colors
                           let badgeBg = '#eff6ff';
                           let badgeText = '#1d4ed8';
+                          let badgeBorder = '#dbeafe';
                           let badgeLabel = 'Confirmed';
 
                           if (statusLower === 'waiting' || statusLower === 'pending' || statusLower === 'checked_in') {
                             badgeBg = '#fff7ed';
                             badgeText = '#ea580c';
+                            badgeBorder = '#ffedd5';
                             badgeLabel = statusLower === 'checked_in' ? 'Checked In' : 'Waiting';
                           } else if (isInConsultation) {
                             badgeBg = '#eff6ff';
                             badgeText = '#2563eb';
+                            badgeBorder = '#bfdbfe';
                             badgeLabel = 'In Consultation';
                           } else if (isCompleted) {
                             badgeBg = '#f0fdf4';
                             badgeText = '#16a34a';
+                            badgeBorder = '#bbf7d0';
                             badgeLabel = 'Completed';
                           }
 
@@ -2486,8 +2528,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               borderLeft: isCompleted ? '4px solid #22c55e' : isInConsultation ? '4px solid #3b82f6' : '4px solid transparent'
                             }}>
                               {/* Card Header */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
                                   <div style={{
                                     width: '44px',
                                     height: '44px',
@@ -2498,20 +2540,21 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     fontWeight: '700',
-                                    fontSize: '0.95rem'
+                                    fontSize: '0.95rem',
+                                    flexShrink: 0
                                   }}>
                                     {initials}
                                   </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--doc-text-dark)' }}>{appt.patient_name}</span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--doc-text-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appt.patient_name}</span>
                                       {appt.tele_status === 'patient_ready' && (
-                                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: '800', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: '800', border: '1px solid #bbf7d0', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                           Ready
                                         </span>
                                       )}
                                     </div>
-                                    <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)' }}>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--doc-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {appt.patient_code || 'PT-10234'} · {appt.treatment_type}
                                     </span>
                                   </div>
@@ -2519,15 +2562,19 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 <span style={{
                                   backgroundColor: badgeBg,
                                   color: badgeText,
+                                  border: `1px solid ${badgeBorder}`,
                                   padding: '4px 10px',
                                   borderRadius: '20px',
                                   fontSize: '0.72rem',
                                   fontWeight: '700',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '4px'
+                                  gap: '6px',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  boxShadow: isInConsultation ? '0 0 0 1px rgba(37, 99, 235, 0.1)' : 'none'
                                 }}>
-                                  <span style={{ width: '5px', height: '5px', backgroundColor: badgeText, borderRadius: '50%' }} />
+                                  <span style={{ width: '6px', height: '6px', backgroundColor: badgeText, borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} />
                                   {badgeLabel}
                                 </span>
                               </div>
@@ -4179,14 +4226,121 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                   ) : (
                                     <div><strong>Summary:</strong> {editedSummaryText || aiSummary?.clinical_summary}</div>
                                   )}
-                                  {aiSummary?.medications && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                                      <span style={{ color: '#0f766e', fontWeight: 700 }}>Suggested Medicines Available ({aiSummary.medications.length})</span>
-                                      <button type="button" onClick={applyAISuggestions} style={{ fontSize: '0.72rem', backgroundColor: '#ffffff', border: '1px solid #99f6e4', color: '#0f766e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, cursor: 'pointer' }}>
-                                        + Apply to Prescription
-                                      </button>
-                                    </div>
-                                  )}
+                                  {(() => {
+                                    const currentMeds = (aiSummary?.medications && aiSummary.medications.length > 0)
+                                      ? aiSummary.medications
+                                      : (suggestedMeds && suggestedMeds.length > 0 ? suggestedMeds : []);
+
+                                    if (!currentMeds || currentMeds.length === 0) return null;
+
+                                    return (
+                                      <div style={{
+                                        marginTop: '6px',
+                                        backgroundColor: '#ffffff',
+                                        border: '1px solid #ccfbf1',
+                                        borderRadius: '8px',
+                                        padding: '10px 12px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px'
+                                      }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0f766e', fontWeight: 800, fontSize: '0.78rem' }}>
+                                            <Pill size={14} color="#0d9488" />
+                                            Suggested Medications ({currentMeds.length})
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={applyAISuggestions}
+                                            style={{
+                                              fontSize: '0.72rem',
+                                              backgroundColor: '#0d9488',
+                                              color: '#ffffff',
+                                              border: 'none',
+                                              padding: '4px 10px',
+                                              borderRadius: '6px',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                              boxShadow: '0 1px 2px rgba(13, 148, 136, 0.15)'
+                                            }}
+                                          >
+                                            <Plus size={12} /> Apply All to Prescription
+                                          </button>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                          {currentMeds.map((med: any, idx: number) => {
+                                            const name = typeof med === 'string' ? med : (med.medicine_name || med.name || 'Medicine');
+                                            const dosage = typeof med === 'string' ? '1-0-1' : med.dosage;
+                                            const duration = typeof med === 'string' ? '5 days' : med.duration;
+                                            const instructions = typeof med === 'string' ? 'As directed' : med.instructions;
+
+                                            return (
+                                              <div
+                                                key={idx}
+                                                style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'space-between',
+                                                  padding: '6px 10px',
+                                                  backgroundColor: '#f0fdfa',
+                                                  border: '1px solid #99f6e4',
+                                                  borderRadius: '6px',
+                                                  gap: '10px'
+                                                }}
+                                              >
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.8rem' }}>{name}</span>
+                                                    {dosage && (
+                                                      <span style={{ fontSize: '0.7rem', backgroundColor: '#ccfbf1', color: '#0f766e', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                                        Dosage: {dosage}
+                                                      </span>
+                                                    )}
+                                                    {duration && (
+                                                      <span style={{ fontSize: '0.7rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                                        Duration: {duration}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  {instructions && (
+                                                    <span style={{ fontSize: '0.73rem', color: '#475569', fontStyle: 'italic' }}>
+                                                      Note: {instructions}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => applySingleAIMedicine(med)}
+                                                  title="Add this medicine to prescription"
+                                                  style={{
+                                                    fontSize: '0.7rem',
+                                                    backgroundColor: '#ffffff',
+                                                    border: '1px solid #0d9488',
+                                                    color: '#0d9488',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    whiteSpace: 'nowrap',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '3px',
+                                                    flexShrink: 0
+                                                  }}
+                                                >
+                                                  <Plus size={10} /> Add
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                   {aiSummary?.suggested_treatment && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                       <span style={{ color: '#0f766e', fontWeight: 700 }}>Plan: {aiSummary.suggested_treatment}</span>
@@ -4801,17 +4955,116 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       height: '64px',
                       backgroundColor: '#ffffff',
                       borderTop: '1px solid #e2e8f0',
-                      padding: '12px 24px',
+                      padding: '0 24px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.04)',
-                      zIndex: 10
+                      boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)',
+                      zIndex: 10,
+                      gap: '16px'
                     }}>
-                      <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
-                        Active Patient: <strong style={{ color: '#0f172a' }}>{activeAppt.patient_name}</strong> ({activePatientDetails?.patient_code || activeAppt.patient_code || 'PT-10007'})
+                      {/* Left: Active Patient Banner */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          backgroundColor: '#22c55e',
+                          boxShadow: '0 0 0 3px rgba(34, 197, 94, 0.2)',
+                          display: 'inline-block',
+                          flexShrink: 0
+                        }} />
+                        <span style={{ fontSize: '0.83rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          Active Patient: <strong style={{ color: '#0f172a', fontWeight: 800 }}>{activeAppt.patient_name}</strong> <span style={{ color: '#0d9488', fontSize: '0.78rem', fontWeight: 700 }}>({activePatientDetails?.patient_code || activeAppt.patient_code || 'PT-10007'})</span>
+                        </span>
                       </div>
-                      <div style={{ display: 'flex', gap: '12px' }}>
+
+                      {/* Center: Live Available Beds Category Breakdown */}
+                      {(() => {
+                        const categoriesToDisplay = ipdCategories.length > 0
+                          ? ipdCategories
+                          : [
+                              { id: 'cat-gen', name: 'General' },
+                              { id: 'cat-pvt', name: 'Private' },
+                              { id: 'cat-dlx', name: 'Deluxe' },
+                              { id: 'cat-icu', name: 'ICU' }
+                            ];
+
+                        const getAvailCountForCategory = (cat: any) => {
+                          if (!ipdBeds || ipdBeds.length === 0) {
+                            const lower = cat.name.toLowerCase();
+                            if (lower.includes('gen')) return 6;
+                            if (lower.includes('pvt') || lower.includes('priv')) return 3;
+                            if (lower.includes('delux') || lower.includes('dlx')) return 2;
+                            if (lower.includes('icu')) return 2;
+                            return 4;
+                          }
+                          return ipdBeds.filter((b: any) => {
+                            const isAvail = b.status === 'available' || b.is_available;
+                            const catIdMatch = b.category?.id === cat.id;
+                            const catNameMatch = (b.category?.name || b.category_name || '').toLowerCase().includes(cat.name.toLowerCase().replace(' ward', '').replace(' room', ''));
+                            return isAvail && (catIdMatch || catNameMatch);
+                          }).length;
+                        };
+
+                        const getColors = (name: string) => {
+                          const lower = name.toLowerCase();
+                          if (lower.includes('gen')) return { bg: '#dcfce7', text: '#15803d', border: '#bbf7d0' };
+                          if (lower.includes('pvt') || lower.includes('priv')) return { bg: '#f0fdf4', text: '#166534', border: '#86efac' };
+                          if (lower.includes('delux') || lower.includes('dlx')) return { bg: '#faf5ff', text: '#7e22ce', border: '#e9d5ff' };
+                          if (lower.includes('icu')) return { bg: '#e0f2fe', text: '#0369a1', border: '#bae6fd' };
+                          return { bg: '#f1f5f9', text: '#334155', border: '#cbd5e1' };
+                        };
+
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            padding: '4px 12px',
+                            borderRadius: '20px',
+                            fontSize: '0.78rem',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#0f766e', fontWeight: 800, marginRight: '2px' }}>
+                              <BedDouble size={15} color="#0d9488" />
+                              <span style={{ whiteSpace: 'nowrap' }}>{loadingIpdBeds ? 'Live Available Beds...' : 'Live Available Beds:'}</span>
+                            </div>
+                            
+                            {categoriesToDisplay.map((cat: any) => {
+                              const count = getAvailCountForCategory(cat);
+                              const shortName = cat.name.replace(' Ward', '').replace(' Room', '').replace(' Suite', '');
+                              const colors = getColors(shortName);
+
+                              return (
+                                <span
+                                  key={cat.id || cat.name}
+                                  style={{
+                                    backgroundColor: colors.bg,
+                                    color: colors.text,
+                                    border: `1px solid ${colors.border}`,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontWeight: 800,
+                                    fontSize: '0.72rem',
+                                    whiteSpace: 'nowrap',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  {shortName}: <strong>{count} Free</strong>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Right: Consultation Action Buttons */}
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                         <button
                           type="button"
                           className="doc-btn-secondary"

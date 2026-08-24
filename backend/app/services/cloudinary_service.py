@@ -3,6 +3,7 @@ Cloudinary Cloud Media Service — Handles uploads for user avatars, medical rep
 and clinical attachments with automatic compression and CDN URL generation.
 """
 import os
+import uuid
 import logging
 from typing import Optional
 from fastapi import UploadFile, HTTPException
@@ -83,7 +84,6 @@ class CloudinaryService:
         Uploads medical report (PDF / X-Ray / Scan) to vclinic/medical_reports.
         """
         try:
-            import uuid
             contents = await file.read()
             # Determine if PDF or Image
             ext = os.path.splitext(file.filename or "")[1].lower()

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.exceptions import PermissionDeniedError
 from app.core.rbac import UserRole, require_roles
 from app.models.user import User
 from app.schemas.availability_request import (
@@ -37,7 +38,6 @@ async def create_availability_request(
 ) -> JSONResponse:
     """Submit a request to adjust lunch breaks, teleconsultation hours, leaves, or shift timings."""
     if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST]:
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("Only doctors, receptionists, and pharmacists can submit schedule change requests.")
 
     service = AvailabilityRequestService(db)
@@ -64,7 +64,6 @@ async def list_availability_requests(
 ) -> JSONResponse:
     """List schedule change requests. Admins see all requests; staff see only their own."""
     if current_user.role not in [UserRole.ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST]:
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("Access denied.")
 
     service = AvailabilityRequestService(db)

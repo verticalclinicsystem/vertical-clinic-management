@@ -3,12 +3,14 @@ Doctor repository — queries on the doctors and doctor_slots tables.
 """
 from __future__ import annotations
 
+import json
 import uuid
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.doctor import Doctor, DoctorSlot
+from app.models.user import User
 from app.repositories.base import BaseRepository
 
 
@@ -18,7 +20,6 @@ class DoctorRepository(BaseRepository[Doctor]):
 
     async def create(self, obj_in: dict) -> Doctor:
         if "user_id" in obj_in and obj_in.get("name") is None:
-            from app.models.user import User
             user_res = await self.db.execute(select(User).where(User.id == obj_in["user_id"]))
             user_obj = user_res.scalar_one_or_none()
             if user_obj:
@@ -65,7 +66,6 @@ class DoctorRepository(BaseRepository[Doctor]):
             if not doctor:
                 return []
 
-            import json
             shift_start = "09:00"
             shift_end = "21:00"
             if doctor.availability_metadata:
@@ -132,9 +132,6 @@ class DoctorRepository(BaseRepository[Doctor]):
         branch_id: uuid.UUID | None = None,
     ) -> tuple[list[Doctor], int]:
         """Fetch filtered, paginated list of doctors with User and Slots loaded."""
-        from app.models.user import User
-        from sqlalchemy import func
-        
         stmt = (
             select(Doctor)
             .options(joinedload(Doctor.user), selectinload(Doctor.slots), joinedload(Doctor.branch))
@@ -168,3 +165,4 @@ class DoctorRepository(BaseRepository[Doctor]):
         total = count_result.scalar_one()
         
         return items, total
+
