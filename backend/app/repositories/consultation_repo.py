@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.consultation import Consultation
+from app.models.doctor import Doctor
+from app.models.patient import Patient
 from app.repositories.base import BaseRepository
 
 
@@ -19,8 +21,6 @@ class ConsultationRepository(BaseRepository[Consultation]):
 
     async def get_consultation_with_relations(self, consultation_id: uuid.UUID) -> Consultation | None:
         """Fetch a single consultation with all nested details preloaded."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
         stmt = (
             select(Consultation)
             .options(
@@ -48,8 +48,6 @@ class ConsultationRepository(BaseRepository[Consultation]):
         end_date: datetime | None = None,
     ) -> tuple[list[Consultation], int]:
         """Fetch paginated, filtered consultation records."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
         filters = []
         if patient_id:
             filters.append(Consultation.patient_id == patient_id)
@@ -118,7 +116,6 @@ class ConsultationRepository(BaseRepository[Consultation]):
 
     async def get_doctor_recent_consultations(self, doctor_id: uuid.UUID, limit: int = 5) -> list[Consultation]:
         """Fetch recent consultations for a doctor, preloading patient and branch."""
-        from app.models.patient import Patient
         stmt = (
             select(Consultation)
             .options(

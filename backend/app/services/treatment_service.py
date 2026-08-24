@@ -6,13 +6,14 @@ from __future__ import annotations
 import logging
 import uuid
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import DoctorNotFoundError, PatientNotFoundError
+from app.core.exceptions import DoctorNotFoundError, PatientNotFoundError, TreatmentPlanNotFoundError
 from app.models.treatment import TreatmentPlan, TreatmentProcedure
-from app.repositories.treatment_repo import TreatmentRepository
 from app.repositories.doctor_repo import DoctorRepository
 from app.repositories.patient_repo import PatientRepository
+from app.repositories.treatment_repo import TreatmentRepository
 from app.schemas.treatment import TreatmentPlanCreate, TreatmentPlanUpdate
 
 logger = logging.getLogger(__name__)
@@ -66,14 +67,6 @@ class TreatmentService:
         """Fetch details of a single treatment plan."""
         plan = await self.treatment_repo.get_treatment_plan_with_relations(plan_id)
         if not plan:
-            from app.core.exceptions import BaseAPIException
-            class TreatmentPlanNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="TREATMENT_PLAN_NOT_FOUND",
-                        message="Treatment plan not found."
-                    )
             raise TreatmentPlanNotFoundError()
         return plan
 
@@ -100,14 +93,6 @@ class TreatmentService:
         """Update treatment plan metadata and procedures list."""
         plan = await self.get_treatment_plan(plan_id)
         if not plan:
-            from app.core.exceptions import BaseAPIException
-            class TreatmentPlanNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="TREATMENT_PLAN_NOT_FOUND",
-                        message="Treatment plan not found."
-                    )
             raise TreatmentPlanNotFoundError()
 
         if request.title is not None:
@@ -121,8 +106,6 @@ class TreatmentService:
 
         if request.procedures is not None:
             # Delete old procedures
-            from sqlalchemy import delete
-            from app.models.treatment import TreatmentProcedure
             stmt = delete(TreatmentProcedure).where(TreatmentProcedure.treatment_plan_id == plan_id)
             await self.db.execute(stmt)
 

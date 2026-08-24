@@ -4,16 +4,26 @@ Patient service — coordinates business logic for patient profiles and search.
 from __future__ import annotations
 
 import logging
+import secrets
 import uuid
+from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from sqlalchemy import select
 
-from app.core.exceptions import PatientNotFoundError, BranchNotFoundError
+from app.core.exceptions import (
+    PatientNotFoundError, BranchNotFoundError, EmailAlreadyExistsError, ConflictError
+)
+from app.core.security import hash_password
 from app.models.patient import Patient
-from app.repositories.patient_repo import PatientRepository
+from app.repositories.appointment_repo import AppointmentRepository
 from app.repositories.branch_repo import BranchRepository
+from app.repositories.consultation_repo import ConsultationRepository
+from app.repositories.invoice_repo import InvoiceRepository
+from app.repositories.patient_repo import PatientRepository
+from app.repositories.prescription_repo import PrescriptionRepository
+from app.repositories.user_repo import UserRepository
 from app.schemas.patient import PatientUpdate, PatientCreate
 
 logger = logging.getLogger(__name__)
@@ -27,11 +37,6 @@ class PatientService:
 
     async def create_walkin_patient(self, request: PatientCreate) -> Patient:
         """Create a new pre-verified patient (receptionist/admin flow)."""
-        from app.repositories.user_repo import UserRepository
-        from app.core.security import hash_password
-        from app.core.exceptions import EmailAlreadyExistsError, ConflictError
-        import secrets
-
         user_repo = UserRepository(self.db)
         if await user_repo.email_exists(request.email):
             raise EmailAlreadyExistsError()
@@ -174,9 +179,6 @@ class PatientService:
                 branch_name = branch.name
 
         # Query live upcoming appointments via Repository
-        from app.repositories.appointment_repo import AppointmentRepository
-        from datetime import datetime, timezone
-        
         now = datetime.now(timezone.utc)
         appt_repo = AppointmentRepository(self.db)
         appointments_list = await appt_repo.get_upcoming_patient_appointments(patient.id, now)
@@ -194,7 +196,6 @@ class PatientService:
             })
 
         # Query real prescriptions via Repository
-        from app.repositories.prescription_repo import PrescriptionRepository
         presc_repo = PrescriptionRepository(self.db)
         prescriptions_list = await presc_repo.get_recent_patient_prescriptions(patient.id, limit=5)
         
@@ -216,7 +217,6 @@ class PatientService:
             })
 
         # Query real visits count for this calendar year via Repository
-        from app.repositories.consultation_repo import ConsultationRepository
         current_year = datetime.now(timezone.utc).year
         start_of_year = datetime(current_year, 1, 1, tzinfo=timezone.utc)
         
@@ -224,7 +224,6 @@ class PatientService:
         visits_this_year = await consult_repo.get_visits_count(patient.id, start_of_year)
         
         # Query real balance due via Repository
-        from app.repositories.invoice_repo import InvoiceRepository
         invoice_repo = InvoiceRepository(self.db)
         total_balance_due = await invoice_repo.get_total_balance_due(patient.id)
 

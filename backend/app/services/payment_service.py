@@ -8,11 +8,14 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestError
+from app.core.exceptions import BadRequestError, PaymentNotFoundError
 from app.models.payment import Payment
-from app.repositories.payment_repo import PaymentRepository
 from app.repositories.invoice_repo import InvoiceRepository
+from app.repositories.patient_repo import PatientRepository
+from app.repositories.payment_repo import PaymentRepository
 from app.schemas.payment import PaymentCreate
+from app.services.billing_service import BillingService
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +25,14 @@ class PaymentService:
         self.db = db
         self.payment_repo = PaymentRepository(db)
         self.invoice_repo = InvoiceRepository(db)
+        self.patient_repo = PatientRepository(db)
+        self.billing_service = BillingService(db)
+        self.notification_service = NotificationService(db)
 
     async def create_payment(self, request: PaymentCreate) -> Payment:
         """Create a new payment and update the linked invoice status."""
         # 1. Fetch the invoice
-        from app.services.billing_service import BillingService
-        billing_service = BillingService(self.db)
-        invoice = await billing_service.get_invoice(request.invoice_id)
+        invoice = await self.billing_service.get_invoice(request.invoice_id)
 
         # 2. Validation checks
         if invoice.status == "cancelled":
@@ -79,13 +83,9 @@ class PaymentService:
 
         # Send Payment Received notification to patient
         try:
-            from app.services.notification_service import NotificationService
-            noti_service = NotificationService(self.db)
-            from app.repositories.patient_repo import PatientRepository
-            patient_repo = PatientRepository(self.db)
-            patient = await patient_repo.get_by_id(invoice.patient_id)
+            patient = await self.patient_repo.get_by_id(invoice.patient_id)
             if patient:
-                await noti_service.send_multichannel_notification(
+                await self.notification_service.send_multichannel_notification(
                     user_id=patient.user_id,
                     title="Payment Received",
                     message=f"We have received your payment of {payment_amount} for Invoice {invoice.invoice_number}.",
@@ -100,14 +100,6 @@ class PaymentService:
         """Fetch single payment details."""
         payment = await self.payment_repo.get_by_id(payment_id)
         if not payment:
-            from app.core.exceptions import BaseAPIException
-            class PaymentNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="PAYMENT_NOT_FOUND",
-                        message="Payment record not found."
-                    )
             raise PaymentNotFoundError()
         return payment
 

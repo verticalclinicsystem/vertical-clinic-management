@@ -2,6 +2,7 @@
 AI router — endpoints for AI clinical note generation and analysis.
 """
 import httpx
+import json
 import logging
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, File, UploadFile, status
@@ -312,7 +313,6 @@ async def analyze_clinical_notes(
                             if cleaned.endswith("```"):
                                 cleaned = cleaned[:-3]
                             
-                            import json
                             parsed = json.loads(cleaned.strip())
                             parsed["allergy_warnings"] = check_allergy_conflicts(parsed.get("suggested_medications", []), allergies)
                             logger.info(f"Groq AI clinical analysis successful using model '{model_name}'.")
@@ -345,7 +345,6 @@ async def analyze_clinical_notes(
                         if cleaned.endswith("```"):
                             cleaned = cleaned[:-3]
 
-                        import json
                         parsed = json.loads(cleaned.strip())
                         parsed["allergy_warnings"] = check_allergy_conflicts(parsed.get("suggested_medications", []), allergies)
                         return ApiResponse.success(data=parsed, message="AI analysis completed successfully via Gemini.")

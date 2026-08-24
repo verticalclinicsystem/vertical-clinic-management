@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.appointment import Appointment
+from app.models.doctor import Doctor
+from app.models.patient import Patient
+from app.models.user import User
 from app.repositories.base import BaseRepository
 
 
@@ -19,8 +22,6 @@ class AppointmentRepository(BaseRepository[Appointment]):
 
     async def get_appointment_with_relations(self, appointment_id: uuid.UUID) -> Appointment | None:
         """Fetch single appointment with patient, doctor, and branch eager loaded."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
         stmt = (
             select(Appointment)
             .options(
@@ -49,10 +50,6 @@ class AppointmentRepository(BaseRepository[Appointment]):
         search: str | None = None,
     ) -> tuple[list[Appointment], int]:
         """Fetch paginated, filtered appointments."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
-        from app.models.user import User
-        
         filters = []
         if patient_id:
             filters.append(Appointment.patient_id == patient_id)
@@ -126,7 +123,6 @@ class AppointmentRepository(BaseRepository[Appointment]):
 
     async def get_upcoming_patient_appointments(self, patient_id: uuid.UUID, now: datetime) -> list[Appointment]:
         """Fetch upcoming pending/confirmed appointments for a patient."""
-        from app.models.doctor import Doctor
         stmt = (
             select(Appointment)
             .options(
@@ -174,7 +170,6 @@ class AppointmentRepository(BaseRepository[Appointment]):
 
     async def get_doctor_today_appointments(self, doctor_id: uuid.UUID, start_of_today: datetime, end_of_today: datetime) -> list[Appointment]:
         """Fetch today's appointments list for a doctor."""
-        from app.models.patient import Patient
         stmt = (
             select(Appointment)
             .options(

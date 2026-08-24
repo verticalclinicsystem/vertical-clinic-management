@@ -8,6 +8,9 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.models.consultation import Consultation
+from app.models.doctor import Doctor
+from app.models.patient import Patient
 from app.models.prescription import Prescription, PrescriptionItem
 from app.repositories.base import BaseRepository
 
@@ -18,9 +21,6 @@ class PrescriptionRepository(BaseRepository[Prescription]):
 
     async def get_prescription_with_relations(self, prescription_id: uuid.UUID) -> Prescription | None:
         """Fetch a single prescription with items, patient, doctor, and consultation preloaded."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
-        from app.models.consultation import Consultation
         stmt = (
             select(Prescription)
             .execution_options(populate_existing=True)
@@ -47,9 +47,6 @@ class PrescriptionRepository(BaseRepository[Prescription]):
         consultation_id: uuid.UUID | None = None,
     ) -> tuple[list[Prescription], int]:
         """Fetch paginated, filtered prescriptions list."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
-        from app.models.consultation import Consultation
         filters = []
         if patient_id:
             filters.append(Prescription.patient_id == patient_id)
@@ -89,7 +86,6 @@ class PrescriptionRepository(BaseRepository[Prescription]):
 
     async def get_recent_patient_prescriptions(self, patient_id: uuid.UUID, limit: int = 5) -> list[Prescription]:
         """Fetch recent prescriptions with doctor, user and items preloaded."""
-        from app.models.doctor import Doctor
         stmt = (
             select(Prescription)
             .options(

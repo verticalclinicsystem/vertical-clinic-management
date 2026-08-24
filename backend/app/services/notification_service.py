@@ -2,10 +2,16 @@ import logging
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+from twilio.rest import Client as TwilioClient
+
+from app.config import settings
+from app.core.websocket import manager as ws_manager
 from app.models.notification import Notification
 from app.models.patient import Patient
 from app.models.user import User
 from app.repositories.notification_repo import NotificationRepository
+from app.utils.email import send_email
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +114,6 @@ class NotificationService:
 
         # Send via WebSocket realtime channel
         try:
-            from app.core.websocket import manager as ws_manager
             await ws_manager.send_to_user(
                 str(user_id),
                 {
@@ -133,7 +138,6 @@ class NotificationService:
             else:
                 logger.info(f"[Email Notification] To user {user.email}: Subject: {title} | Body: {message}")
                 try:
-                    from app.utils.email import send_email
                     html_body = f"<h3>{title}</h3><p>{message}</p><br/><hr/><p style='font-size: 11px; color: #888;'>This is an automated notification from Vertical Clinic.</p>"
                     await send_email(
                         to=user.email,
@@ -149,7 +153,6 @@ class NotificationService:
         if sms_enabled and user.phone:
             logger.info(f"[SMS Notification Log] To user phone {user.phone}: {message}")
             # Actual Twilio integration
-            from app.config import settings
             if settings.SMS_PROVIDER == "twilio" and settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
                 # Check for dummy settings to avoid useless network calls / errors in dev
                 is_dummy = (
@@ -159,8 +162,7 @@ class NotificationService:
                 )
                 if not is_dummy:
                     try:
-                        from twilio.rest import Client
-                        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                        client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                         # Twilio requires valid E.164 phone numbers (e.g. +1234567890)
                         to_phone = user.phone
                         if not to_phone.startswith("+"):

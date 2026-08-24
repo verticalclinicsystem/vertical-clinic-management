@@ -2,19 +2,42 @@
 Users router — /api/v1/users/*
 Admin-only user management: list, create staff, update, deactivate.
 """
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.exceptions import BadRequestError, UserNotFoundError
 from app.core.rbac import UserRole, require_roles
+from app.core.security import hash_password
+from app.models.branch import Branch
+from app.models.doctor import Doctor, DoctorSlot
+from app.models.inventory import StockTransaction
+from app.models.patient import Patient
+from app.models.receptionist import Receptionist
 from app.models.user import User
-from app.schemas.auth import StaffCreateRequest, UserOut, UserUpdate, DoctorCreateRequest, ReceptionistCreateRequest, PharmacistCreateRequest, AdminCreateRequest, UserSuspendRequest
-from app.services.auth_service import AuthService
 from app.repositories.user_repo import UserRepository
+from app.schemas.auth import (
+    AdminCreateRequest,
+    DoctorCreateRequest,
+    PharmacistCreateRequest,
+    ReceptionistCreateRequest,
+    StaffCreateRequest,
+    UserOut,
+    UserSuspendRequest,
+    UserUpdate,
+)
+from app.services.auth_service import AuthService
+from app.services.storage_service import StorageService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -170,7 +193,6 @@ async def get_user(
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
     return ApiResponse.success(
         data=UserOut.model_validate(user),
@@ -193,12 +215,10 @@ async def update_user(
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
 
     update_data = request.model_dump(exclude_none=True)
     if "password" in update_data and update_data["password"]:
-        from app.core.security import hash_password
         update_data["hashed_password"] = hash_password(update_data.pop("password"))
     elif "password" in update_data:
         update_data.pop("password")
@@ -210,28 +230,15 @@ async def update_user(
 
     # Sync name changes to role-specific tables if name was updated
     if "full_name" in update_data:
-        from sqlalchemy import update as sqlalchemy_update
-        from app.models.doctor import Doctor
-        from app.models.receptionist import Receptionist
-        from app.models.patient import Patient
-        
         new_name = update_data["full_name"]
         if updated_user.role == "doctor":
-            await db.execute(sqlalchemy_update(Doctor).where(Doctor.user_id == user_id).values(name=new_name))
+            await db.execute(update(Doctor).where(Doctor.user_id == user_id).values(name=new_name))
         elif updated_user.role == "receptionist":
-            await db.execute(sqlalchemy_update(Receptionist).where(Receptionist.user_id == user_id).values(name=new_name))
+            await db.execute(update(Receptionist).where(Receptionist.user_id == user_id).values(name=new_name))
         elif updated_user.role == "patient":
-            await db.execute(sqlalchemy_update(Patient).where(Patient.user_id == user_id).values(name=new_name))
+            await db.execute(update(Patient).where(Patient.user_id == user_id).values(name=new_name))
 
     if new_role and old_role != new_role:
-        from sqlalchemy import delete, select
-        from app.models.doctor import Doctor, DoctorSlot
-        from app.models.receptionist import Receptionist
-        from app.models.patient import Patient
-        from app.models.branch import Branch
-        import json
-        import uuid
-
         # 1. Clean up old role profiles
         if old_role == "doctor":
             await db.execute(delete(Doctor).where(Doctor.user_id == user_id))
@@ -378,12 +385,10 @@ async def deactivate_user(
 ) -> JSONResponse:
     """Soft-deactivate a user account (blocks login, preserves data)."""
     if user_id == current_user.id:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("You cannot deactivate your own account")
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
     updated_user = await repo.update(user, {"is_active": False})
     await db.commit()
@@ -407,7 +412,6 @@ async def activate_user(
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
     updated_user = await repo.update(user, {"is_active": True})
     await db.commit()
@@ -429,16 +433,12 @@ async def delete_user(
 ) -> JSONResponse:
     """Delete a user account and cascade delete related records."""
     if user_id == current_user.id:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("You cannot delete your own account")
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
     
-    from sqlalchemy import update
-    from app.models.inventory import StockTransaction
     await db.execute(
         update(StockTransaction)
         .where(StockTransaction.performed_by_id == user_id)
@@ -454,8 +454,6 @@ async def delete_user(
 
 
 # ── POST /users/me/avatar ───────────────────────────────────────────────────
-from fastapi import File, UploadFile
-
 @router.post(
     "/me/avatar",
     summary="Upload profile picture",
@@ -467,8 +465,6 @@ async def upload_user_avatar(
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> JSONResponse:
     """Upload user avatar image to configured storage and update user profile."""
-    from app.services.storage_service import StorageService
-    
     avatar_url = await StorageService.upload_avatar(file, user_id=str(current_user.id), request=request)
     
     repo = UserRepository(db)
@@ -490,8 +486,6 @@ async def remove_user_avatar(
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> JSONResponse:
     """Remove user avatar image from storage and reset profile to default initials avatar."""
-    from app.services.storage_service import StorageService
-    
     # 1. Delete image file from storage
     await StorageService.delete_avatar(user_id=str(current_user.id))
 
@@ -503,6 +497,7 @@ async def remove_user_avatar(
         data={"avatar_url": None, "user": UserOut.model_validate(updated_user)},
         message="Profile picture deleted and removed from profile."
     )
+
 
 # ── POST /users/{user_id}/suspend ────────────────────────────────────────────
 @router.post(
@@ -518,13 +513,11 @@ async def suspend_user(
 ) -> JSONResponse:
     """Temporarily suspend or unsuspend a user account."""
     if user_id == current_user.id:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("You cannot suspend or unsuspend your own account")
     
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
         
     if request.action == "unsuspend":
@@ -539,10 +532,8 @@ async def suspend_user(
         )
 
     if request.duration_days is None:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("duration_days is required to suspend a user")
         
-    from datetime import datetime, timedelta, timezone
     suspended_until = datetime.now(timezone.utc) + timedelta(days=request.duration_days)
     
     updated_user = await repo.update(user, {
@@ -597,7 +588,6 @@ async def force_revoke_user_sessions(
     repo = UserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user:
-        from app.core.exceptions import UserNotFoundError
         raise UserNotFoundError()
         
     updated_user = await repo.update(user, {
@@ -608,4 +598,3 @@ async def force_revoke_user_sessions(
         data=UserOut.model_validate(updated_user),
         message="User sessions revoked successfully."
     )
-

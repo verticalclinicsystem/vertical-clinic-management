@@ -4,6 +4,7 @@ schedule change approvals, staff listing, and operational non-financial analytic
 """
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import uuid
@@ -31,6 +32,7 @@ from app.models.invoice import Invoice
 from app.models.patient import Patient
 from app.models.inventory import Medicine
 from app.models.ipd import Bed
+from app.models.branch import Branch
 
 logger = logging.getLogger(__name__)
 
@@ -707,8 +709,6 @@ class ClinicManagerService:
         2. Bed Occupancy Metrics (total, occupied, available, cleaning, maintenance, rate)
         3. Pharmacy Stock Metrics (total medicines, out of stock, low stock, normal stock, low stock list)
         """
-        import collections
-
         # 1. Monthly Revenue Trends
         # Fetch actual invoices from the last 180 days
         six_months_ago = datetime.utcnow() - timedelta(days=180)
@@ -817,7 +817,6 @@ class ClinicManagerService:
         }
 
         # 4. Branch-wise Patient Comparison
-        from app.models.branch import Branch
         branch_stmt = select(Branch)
         branch_res = await self.db.execute(branch_stmt)
         branches_list = branch_res.scalars().all()

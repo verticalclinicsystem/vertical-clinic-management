@@ -1,21 +1,25 @@
 """
 Medical Reports Router — /api/v1/medical-reports/*
 """
+from __future__ import annotations
+
 import os
 import shutil
-from typing import Annotated
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.exceptions import BadRequestError, PermissionDeniedError
 from app.core.rbac import UserRole, require_roles
 from app.models.user import User
 from app.schemas.medical_report import MedicalReportOut
 from app.services.medical_report_service import MedicalReportService
 from app.services.patient_service import PatientService
+from app.services.storage_service import StorageService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -43,11 +47,7 @@ async def upload_medical_report(
     Supported backends: local, s3, cloudinary.
     """
     if current_user.role not in [UserRole.PATIENT, UserRole.RECEPTIONIST, UserRole.DOCTOR, UserRole.ADMIN]:
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("You do not have permission to upload reports.")
-
-    from app.core.exceptions import BadRequestError
-    from app.services.storage_service import StorageService
     
     patient_id_str = None
     patient_uuid = None
@@ -103,7 +103,6 @@ async def list_my_medical_reports(
 ) -> JSONResponse:
     """Retrieve all reports uploaded by the currently authenticated patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can list their own reports.")
 
     service = MedicalReportService(db)
