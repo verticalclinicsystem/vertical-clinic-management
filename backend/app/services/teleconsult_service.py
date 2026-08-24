@@ -8,6 +8,8 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestError, PermissionDeniedError
+from app.core.rbac import UserRole
+from app.core.websocket import manager as ws_manager
 from app.models.appointment import Appointment
 from app.models.teleconsult import TeleConsultation
 from app.models.patient import Patient
@@ -228,8 +230,7 @@ class TeleConsultService:
 
         # Broadcast queue update
         try:
-            from app.core.websocket import manager
-            await manager.send_to_branch(str(appointment.branch_id), {"event": "queue_updated", "branch_id": str(appointment.branch_id)})
+            await ws_manager.send_to_branch(str(appointment.branch_id), {"event": "queue_updated", "branch_id": str(appointment.branch_id)})
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast websocket event: {ws_err}")
 
@@ -378,9 +379,6 @@ class TeleConsultService:
 
     async def check_incoming_call(self, user: User) -> dict:
         """Check if there is an active incoming call signal for the user."""
-        from app.models.teleconsult import TeleConsultation
-        from app.core.rbac import UserRole
-
         now = datetime.datetime.now(timezone.utc)
         recent_cutoff = now - timedelta(seconds=120)
 
@@ -479,8 +477,7 @@ class TeleConsultService:
         # Broadcast to the doctor via WebSocket
         if appt.doctor and appt.doctor.user_id:
             try:
-                from app.core.websocket import manager
-                await manager.send_to_user(
+                await ws_manager.send_to_user(
                     str(appt.doctor.user_id),
                     {
                         "event": "patient_ready",
@@ -489,7 +486,7 @@ class TeleConsultService:
                         "message": f"{appt.patient.user.full_name} is now ready in the waiting lobby."
                     }
                 )
-                await manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
+                await ws_manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
             except Exception:
                 pass
 
@@ -520,8 +517,7 @@ class TeleConsultService:
         # Broadcast to the doctor via WebSocket
         if appt.doctor and appt.doctor.user_id:
             try:
-                from app.core.websocket import manager
-                await manager.send_to_user(
+                await ws_manager.send_to_user(
                     str(appt.doctor.user_id),
                     {
                         "event": "patient_left",
@@ -530,7 +526,7 @@ class TeleConsultService:
                         "message": f"{appt.patient.user.full_name} has left the waiting lobby."
                     }
                 )
-                await manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
+                await ws_manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
             except Exception:
                 pass
 
@@ -543,9 +539,8 @@ class TeleConsultService:
         appt = res.scalar_one_or_none()
         if appt and appt.patient:
             try:
-                from app.core.websocket import manager
-                await manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
-                await manager.send_to_user(str(appt.patient.user_id), {
+                await ws_manager.send_to_branch(str(appt.branch_id), {"event": "queue_updated", "branch_id": str(appt.branch_id)})
+                await ws_manager.send_to_user(str(appt.patient.user_id), {
                     "event": "doctor_ready",
                     "appointment_id": str(appt.id),
                     "doctor_name": doctor_name,

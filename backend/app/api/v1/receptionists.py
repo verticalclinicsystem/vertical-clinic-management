@@ -11,10 +11,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.core.rbac import UserRole, require_roles
 from app.models.user import User
-from app.schemas.receptionist import ReceptionistOut, ReceptionistUpdate, ReceptionistCreate
-from app.services.receptionist_service import ReceptionistService, ReceptionistNotFoundError
+from app.schemas.receptionist import ReceptionistCreate, ReceptionistOut, ReceptionistUpdate
+from app.services.receptionist_service import ReceptionistNotFoundError, ReceptionistService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -70,7 +71,6 @@ async def get_receptionist_details(
     try:
         receptionist = await service.get_receptionist(recep_id)
     except ReceptionistNotFoundError:
-        from app.core.exceptions import NotFoundError
         raise NotFoundError("Receptionist profile not found.")
         
     return ApiResponse.success(
@@ -119,14 +119,12 @@ async def update_receptionist(
     try:
         receptionist = await service.get_receptionist(recep_id)
     except ReceptionistNotFoundError:
-        from app.core.exceptions import NotFoundError
         raise NotFoundError("Receptionist profile not found.")
 
     is_admin = current_user.role == UserRole.ADMIN
     is_owner = receptionist.user_id == current_user.id
 
     if not (is_admin or is_owner):
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("You do not have permission to update this receptionist profile.")
 
     updated = await service.update_receptionist_profile(recep_id, request)
@@ -151,7 +149,6 @@ async def delete_receptionist(
     try:
         await service.delete_receptionist_profile(recep_id)
     except ReceptionistNotFoundError:
-        from app.core.exceptions import NotFoundError
         raise NotFoundError("Receptionist profile not found.")
 
     return ApiResponse.success(

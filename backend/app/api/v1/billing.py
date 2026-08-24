@@ -3,20 +3,32 @@ Billing router — REST API endpoints for managing patient billing and invoices.
 """
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_current_user, get_db
-from app.core.rbac import UserRole
 from app.core.exceptions import PermissionDeniedError
+from app.core.rbac import UserRole
+from app.models.consultation import Consultation
+from app.models.doctor import Doctor
+from app.models.invoice import Invoice
+from app.models.ipd import Admission, IpdBillItem
+from app.models.patient import Patient
+from app.models.prescription import Prescription, PrescriptionItem
+from app.models.treatment import TreatmentPlan, TreatmentProcedure
 from app.models.user import User
-from app.schemas.invoice import InvoiceOut, InvoiceCreate, InvoiceUpdate, InvoicePrescriptionItem
-from app.services.billing_service import BillingService
+from app.schemas.invoice import InvoiceCreate, InvoiceOut, InvoicePrescriptionItem, InvoiceUpdate
+from app.services.billing_service import BillingService, calculate_medicine_qty
 from app.services.patient_service import PatientService
+from app.utils.pdf_generator import generate_invoice_pdf
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -59,16 +71,18 @@ def invoice_to_out(invoice) -> dict:
                         items.append({
                             "medicine_name": item.medicine_name,
                             "dosage": item.dosage,
+                            "frequency": item.frequency,
                             "duration": item.duration,
-                            "instructions": item.instructions,
+                            "instructions": item.instructions or "",
                         })
-                        qty = getattr(item, "quantity", None)
-                        if qty is None:
-                            qty = calculate_medicine_qty(item.dosage, item.duration)
-                        med_price = getattr(getattr(item, "medicine", None), "unit_price", 10.0) or 10.0
+                        qty = item.quantity if (hasattr(item, "quantity") and item.quantity is not None) else calculate_medicine_qty(item.dosage, item.duration)
+                        unit_price = 10.0
+                        if hasattr(item, "medicine") and item.medicine and hasattr(item.medicine, "unit_price") and item.medicine.unit_price:
+                            unit_price = item.medicine.unit_price
+                        total_med_cost = qty * unit_price
                         breakdown.append({
                             "description": f"Medicine: {item.medicine_name} ({qty} units)",
-                            "amount": round(qty * med_price, 2)
+                            "amount": float(total_med_cost)
                         })
 
     # 2. Treatment Plan Procedures
@@ -82,7 +96,6 @@ def invoice_to_out(invoice) -> dict:
     # 3. IPD Bed Stay & Charges
     if invoice.admission:
         adm = invoice.admission
-        from datetime import datetime, timezone
         end_t = adm.discharge_datetime or datetime.now(timezone.utc)
         hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
         bed = getattr(adm, "bed", None)
@@ -99,84 +112,40 @@ def invoice_to_out(invoice) -> dict:
                 "amount": float(round(rent, 2))
             })
 
-        if getattr(adm, "initial_deposit", 0) > 0:
-            breakdown.append({
-                "description": f"Less: Initial Admission Deposit Paid (Bed {bed.bed_number if bed else ''})",
-                "amount": float(-adm.initial_deposit)
-            })
-        if getattr(adm, "insurance_approved_amount", 0) > 0:
-            breakdown.append({
-                "description": "Less: Insurance Approved Credit",
-                "amount": float(-adm.insurance_approved_amount)
-            })
-
-    # Check if there is a remaining clinical materials or extra consumables cost in total_amount
-    pos_sum = sum(float(item["amount"]) for item in breakdown if float(item["amount"]) > 0)
-    diff = round(float(data.get("total_amount", 0.0)) - pos_sum, 2)
-    if diff > 0.01:
-        breakdown.append({
-            "description": "Clinical Materials & Sterile Consumables",
-            "amount": diff
-        })
-
-    # Fallback if breakdown is empty but total_amount > 0
-    if not breakdown and float(data.get("total_amount", 0.0)) > 0:
-        breakdown.append({
-            "description": "General Clinical Services & Consultation",
-            "amount": float(data.get("total_amount", 0.0))
-        })
-
     data["prescription_items"] = items
     data["items_breakdown"] = breakdown
     return data
 
 
-
-# ── 1. POST /billing ───────────────────────────────────────────────────────────
-@router.post(
-    "/",
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new invoice",
-)
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Create new invoice")
 async def create_invoice(
     request: InvoiceCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
-    """
-    Create a new patient invoice.
-    - Restricted to Doctors, Receptionists, Pharmacists, or Admins.
-    """
+    """Create a new invoice for a patient visit or consultation."""
     if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.ADMIN]:
-        raise PermissionDeniedError("Only doctors or staff can create invoices.")
+        raise PermissionDeniedError("Only staff and doctors can create invoices.")
 
     service = BillingService(db)
     invoice = await service.create_invoice(request)
     return ApiResponse.success(
         data=invoice_to_out(invoice),
-        message="Invoice created successfully.",
+        message="Invoice generated successfully.",
         status_code=status.HTTP_201_CREATED,
     )
 
 
-# ── 2. GET /billing ────────────────────────────────────────────────────────────
-@router.get(
-    "/",
-    summary="List/search invoices",
-)
+@router.get("", summary="List invoices with pagination & filters")
 async def list_invoices(
-    db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     patient_id: UUID | None = Query(None),
     status: str | None = Query(None),
 ) -> JSONResponse:
-    """
-    List patient invoices.
-    - Patients are restricted to viewing only their own invoices.
-    - Staff/Admin can view all invoices.
-    """
+    """Fetch paginated & filtered list of invoices."""
     service = BillingService(db)
 
     # Apply RBAC restrictions
@@ -205,40 +174,6 @@ async def list_invoices(
     )
 
 
-def calculate_medicine_qty(dosage: str, duration: str) -> int:
-    import re
-    # Default to 10 if we can't parse
-    days = 5
-    m_dur = re.search(r'(\d+)\s*(day|week|month)', duration.lower())
-    if m_dur:
-        val = int(m_dur.group(1))
-        unit = m_dur.group(2)
-        if 'week' in unit:
-            days = val * 7
-        elif 'month' in unit:
-            days = val * 30
-        else:
-            days = val
-    else:
-        m_num = re.search(r'^(\d+)$', duration.strip())
-        if m_num:
-            days = int(m_num.group(1))
-            
-    daily = 2
-    if '-' in dosage:
-        parts = dosage.split('-')
-        try:
-            daily = sum(int(p) for p in parts if p.strip().isdigit())
-        except:
-            daily = 2
-    else:
-        m_dos = re.search(r'(\d+)', dosage)
-        if m_dos:
-            daily = int(m_dos.group(1))
-            
-    return max(1, days * daily)
-
-
 @router.get("/calculate-pending", summary="Calculate pending charges for a patient")
 async def calculate_pending_charges(
     patient_id: UUID,
@@ -248,24 +183,11 @@ async def calculate_pending_charges(
 ) -> JSONResponse:
     """
     Calculate all pending/completed unbilled charges for a patient.
-    Aggregates:
-    - Consultation fees
-    - Treatment plan procedure charges
-    - Prescribed and dispensed medicine costs
-    - Clinical materials used
+    Aggregates completed consultations, procedures, medicine items, and IPD bed stays.
     """
     if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.ADMIN]:
         raise PermissionDeniedError("Only staff/doctors can access pending billing details.")
 
-    from sqlalchemy import select
-    from app.models.consultation import Consultation
-    from app.models.patient import Patient
-    from app.models.doctor import Doctor
-    from app.models.prescription import Prescription, PrescriptionItem
-    from app.models.treatment import TreatmentPlan, TreatmentProcedure
-    from app.models.invoice import Invoice
-    from sqlalchemy.orm import joinedload
-    
     # Fetch consultations with doctor, prescriptions, items, medicines
     stmt = (
         select(Consultation)
@@ -302,71 +224,71 @@ async def calculate_pending_charges(
                 items_list.append({
                     "medicine_name": item.medicine_name,
                     "dosage": item.dosage,
+                    "frequency": item.frequency,
                     "duration": item.duration,
-                    "qty": qty,
-                    "unit_price": float(unit_price),
-                    "total_price": float(qty * unit_price)
+                    "quantity": qty,
+                    "unit_price": unit_price,
+                    "total": qty * unit_price
                 })
             prescriptions_list.append({
                 "id": str(p.id),
-                "status": p.status,
+                "diagnosis": p.diagnosis,
                 "items": items_list
             })
-            
+
         unbilled_consultations.append({
             "id": str(c.id),
-            "doctor_name": c.doctor.user.full_name,
-            "consultation_datetime": c.consultation_datetime.isoformat(),
-            "diagnosis": c.diagnosis,
-            "consultation_fee": float(fee),
+            "date": c.created_at.strftime("%Y-%m-%d"),
+            "doctor_name": f"Dr. {c.doctor.user.full_name}" if c.doctor and c.doctor.user else "Doctor",
+            "consultation_fee": fee,
             "prescriptions": prescriptions_list
         })
 
-    # Fetch treatment plans & completed procedures
-    plan_stmt = (
+    # Fetch treatment plans
+    tp_stmt = (
         select(TreatmentPlan)
-        .options(
-            joinedload(TreatmentPlan.procedures)
-        )
+        .options(joinedload(TreatmentPlan.procedures))
         .where(TreatmentPlan.patient_id == patient_id)
+        .order_by(TreatmentPlan.created_at.desc())
     )
-    plan_result = await db.execute(plan_stmt)
-    plans = plan_result.unique().scalars().all()
+    tp_result = await db.execute(tp_stmt)
+    treatment_plans = tp_result.unique().scalars().all()
 
-    invoiced_plan_stmt = select(Invoice.treatment_plan_id).where(Invoice.patient_id == patient_id, Invoice.treatment_plan_id.isnot(None))
+    invoiced_tp_stmt = select(Invoice.treatment_plan_id).where(Invoice.patient_id == patient_id, Invoice.treatment_plan_id.isnot(None))
     if exclude_invoice_id:
-        invoiced_plan_stmt = invoiced_plan_stmt.where(Invoice.id != exclude_invoice_id)
-    invoiced_plan_res = await db.execute(invoiced_plan_stmt)
-    invoiced_plan_ids = set(invoiced_plan_res.scalars().all())
+        invoiced_tp_stmt = invoiced_tp_stmt.where(Invoice.id != exclude_invoice_id)
+    invoiced_tp_result = await db.execute(invoiced_tp_stmt)
+    invoiced_tp_ids = set(invoiced_tp_result.scalars().all())
 
     unbilled_plans = []
-    for plan in plans:
-        unbilled_procedures = []
+    for plan in treatment_plans:
+        if plan.id in invoiced_tp_ids:
+            continue
+        
+        procedures_list = []
         for proc in plan.procedures:
-            if plan.id not in invoiced_plan_ids and proc.status == "completed":
-                unbilled_procedures.append({
+            if proc.status == "completed":
+                procedures_list.append({
                     "id": str(proc.id),
-                    "procedure_name": proc.procedure_name,
+                    "name": proc.procedure_name,
                     "cost": float(proc.cost),
                     "status": proc.status
                 })
         
-        if unbilled_procedures:
+        if procedures_list:
             unbilled_plans.append({
                 "id": str(plan.id),
                 "title": plan.title,
-                "status": plan.status,
-                "procedures": unbilled_procedures
+                "procedures": procedures_list
             })
 
-    materials = [
-        {"name": "Clinical Gloves, Mask & Sanitizer Kit", "cost": 150.0},
+    # Recommended Clinical Consumables
+    recommended_materials = [
         {"name": "Disposable Syringe & Local Anesthesia", "cost": 250.0},
         {"name": "Cotton Rolls, Saliva Ejector & Sterile Drape", "cost": 100.0}
     ]
 
     # Fetch active or unbilled IPD admissions for this specific patient
-    from app.models.ipd import Admission, IpdBillItem
     adm_stmt = (
         select(Admission)
         .where(
@@ -382,7 +304,6 @@ async def calculate_pending_charges(
         invoiced_adm_stmt = invoiced_adm_stmt.where(Invoice.id != exclude_invoice_id)
     invoiced_adm_res = await db.execute(invoiced_adm_stmt)
     invoiced_adm_ids = set()
-    import json
     for single_id, json_str in invoiced_adm_res.all():
         if single_id:
             invoiced_adm_ids.add(single_id)
@@ -394,7 +315,6 @@ async def calculate_pending_charges(
                 pass
 
     unbilled_admissions = []
-    from datetime import datetime, timezone
     for adm in admissions:
         if adm.id in invoiced_adm_ids:
             continue
@@ -407,86 +327,88 @@ async def calculate_pending_charges(
 
         days = int(hours_stay // 24)
         rem_hours = hours_stay % 24
-        if days == 0:
-            current_bed_rent = base_charge_24h
-        else:
-            overtime_cost = rem_hours * hourly_rate if rem_hours > 2.0 else 0.0
-            current_bed_rent = (days * base_charge_24h) + overtime_cost
-        current_bed_rent = round(current_bed_rent, 2)
 
-        items_res = await db.execute(select(IpdBillItem).where(IpdBillItem.admission_id == adm.id))
-        past_items = items_res.scalars().all()
+        if days == 0:
+            total_rent = base_charge_24h
+        else:
+            overtime_charge = rem_hours * hourly_rate if rem_hours > 2.0 else 0.0
+            total_rent = (days * base_charge_24h) + overtime_charge
+
+        total_rent = round(total_rent, 2)
+
+        # Fetch past transferred bed bill items
+        past_stmt = select(IpdBillItem).where(IpdBillItem.admission_id == adm.id)
+        past_res = await db.execute(past_stmt)
+        past_items = past_res.scalars().all()
+        past_items_list = [
+            {
+                "id": str(pi.id),
+                "item_name": pi.item_name,
+                "quantity": pi.quantity,
+                "unit_price": float(pi.unit_price),
+                "total_price": float(pi.total_price)
+            }
+            for pi in past_items
+        ]
 
         unbilled_admissions.append({
             "id": str(adm.id),
+            "admission_number": adm.admission_number,
             "bed_number": bed.bed_number,
             "category_name": bed.category.name,
             "admission_datetime": adm.admission_datetime.isoformat(),
-            "hours_stayed": round(hours_stay, 1),
-            "current_bed_rent": current_bed_rent,
-            "past_items": [{
-                "item_name": item.item_name,
-                "total_price": float(item.total_price)
-            } for item in past_items],
+            "discharge_datetime": adm.discharge_datetime.isoformat() if adm.discharge_datetime else None,
+            "hours_stay": round(hours_stay, 1),
+            "estimated_rent": total_rent,
             "initial_deposit": float(adm.initial_deposit),
-            "insurance_approved_amount": float(adm.insurance_approved_amount)
+            "insurance_approved_amount": float(adm.insurance_approved_amount),
+            "past_items": past_items_list,
+            "status": adm.status
         })
 
     return ApiResponse.success(
         data={
             "consultations": unbilled_consultations,
             "treatment_plans": unbilled_plans,
-            "ipd_admissions": unbilled_admissions,
-            "standard_materials": materials
+            "admissions": unbilled_admissions,
+            "recommended_materials": recommended_materials
         },
-        message="Pending charges calculated successfully."
+        message="Unbilled charges calculated successfully."
     )
 
 
-# ── 3. GET /billing/{invoice_id} ────────────────────────────────────────────────
-@router.get(
-    "/{invoice_id}",
-    summary="Get invoice details",
-)
+@router.get("/{invoice_id}", summary="Get single invoice details")
 async def get_invoice(
     invoice_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
-    """Fetch details of a single invoice (accessible by involved patient or staff)."""
+    """Fetch details of a specific invoice."""
     service = BillingService(db)
     invoice = await service.get_invoice(invoice_id)
 
-    # Permission check
     if current_user.role == UserRole.PATIENT:
         patient_service = PatientService(db)
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         if invoice.patient_id != patient.id:
-            raise PermissionDeniedError("Access to this invoice is denied.")
+            raise PermissionDeniedError("Access denied to another patient's invoice.")
 
     return ApiResponse.success(
         data=invoice_to_out(invoice),
-        message="Invoice details retrieved successfully.",
+        message="Invoice fetched successfully.",
     )
 
 
-# ── 4. PUT /billing/{invoice_id} ────────────────────────────────────────────────
-@router.put(
-    "/{invoice_id}",
-    summary="Update invoice",
-)
+@router.put("/{invoice_id}", summary="Update invoice details")
 async def update_invoice(
     invoice_id: UUID,
     request: InvoiceUpdate,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
-    """
-    Update invoice details.
-    - Restricted to Receptionists or Admins.
-    """
-    if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
-        raise PermissionDeniedError("Only receptionists or admins can modify invoices.")
+    """Update an existing invoice's payment status, discount, or amounts."""
+    if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.ADMIN]:
+        raise PermissionDeniedError("Only authorized staff can update invoices.")
 
     service = BillingService(db)
     updated = await service.update_invoice(invoice_id, request)
@@ -496,25 +418,21 @@ async def update_invoice(
     )
 
 
-
-
-
-@router.get("/{invoice_id}/pdf", response_class=Response)
-async def get_invoice_pdf(
+@router.get("/{invoice_id}/download-pdf", summary="Download invoice PDF file")
+async def download_invoice_pdf(
     invoice_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:
-    """Download the PDF for a specific invoice."""
+    """Generate and return binary PDF stream for an invoice."""
     service = BillingService(db)
     invoice = await service.get_invoice(invoice_id)
 
-    # Permission check
     if current_user.role == UserRole.PATIENT:
         patient_service = PatientService(db)
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         if invoice.patient_id != patient.id:
-            raise PermissionDeniedError("Access to this invoice is denied.")
+            raise PermissionDeniedError("Access denied to another patient's invoice PDF.")
 
     status_mapping = {
         "paid": "paid",
@@ -522,31 +440,23 @@ async def get_invoice_pdf(
         "partially_paid": "partial"
     }
     status_class = status_mapping.get(invoice.status, "unpaid")
-    
+
     pdf_items = []
-    
-    # 1. Consultation Fee
     if invoice.consultation:
         fee = invoice.consultation.doctor.consultation_fee or 500.0
         pdf_items.append({
             "description": f"Consultation Fee - Dr. {invoice.consultation.doctor.user.full_name}",
             "amount": float(fee)
         })
-        
-        # 2. Prescriptions / Medicines
         for presc in invoice.consultation.prescriptions:
             for item in presc.items:
                 qty = item.quantity if (hasattr(item, "quantity") and item.quantity is not None) else calculate_medicine_qty(item.dosage, item.duration)
-                price = 10.0
-                if item.medicine:
-                    price = item.medicine.unit_price or 10.0
-                total = qty * price
+                price = item.medicine.unit_price if item.medicine else 10.0
                 pdf_items.append({
                     "description": f"Medicine: {item.medicine_name} ({qty} units)",
-                    "amount": float(total)
+                    "amount": float(qty * price)
                 })
 
-    # 3. Treatment Plan Procedures
     if invoice.treatment_plan:
         for proc in invoice.treatment_plan.procedures:
             if proc.status == "completed":
@@ -555,20 +465,20 @@ async def get_invoice_pdf(
                     "amount": float(proc.cost)
                 })
 
-    # 4. Clinical Materials / Used Things
-    if invoice.treatment_plan:
-        completed_count = sum(1 for p in invoice.treatment_plan.procedures if p.status == "completed")
-        if completed_count > 0:
+    if invoice.admission:
+        adm = invoice.admission
+        end_t = adm.discharge_datetime or datetime.now(timezone.utc)
+        hours_stay = max(0.5, (end_t - adm.admission_datetime).total_seconds() / 3600.0)
+        bed = adm.bed
+        if bed and bed.category:
+            days = int(hours_stay // 24)
+            rem_h = hours_stay % 24
+            rent = bed.category.base_charge_24h if days == 0 else (days * bed.category.base_charge_24h) + (rem_h * bed.category.hourly_overtime_rate if rem_h > 2.0 else 0.0)
             pdf_items.append({
-                "description": "Medical Consumables & Sterile Clinical Supplies",
-                "amount": completed_count * 200.0
+                "description": f"IPD Bed Stay: {bed.bed_number} ({bed.category.name}) - {round(hours_stay, 1)} hours",
+                "amount": float(round(rent, 2))
             })
-    elif invoice.consultation:
-        pdf_items.append({
-            "description": "Clinical Materials & Sterile Consumables",
-            "amount": 150.0
-        })
-    
+
     invoice_data = {
         "invoice_number": invoice.invoice_number,
         "date": invoice.created_at.strftime("%Y-%m-%d"),
@@ -589,7 +499,6 @@ async def get_invoice_pdf(
         "balance_due": float(invoice.balance_due),
     }
 
-    from app.utils.pdf_generator import generate_invoice_pdf
     pdf_bytes = generate_invoice_pdf(invoice_data)
 
     return Response(
@@ -612,29 +521,8 @@ async def send_invoice_email(
         raise PermissionDeniedError("Only staff can send invoice emails.")
 
     service = BillingService(db)
-    invoice = await service.get_invoice(invoice_id)
-    if not invoice:
-        return JSONResponse(
-            status_code=404,
-            content={"success": False, "message": "Invoice not found."}
-        )
-
-    patient_email = invoice.patient.user.email
-    if not patient_email:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "message": "Patient does not have a registered email address."}
-        )
-
     success = await service.send_invoice_email_to_patient(invoice_id)
     if success:
-        return JSONResponse(
-            status_code=200,
-            content={"success": True, "message": f"Invoice email sent successfully to {patient_email}"}
-        )
+        return ApiResponse.success(data=None, message="Invoice emailed to patient successfully.")
     else:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": "Failed to send email."}
-        )
-
+        return ApiResponse.error(message="Failed to email invoice. Check patient email settings.", status_code=status.HTTP_400_BAD_REQUEST)

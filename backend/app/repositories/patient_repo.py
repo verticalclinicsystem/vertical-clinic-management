@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.patient import Patient
+from app.models.user import User
 from app.repositories.base import BaseRepository
 
 
@@ -49,7 +50,6 @@ class PatientRepository(BaseRepository[Patient]):
         Create a blank patient profile linked to the given user.
         Generates the next sequential patient code automatically.
         """
-        from app.models.user import User
         user_res = await self.db.execute(select(User).where(User.id == user_id))
         user_obj = user_res.scalar_one_or_none()
         name = user_obj.full_name if user_obj else None
@@ -94,7 +94,6 @@ class PatientRepository(BaseRepository[Patient]):
     async def list_patients_with_user(self, skip: int = 0, limit: int = 20, search: str | None = None) -> list[Patient]:
         """Fetch list of patients with user relation preloaded, supporting search and pagination."""
         if search:
-            from app.models.user import User
             query = search.strip()
             stmt = (
                 select(Patient)
@@ -121,8 +120,6 @@ class PatientRepository(BaseRepository[Patient]):
 
     async def search(self, query: str, skip: int = 0, limit: int = 20) -> list[Patient]:
         """Full-text search by patient_code or name (via user join)."""
-        from app.models.user import User
-
         result = await self.db.execute(
             select(Patient)
             .join(User, Patient.user_id == User.id)
@@ -138,8 +135,6 @@ class PatientRepository(BaseRepository[Patient]):
 
     async def count_search(self, query: str) -> int:
         """Count full-text search matches by patient_code or name (via user join)."""
-        from app.models.user import User
-
         result = await self.db.execute(
             select(func.count())
             .select_from(Patient)

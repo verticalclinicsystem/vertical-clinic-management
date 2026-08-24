@@ -8,10 +8,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.rbac import UserRole, require_roles
+from app.models.appointment import Appointment
+from app.models.branch import Branch
+from app.models.patient import Patient
+from app.schemas.appointment import AppointmentOut
 from app.schemas.auth import UserOut
 from app.schemas.branch import (
     BranchCreate,
@@ -94,11 +99,6 @@ async def get_public_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Get real-time count of active branches, total registered patients, and branch names."""
-    from sqlalchemy import select, func
-    from app.models.branch import Branch
-    from app.models.patient import Patient
-    from app.models.appointment import Appointment
-
     branches_res = await db.execute(select(Branch).where(Branch.is_active == True))
     branches = branches_res.scalars().all()
     branch_names = [b.name for b in branches]
@@ -305,7 +305,6 @@ async def get_branch_appointments(
     service = BranchService(db)
     appointments = await service.get_branch_appointments(branch_id)
     
-    from app.schemas.appointment import AppointmentOut
     out_items = []
     for appt in appointments:
         out = AppointmentOut.model_validate(appt)

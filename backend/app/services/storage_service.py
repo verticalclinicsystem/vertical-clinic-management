@@ -3,12 +3,18 @@ Unified Media Storage Service — dynamically routes file uploads and deletions
 to Local, S3, or Cloudinary depending on STORAGE_BACKEND configuration.
 """
 import os
+import io
 import uuid
 import shutil
 import logging
 from typing import Optional
+
+import boto3
+from PIL import Image
 from fastapi import UploadFile, HTTPException, Request
+
 from app.config import settings
+from app.services.cloudinary_service import CloudinaryService
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +46,6 @@ class StorageService:
         """
         backend = settings.STORAGE_BACKEND
         if backend == "cloudinary":
-            from app.services.cloudinary_service import CloudinaryService
             return await CloudinaryService.upload_avatar(file, user_id)
         
         elif backend == "s3":
@@ -57,9 +62,6 @@ class StorageService:
             # Save file
             try:
                 # Optional: use PIL to crop/resize avatar to 300x300
-                from PIL import Image
-                import io
-                
                 content = await file.read()
                 image = Image.open(io.BytesIO(content))
                 image.thumbnail((300, 300))
@@ -87,7 +89,6 @@ class StorageService:
         """
         backend = settings.STORAGE_BACKEND
         if backend == "cloudinary":
-            from app.services.cloudinary_service import CloudinaryService
             return await CloudinaryService.delete_avatar(user_id)
         elif backend == "s3":
             # S3 avatars might have different extensions, so we just attempt deletion of standard paths
@@ -115,7 +116,6 @@ class StorageService:
         """
         backend = settings.STORAGE_BACKEND
         if backend == "cloudinary":
-            from app.services.cloudinary_service import CloudinaryService
             return await CloudinaryService.upload_medical_report(file, patient_id)
         
         elif backend == "s3":
@@ -156,7 +156,6 @@ class StorageService:
         
         backend = settings.STORAGE_BACKEND
         if backend == "cloudinary":
-            from app.services.cloudinary_service import CloudinaryService
             return await CloudinaryService.delete_medical_report(file_url)
             
         elif backend == "s3":
@@ -185,8 +184,6 @@ class StorageService:
         """
         Helper method to upload file to S3.
         """
-        import boto3
-        
         if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
             raise HTTPException(status_code=500, detail="AWS S3 credentials not configured.")
             
@@ -216,7 +213,6 @@ class StorageService:
         """
         Helper method to delete file from S3.
         """
-        import boto3
         if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
             return False
             

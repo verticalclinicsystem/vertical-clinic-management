@@ -4,11 +4,18 @@ Invoice repository — database queries on the invoices table.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.models.consultation import Consultation
+from app.models.doctor import Doctor
 from app.models.invoice import Invoice
+from app.models.ipd import Admission, Bed, BedCategory
+from app.models.patient import Patient
+from app.models.prescription import Prescription, PrescriptionItem
+from app.models.treatment import TreatmentPlan, TreatmentProcedure
 from app.repositories.base import BaseRepository
 
 
@@ -18,13 +25,6 @@ class InvoiceRepository(BaseRepository[Invoice]):
 
     async def get_invoice_with_relations(self, invoice_id: uuid.UUID) -> Invoice | None:
         """Fetch single invoice with patient, user, consultation, treatment plan, and nested details preloaded."""
-        from app.models.patient import Patient
-        from app.models.consultation import Consultation
-        from app.models.doctor import Doctor
-        from app.models.prescription import Prescription, PrescriptionItem
-        from app.models.treatment import TreatmentPlan, TreatmentProcedure
-        from app.models.ipd import Admission, Bed, BedCategory
-        
         stmt = (
             select(Invoice)
             .options(
@@ -49,13 +49,6 @@ class InvoiceRepository(BaseRepository[Invoice]):
         status: str | None = None,
     ) -> tuple[list[Invoice], int]:
         """Fetch paginated & filtered invoices."""
-        from app.models.patient import Patient
-        from app.models.consultation import Consultation
-        from app.models.doctor import Doctor
-        from app.models.prescription import Prescription, PrescriptionItem
-        from app.models.treatment import TreatmentPlan, TreatmentProcedure
-        from app.models.ipd import Admission, Bed, BedCategory
-
         filters = []
         if patient_id:
             filters.append(Invoice.patient_id == patient_id)
@@ -89,7 +82,6 @@ class InvoiceRepository(BaseRepository[Invoice]):
 
     async def get_next_invoice_number(self) -> str:
         """Generate a sequential invoice number: INV-YYYYMMDD-XXXX."""
-        from datetime import datetime, timezone
         today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
         
         # Count invoices created today

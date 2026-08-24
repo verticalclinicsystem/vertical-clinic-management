@@ -8,6 +8,8 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.models.doctor import Doctor
+from app.models.patient import Patient
 from app.models.treatment import TreatmentPlan, TreatmentProcedure
 from app.repositories.base import BaseRepository
 
@@ -18,8 +20,6 @@ class TreatmentRepository(BaseRepository[TreatmentPlan]):
 
     async def get_treatment_plan_with_relations(self, plan_id: uuid.UUID) -> TreatmentPlan | None:
         """Fetch treatment plan with patient, doctor, and procedures preloaded."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
         stmt = (
             select(TreatmentPlan)
             .execution_options(populate_existing=True)
@@ -44,8 +44,6 @@ class TreatmentRepository(BaseRepository[TreatmentPlan]):
         status: str | None = None,
     ) -> tuple[list[TreatmentPlan], int]:
         """Fetch paginated, filtered list of treatment plans."""
-        from app.models.patient import Patient
-        from app.models.doctor import Doctor
         filters = []
         if patient_id:
             filters.append(TreatmentPlan.patient_id == patient_id)

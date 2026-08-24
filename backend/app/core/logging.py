@@ -2,8 +2,10 @@
 Structured logging configuration using Python's built-in logging.
 JSON format in production for log aggregators (Datadog, CloudWatch, etc.).
 """
+import json
 import logging
 import sys
+import traceback
 from typing import Any
 
 from app.config import settings
@@ -13,9 +15,6 @@ class _JsonFormatter(logging.Formatter):
     """Emit log records as JSON lines."""
 
     def format(self, record: logging.LogRecord) -> str:
-        import json
-        import traceback
-
         data: dict[str, Any] = {
             "time": self.formatTime(record, self.datefmt),
             "level": record.levelname,

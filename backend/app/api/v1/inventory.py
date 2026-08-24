@@ -1,12 +1,18 @@
 """
 Inventory router — endpoints for managing clinic medicine stock.
 """
+from __future__ import annotations
+
+import uuid
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db
 from app.core.exceptions import PermissionDeniedError
+from app.models.inventory import Medicine, StockTransaction
 from app.models.user import User, UserRole
 from app.schemas.inventory import MedicineCreate, MedicineOut
 from app.services.inventory_service import InventoryService
@@ -38,7 +44,7 @@ async def list_medicines(
             "page": page,
             "limit": limit,
         },
-        message="Inventory retrieved successfully."
+        message="Medicines retrieved successfully.",
     )
 
 
@@ -49,33 +55,32 @@ async def create_medicine(
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """
-    Create a new medicine in the inventory.
-    - Restricted to Pharmacist and Admin.
+    Add a new medicine to inventory.
+    - Restricted to Pharmacist or Admin.
     """
     if current_user.role not in [UserRole.PHARMACIST, UserRole.ADMIN]:
         raise PermissionDeniedError("Only pharmacists or admins can add medicines.")
 
     service = InventoryService(db)
-    medicine = await service.create_medicine(request)
-
+    med = await service.create_medicine(request)
     return ApiResponse.success(
-        data=MedicineOut.model_validate(medicine),
-        message="Medicine added to inventory successfully.",
-        status_code=201
+        data=MedicineOut.model_validate(med),
+        message="Medicine created successfully.",
+        status_code=201,
     )
 
 
 @router.get("/purchase-orders", response_class=JSONResponse)
 async def list_purchase_orders(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """
-    Return purchase (stock-in) transactions as purchase-order cards.
+    List purchase order history (stock additions).
     """
     if current_user.role not in [UserRole.PHARMACIST, UserRole.ADMIN]:
-        raise PermissionDeniedError("Access denied.")
+        raise PermissionDeniedError("Only pharmacists or admins can view purchase orders.")
 
     service = InventoryService(db)
     orders = await service.list_purchase_orders(limit)
@@ -97,10 +102,6 @@ async def create_purchase_order(
     """
     if current_user.role not in [UserRole.PHARMACIST, UserRole.ADMIN]:
         raise PermissionDeniedError("Only pharmacists or admins can record purchase orders.")
-
-    from app.models.inventory import Medicine, StockTransaction
-    import uuid
-    from sqlalchemy import select
 
     med_id = uuid.UUID(request["medicine_id"])
     qty = int(request["change_qty"])
@@ -138,11 +139,9 @@ async def create_purchase_order(
             "medicine_name": med.name,
             "supplier": med.supplier or "Unknown",
             "quantity": txn.change_qty,
-            "unit": med.unit,
-            "amount": round(txn.change_qty * med.unit_price, 2),
-            "status": "Received",
-            "date": txn.created_at.strftime("%d %b %Y"),
-            "notes": txn.notes or "",
+            "transaction_type": "purchase",
+            "date": txn.created_at.strftime("%Y-%m-%d") if txn.created_at else "",
+            "notes": txn.notes
         },
         message="Purchase order recorded successfully.",
         status_code=201

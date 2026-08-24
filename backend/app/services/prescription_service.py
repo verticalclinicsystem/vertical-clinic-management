@@ -6,16 +6,23 @@ from __future__ import annotations
 import logging
 import uuid
 
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.core.exceptions import DoctorNotFoundError, PatientNotFoundError
-from app.models.prescription import Prescription, PrescriptionItem
+from app.core.exceptions import (
+    DoctorNotFoundError, PatientNotFoundError, ValidationError, PrescriptionNotFoundError
+)
 from app.models.inventory import Medicine, StockTransaction
-from app.repositories.prescription_repo import PrescriptionRepository
+from app.models.invoice import Invoice
+from app.models.prescription import Prescription, PrescriptionItem
+from app.models.user import User, UserRole
 from app.repositories.doctor_repo import DoctorRepository
+from app.repositories.invoice_repo import InvoiceRepository
 from app.repositories.patient_repo import PatientRepository
+from app.repositories.prescription_repo import PrescriptionRepository
 from app.schemas.prescription import PrescriptionCreate, PrescriptionUpdate
+from app.services.notification_service import NotificationService
+from app.utils.pdf_generator import generate_prescription_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +76,6 @@ class PrescriptionService:
         # Generate Prescription PDF
         pdf_bytes = b""
         try:
-            from app.utils.pdf_generator import generate_prescription_pdf
             full_presc = await self.get_prescription(presc_id)
             doctor_obj = full_presc.doctor
 
@@ -100,7 +106,6 @@ class PrescriptionService:
 
         # Send Prescription Created notification to patient
         try:
-            from app.services.notification_service import NotificationService
             noti_service = NotificationService(self.db)
             download_link = f"https://vclinic.com/api/v1/prescriptions/{presc_id}/pdf"
             msg = f"Dr. {doctor.user.full_name} has prescribed new medications for you. Download PDF: {download_link}"
@@ -125,7 +130,6 @@ class PrescriptionService:
         """Dispense medicines from a prescription, reducing stock levels and logging transactions."""
         prescription = await self.get_prescription(prescription_id)
         if prescription.status == "Dispensed":
-            from app.core.exceptions import ValidationError
             raise ValidationError("Prescription is already dispensed.")
 
         prescription.status = "Dispensed"
@@ -138,7 +142,6 @@ class PrescriptionService:
             if item.medicine_id:
                 medicine = await self.db.get(Medicine, item.medicine_id)
             elif item.medicine_name:
-                from sqlalchemy import func
                 stmt = select(Medicine).where(func.lower(Medicine.name) == func.lower(item.medicine_name))
                 res = await self.db.execute(stmt)
                 medicine = res.scalars().first()
@@ -154,8 +157,6 @@ class PrescriptionService:
                 # Check for low stock notification trigger
                 if medicine.stock_qty <= medicine.reorder_level:
                     try:
-                        from app.services.notification_service import NotificationService
-                        from app.models.user import User, UserRole
                         noti_service = NotificationService(self.db)
 
                         # Broadcast notification to Admins, Clinic Managers, and Pharmacists
@@ -214,14 +215,10 @@ class PrescriptionService:
         # ── Auto-generate Invoice for this dispensed prescription ─────────────
         # Only create if not already linked to an existing invoice for this consultation
         try:
-            from app.repositories.invoice_repo import InvoiceRepository
-            from app.models.invoice import Invoice
-            from sqlalchemy import select as sa_select
-
             # Check if an invoice already exists for this consultation
             existing_inv = None
             if prescription.consultation_id:
-                stmt = sa_select(Invoice).where(Invoice.consultation_id == prescription.consultation_id)
+                stmt = select(Invoice).where(Invoice.consultation_id == prescription.consultation_id)
                 res = await self.db.execute(stmt)
                 existing_inv = res.scalars().first()
 
@@ -271,7 +268,6 @@ class PrescriptionService:
 
         # Notify patient that prescription is dispensed / ready
         try:
-            from app.services.notification_service import NotificationService
             noti_service = NotificationService(self.db)
             full_presc = await self.get_prescription(prescription_id)
             if full_presc.patient:
@@ -291,14 +287,6 @@ class PrescriptionService:
         """Fetch details of a single prescription."""
         prescription = await self.prescription_repo.get_prescription_with_relations(prescription_id)
         if not prescription:
-            from app.core.exceptions import BaseAPIException
-            class PrescriptionNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="PRESCRIPTION_NOT_FOUND",
-                        message="Prescription not found."
-                    )
             raise PrescriptionNotFoundError()
         return prescription
 

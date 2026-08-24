@@ -3,23 +3,30 @@ Appointment service — handles business logic and validation for appointments.
 """
 from __future__ import annotations
 
+import json
 import logging
+import sys
 import uuid
 from datetime import datetime, timezone, timedelta, time as dt_time
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     DoctorNotFoundError, BranchNotFoundError, PatientNotFoundError,
-    PermissionDeniedError, BadRequestError
+    PermissionDeniedError, BadRequestError, AppointmentNotFoundError
 )
+from app.core.websocket import manager as ws_manager
 from app.models.appointment import Appointment
+from app.models.branch import Branch
+from app.models.doctor import DoctorSlot
+from app.models.user import User
 from app.repositories.appointment_repo import AppointmentRepository
 from app.repositories.doctor_repo import DoctorRepository
 from app.repositories.patient_repo import PatientRepository
 from app.repositories.branch_repo import BranchRepository
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +67,6 @@ class AppointmentService:
         leaves = []
 
         if doctor and doctor.availability_metadata:
-            import json
             try:
                 meta = json.loads(doctor.availability_metadata)
                 
@@ -83,7 +89,6 @@ class AppointmentService:
         branch_opening = "09:00"
         branch_closing = "21:00"
         if doctor and doctor.branch_id:
-            from app.models.branch import Branch
             res_branch = await self.db.execute(select(Branch).where(Branch.id == doctor.branch_id))
             branch = res_branch.scalar_one_or_none()
             if branch:
@@ -172,7 +177,6 @@ class AppointmentService:
         booked_times = {to_ist_hhmm(appt.appointment_datetime) for appt in appts}
 
         # Filter out past slots and 30-minute lead time buffer for today's date in IST
-        import sys
         is_testing = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
 
         current_time_ist = datetime.now(IST)
@@ -255,7 +259,6 @@ class AppointmentService:
 
         # Check leaves, lunch break, and tele-only hours constraints from metadata
         if doctor.availability_metadata and not is_staff:
-            import json
             try:
                 meta = json.loads(doctor.availability_metadata)
 
@@ -295,7 +298,6 @@ class AppointmentService:
             raise BranchNotFoundError()
 
         # Past dates and 30-minute lead time buffer check
-        import sys
         is_testing = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
 
         current_time_ist = datetime.now(IST)
@@ -356,7 +358,6 @@ class AppointmentService:
 
         # 5. Verify availability if slots are defined for this weekday (use IST weekday)
         weekday = appt_date_ist.weekday()
-        from app.models.doctor import DoctorSlot
         slots_stmt = select(DoctorSlot).where(
             DoctorSlot.doctor_id == request.doctor_id,
             DoctorSlot.weekday == weekday,
@@ -411,8 +412,7 @@ class AppointmentService:
 
         # Broadcast queue update
         try:
-            from app.core.websocket import manager
-            await manager.send_to_branch(str(request.branch_id), {"event": "queue_updated", "branch_id": str(request.branch_id)})
+            await ws_manager.send_to_branch(str(request.branch_id), {"event": "queue_updated", "branch_id": str(request.branch_id)})
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast websocket event: {ws_err}")
 
@@ -427,7 +427,6 @@ class AppointmentService:
         full_appt = await self.get_appointment(created.id)
         
         # Send notification
-        from app.services.notification_service import NotificationService
         try:
             noti_service = NotificationService(self.db)
             if full_appt.patient:
@@ -450,7 +449,6 @@ class AppointmentService:
 
         # Broadcast new booking to branch receptionists via WebSocket
         try:
-            from app.core.websocket import manager as ws_manager
             doc_name = full_appt.doctor.user.full_name if (full_appt.doctor and full_appt.doctor.user) else 'Doctor'
             time_str = full_appt.appointment_datetime.astimezone(IST).strftime('%I:%M %p on %Y-%m-%d')
             await ws_manager.send_to_role_in_branch(
@@ -476,14 +474,6 @@ class AppointmentService:
         """Fetch single appointment with preloaded details."""
         appointment = await self.appointment_repo.get_appointment_with_relations(appointment_id)
         if not appointment:
-            from app.core.exceptions import BaseAPIException
-            class AppointmentNotFoundError(BaseAPIException):
-                def __init__(self):
-                    super().__init__(
-                        status_code=404,
-                        error_code="APPOINTMENT_NOT_FOUND",
-                        message="Appointment not found."
-                    )
             raise AppointmentNotFoundError()
         return appointment
 
@@ -511,7 +501,6 @@ class AppointmentService:
                 end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         # Auto-expire stale appointments globally
-        from sqlalchemy import update
         now_utc = datetime.now(timezone.utc)
         stale_threshold = now_utc - timedelta(hours=4)
         expire_stmt = (
@@ -590,7 +579,6 @@ class AppointmentService:
             db_appt_dt = db_appt_dt.astimezone(timezone.utc)
 
         if request.appointment_datetime and request.appointment_datetime != db_appt_dt:
-            import sys
             is_testing = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
             if not is_testing:
                 is_db_appt_future = db_appt_dt >= now
@@ -624,7 +612,6 @@ class AppointmentService:
             # Validate slot if doctor has slots defined
             if not is_staff:
                 weekday = request.appointment_datetime.weekday()
-                from app.models.doctor import DoctorSlot
                 slots_stmt = select(DoctorSlot).where(
                     DoctorSlot.doctor_id == appointment.doctor_id,
                     DoctorSlot.weekday == weekday,
@@ -662,7 +649,6 @@ class AppointmentService:
                 
                 doctor = await self.doctor_repo.get_by_id(appointment.doctor_id)
                 if doctor and doctor.availability_metadata:
-                    import json
                     try:
                         meta = json.loads(doctor.availability_metadata)
                         
@@ -715,8 +701,7 @@ class AppointmentService:
 
         # Broadcast queue update
         try:
-            from app.core.websocket import manager
-            await manager.send_to_branch(str(appointment.branch_id), {"event": "queue_updated", "branch_id": str(appointment.branch_id)})
+            await ws_manager.send_to_branch(str(appointment.branch_id), {"event": "queue_updated", "branch_id": str(appointment.branch_id)})
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast websocket event: {ws_err}")
 
@@ -724,7 +709,6 @@ class AppointmentService:
 
         full_appt = await self.get_appointment(updated.id)
 
-        from app.services.notification_service import NotificationService
         try:
             noti_service = NotificationService(self.db)
             doc_name = full_appt.doctor.user.full_name if full_appt.doctor and full_appt.doctor.user else 'Doctor'
@@ -807,7 +791,6 @@ class AppointmentService:
         doctor = await self.doctor_repo.get_by_id(doctor_id)
         doc_name = doctor.user.full_name if doctor and doctor.user else "Doctor"
 
-        from app.services.notification_service import NotificationService
         noti_service = NotificationService(self.db)
 
         updated_count = 0
@@ -842,9 +825,8 @@ class AppointmentService:
 
         # Broadcast queue update via WebSocket
         try:
-            from app.core.websocket import manager
             if doctor and doctor.branch_id:
-                await manager.send_to_branch(str(doctor.branch_id), {"event": "queue_updated", "branch_id": str(doctor.branch_id)})
+                await ws_manager.send_to_branch(str(doctor.branch_id), {"event": "queue_updated", "branch_id": str(doctor.branch_id)})
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast queue update on delay: {ws_err}")
 

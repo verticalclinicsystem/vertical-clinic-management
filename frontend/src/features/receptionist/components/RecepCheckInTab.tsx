@@ -126,8 +126,14 @@ export const RecepCheckInTab: React.FC<RecepCheckInTabProps> = ({
                             background: '#eff6ff',
                             color: '#2563eb',
                             border: '1px solid #bfdbfe',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
                           }}
                         >
+                          <span style={{ width: '6px', height: '6px', backgroundColor: '#2563eb', borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} />
                           In Consultation
                         </span>
                       ) : appt.status === 'checked_in' || appt.status === 'Waiting' ? (

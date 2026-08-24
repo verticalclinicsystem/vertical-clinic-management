@@ -3,18 +3,49 @@ Patients router — REST API endpoints for clinic patient profile management.
 """
 from __future__ import annotations
 
+from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status, Request, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.api.v1.billing import invoice_to_out
+from app.core.exceptions import BadRequestError, BranchNotFoundError, NotFoundError, PermissionDeniedError
 from app.core.rbac import UserRole, require_roles
+from app.models.appointment import Appointment
+from app.models.consultation import Consultation
+from app.models.invoice import Invoice
+from app.models.medical_report import MedicalReport
+from app.models.patient import Patient
+from app.models.prescription import Prescription
 from app.models.user import User
-from app.schemas.patient import PatientOut, PatientUpdate, PatientCreate, FollowUpRecommendationOut, PatientPreferencesOut, PatientPreferencesUpdate
+from app.repositories.doctor_repo import DoctorRepository
+from app.schemas.appointment import AppointmentOut
+from app.schemas.consultation import ConsultationOut
+from app.schemas.invoice import InvoiceOut
+from app.schemas.medical_report import MedicalReportOut
+from app.schemas.patient import (
+    FollowUpRecommendationOut,
+    PatientCreate,
+    PatientOut,
+    PatientPreferencesOut,
+    PatientPreferencesUpdate,
+    PatientUpdate,
+)
+from app.schemas.prescription import PrescriptionOut
+from app.schemas.treatment import TreatmentPlanOut
+from app.services.appointment_service import AppointmentService
+from app.services.billing_service import BillingService
+from app.services.consultation_service import ConsultationService
+from app.services.medical_report_service import MedicalReportService
 from app.services.patient_service import PatientService
+from app.services.prescription_service import PrescriptionService
+from app.services.storage_service import StorageService
+from app.services.treatment_service import TreatmentService
 from app.utils.response import ApiResponse
 
 router = APIRouter()
@@ -31,7 +62,6 @@ async def get_my_patient_profile(
 ) -> JSONResponse:
     """Retrieve the clinical profile of the currently authenticated patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients have clinical profiles.")
     
     service = PatientService(db)
@@ -54,7 +84,6 @@ async def update_my_patient_profile(
 ) -> JSONResponse:
     """Update clinical details for the currently authenticated patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients have clinical profiles.")
     
     service = PatientService(db)
@@ -80,24 +109,7 @@ async def get_patient_dashboard(
     recent prescriptions, bills, medical reports, follow-ups, and history.
     """
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients have a dashboard.")
-
-    from app.services.appointment_service import AppointmentService
-    from app.services.prescription_service import PrescriptionService
-    from app.services.consultation_service import ConsultationService
-    from app.services.billing_service import BillingService
-    from datetime import datetime, timezone, timedelta
-    from sqlalchemy import select, func
-
-    # Import schemas
-    from app.schemas.appointment import AppointmentOut
-    from app.schemas.prescription import PrescriptionOut
-    from app.schemas.consultation import ConsultationOut
-    from app.schemas.medical_report import MedicalReportOut
-    from app.schemas.invoice import InvoiceOut
-    from app.schemas.patient import FollowUpRecommendationOut
-    from app.api.v1.billing import invoice_to_out
 
     def to_patient_appt_out(a) -> AppointmentOut:
         out = AppointmentOut.model_validate(a)
@@ -133,7 +145,6 @@ async def get_patient_dashboard(
             appointment_history.append(appt)
 
     # Calculate queue estimation for upcoming appointments today
-    from app.models.appointment import Appointment
     IST = timezone(timedelta(hours=5, minutes=30))
     today_ist = datetime.now(IST).date()
     upcoming_serialized = []
@@ -195,10 +206,8 @@ async def get_patient_dashboard(
     )
 
     # 5. Get medical reports
-    from app.services.medical_report_service import MedicalReportService
     report_service = MedicalReportService(db)
     reports = await report_service.get_reports_by_user_id(current_user.id)
-
 
     # 6. Get bills (invoices)
     billing_service = BillingService(db)
@@ -209,7 +218,6 @@ async def get_patient_dashboard(
     )
 
     # 7. Get balance due
-    from app.models.invoice import Invoice
     balance_stmt = (
         select(func.sum(Invoice.balance_due))
         .where(
@@ -223,7 +231,6 @@ async def get_patient_dashboard(
     # 8. Get visits this year
     current_year = datetime.now(timezone.utc).year
     start_of_year = datetime(current_year, 1, 1, tzinfo=timezone.utc)
-    from app.models.consultation import Consultation
     visits_stmt = (
         select(func.count(Consultation.id))
         .where(
@@ -235,12 +242,11 @@ async def get_patient_dashboard(
     visits_this_year = visits_res.scalar_one()
 
     # 9. Get follow-ups
-    from app.models.appointment import Appointment as ApptModel
     stmt = (
-        select(ApptModel)
+        select(Appointment)
         .where(
-            ApptModel.patient_id == patient_id,
-            ApptModel.status.in_(["pending", "confirmed"])
+            Appointment.patient_id == patient_id,
+            Appointment.status.in_(["pending", "confirmed"])
         )
     )
     result = await db.execute(stmt)
@@ -312,30 +318,21 @@ async def list_my_appointments(
 ) -> JSONResponse:
     """Retrieve paginated appointments for the logged-in patient with status, date, and search filters."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their appointments this way.")
 
-    from app.services.appointment_service import AppointmentService
-    from app.schemas.appointment import AppointmentOut
-    
-    # 1. Resolve current user to patient profile
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # 2. Parse date if provided
     start_date = None
     end_date = None
     if date:
         try:
-            from datetime import datetime, time as dt_time, timezone
             parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
             start_date = datetime.combine(parsed_date, dt_time.min, tzinfo=timezone.utc)
             end_date = datetime.combine(parsed_date, dt_time.max, tzinfo=timezone.utc)
         except ValueError:
-            from app.core.exceptions import BadRequestError
             raise BadRequestError("Invalid date format. Expected YYYY-MM-DD.")
 
-    # 3. Fetch appointments
     appt_service = AppointmentService(db)
     items, total = await appt_service.list_appointments(
         page=page,
@@ -378,17 +375,11 @@ async def list_my_prescriptions(
 ) -> JSONResponse:
     """Retrieve paginated prescriptions for the logged-in patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their prescriptions this way.")
 
-    from app.services.prescription_service import PrescriptionService
-    from app.schemas.prescription import PrescriptionOut
-    
-    # 1. Resolve current user to patient profile
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # 2. Fetch prescriptions
     presc_service = PrescriptionService(db)
     items, total = await presc_service.list_prescriptions(
         page=page,
@@ -422,17 +413,11 @@ async def list_my_medical_history(
 ) -> JSONResponse:
     """Retrieve paginated consultations/visits for the logged-in patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their medical history this way.")
 
-    from app.services.consultation_service import ConsultationService
-    from app.schemas.consultation import ConsultationOut
-
-    # 1. Resolve current user to patient profile
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # 2. Fetch consultations
     consultation_service = ConsultationService(db)
     items, total = await consultation_service.list_consultations(
         page=page,
@@ -467,17 +452,11 @@ async def list_my_treatments(
 ) -> JSONResponse:
     """Retrieve paginated treatment plans for the logged-in patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their treatments this way.")
 
-    from app.services.treatment_service import TreatmentService
-    from app.schemas.treatment import TreatmentPlanOut
-
-    # 1. Resolve current user to patient profile
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # 2. Fetch treatment plans
     treatment_service = TreatmentService(db)
     items, total = await treatment_service.list_treatment_plans(
         page=page,
@@ -510,11 +489,7 @@ async def list_my_reports(
 ) -> JSONResponse:
     """Retrieve all uploaded medical reports for the logged-in patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their reports this way.")
-
-    from app.services.medical_report_service import MedicalReportService
-    from app.schemas.medical_report import MedicalReportOut
 
     service = MedicalReportService(db)
     reports = await service.get_reports_by_user_id(current_user.id)
@@ -540,19 +515,12 @@ async def upload_my_report(
 ) -> JSONResponse:
     """Upload a medical report file and store metadata for the authenticated patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can upload medical reports.")
 
-    from app.services.storage_service import StorageService
-    from app.services.medical_report_service import MedicalReportService
-    from app.schemas.medical_report import MedicalReportOut
-
-    # Resolve patient ID
     patient_service = PatientService(db)
     patient = await patient_service.get_patient_by_user_id(current_user.id)
     patient_id_str = str(patient.id) if patient is not None else str(current_user.id)
 
-    # Upload using StorageService
     file_url = await StorageService.upload_medical_report(file, patient_id=patient_id_str, request=request)
     report_name = title or file.filename or "report.pdf"
 
@@ -583,11 +551,8 @@ async def delete_my_report(
 ) -> JSONResponse:
     """Delete a medical report if owned by the logged-in patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can delete their own medical reports.")
 
-    from app.services.medical_report_service import MedicalReportService
-    
     service = MedicalReportService(db)
     await service.delete_report(
         user_id=current_user.id,
@@ -611,17 +576,11 @@ async def list_my_follow_ups(
 ) -> JSONResponse:
     """Retrieve recommended follow-ups based on the patient's previous consultations."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their follow-ups.")
 
-    from app.services.consultation_service import ConsultationService
-    from datetime import timedelta
-
-    # 1. Resolve current user to patient profile
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # 2. Get all patient's consultations (completed visits)
     consultation_service = ConsultationService(db)
     consultations, _ = await consultation_service.list_consultations(
         page=1,
@@ -629,9 +588,6 @@ async def list_my_follow_ups(
         patient_id=patient.id,
     )
 
-    # 3. Get patient's scheduled appointments (future pending/confirmed)
-    from sqlalchemy import select
-    from app.models.appointment import Appointment
     stmt = (
         select(Appointment)
         .where(
@@ -644,27 +600,24 @@ async def list_my_follow_ups(
 
     recommendations = []
     for c in consultations:
-        # Only suggest follow-up if explicitly advised by the doctor
         if not getattr(c, "followup_advised", False):
             continue
 
         days = getattr(c, "followup_after_days", 14) or 14
         recommended_date = c.consultation_datetime + timedelta(days=days)
         
-        # Check if there is already a future booked appointment with the same doctor
         has_future_booking = any(
             appt.doctor_id == c.doctor_id and appt.appointment_datetime > c.consultation_datetime
             for appt in future_appointments
         )
         status = "booked" if has_future_booking else "recommended"
 
-        # Try to extract treatment type recommendation from diagnosis/notes/symptoms or default to Routine Follow-up
         treatment_type = "Routine Follow-up"
         if c.diagnosis:
             treatment_type = f"Follow-up for {c.diagnosis}"
 
         recommendations.append({
-            "id": c.id,  # Use consultation id as recommendation id for uniqueness/relationship
+            "id": c.id,
             "consultation_id": c.id,
             "doctor_id": c.doctor_id,
             "doctor_name": c.doctor.user.full_name if c.doctor and c.doctor.user else "Doctor",
@@ -696,17 +649,11 @@ async def list_my_billing(
 ) -> JSONResponse:
     """Retrieve paginated invoices for the logged-in patient."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can query their invoices this way.")
 
-    from app.services.billing_service import BillingService
-    from app.schemas.invoice import InvoiceOut
-
-    # 1. Resolve current user to patient profile
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # 2. Fetch invoices
     billing_service = BillingService(db)
     items, total = await billing_service.list_invoices(
         page=page,
@@ -715,8 +662,6 @@ async def list_my_billing(
         status=status,
     )
     pages = (total + limit - 1) // limit
-
-    from app.api.v1.billing import invoice_to_out
 
     return ApiResponse.success(
         data={
@@ -752,9 +697,6 @@ async def create_walkin_patient(
 
 
 # ── 3. GET /patients ──────────────────────────────────────────────────────────
-
-
-
 @router.get(
     "/",
     summary="List and search patients (staff only)",
@@ -801,7 +743,6 @@ async def get_patient_details(
     patient = await service.get_patient(patient_id)
     
     if current_user.role == UserRole.PATIENT and patient.user_id != current_user.id:
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("You are not allowed to view other patient profiles.")
         
     return ApiResponse.success(
@@ -832,7 +773,6 @@ async def update_patient(
     is_owner = patient.user_id == current_user.id
     
     if not (is_staff or is_owner):
-        from app.core.exceptions import PermissionDeniedError
         raise PermissionDeniedError("You do not have permission to update this profile.")
         
     updated = await service.update_patient_profile(patient_id, request)
@@ -891,10 +831,8 @@ async def get_patient_preferences(
 ) -> JSONResponse:
     """Retrieve language, notification, doctor, and consultation preferences."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients have preferences.")
 
-    from app.schemas.patient import PatientPreferencesOut
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
     return ApiResponse.success(
@@ -919,31 +857,22 @@ async def update_patient_preferences(
 ) -> JSONResponse:
     """Update language, notification, doctor, and consultation preferences."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can update preferences.")
 
-    from app.schemas.patient import PatientPreferencesOut
-    from app.schemas.patient import PatientPreferencesUpdate
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
 
-    # Apply updates
     update_data = request.model_dump(exclude_unset=True)
     
-    # Verify preferred doctor if provided
     if "preferred_doctor_id" in update_data and update_data["preferred_doctor_id"] is not None:
-        from app.repositories.doctor_repo import DoctorRepository
         doctor_repo = DoctorRepository(db)
         doctor = await doctor_repo.get_by_id(update_data["preferred_doctor_id"])
         if not doctor:
-            from app.core.exceptions import BadRequestError
             raise BadRequestError("Preferred doctor not found.")
 
-    # Verify preferred branch if provided
     if "preferred_branch_id" in update_data and update_data["preferred_branch_id"] is not None:
         branch = await service.branch_repo.get_by_id(update_data["preferred_branch_id"])
         if not branch:
-            from app.core.exceptions import BranchNotFoundError
             raise BranchNotFoundError()
 
     updated = await service.patient_repo.update(patient, update_data)
@@ -966,25 +895,11 @@ async def get_patient_statistics(
 ) -> JSONResponse:
     """Get metrics including total visits, upcoming/cancelled/completed appointments, active Rx, bills, etc."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients have statistics.")
-
-    from app.services.appointment_service import AppointmentService
-    from app.services.prescription_service import PrescriptionService
-    from app.services.consultation_service import ConsultationService
-    from app.services.billing_service import BillingService
-    from datetime import datetime, timezone
-    from sqlalchemy import select, func
 
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
     patient_id = patient.id
-
-    from app.models.appointment import Appointment
-    from app.models.prescription import Prescription
-    from app.models.consultation import Consultation
-    from app.models.medical_report import MedicalReport
-    from app.models.invoice import Invoice
 
     # 1. Appointments counts
     appt_stmt = (
@@ -1105,14 +1020,7 @@ async def get_patient_timeline(
 ) -> JSONResponse:
     """Retrieve a chronologically ordered feed of visits, prescriptions, reports, invoices, and follow-ups."""
     if current_user.role != UserRole.PATIENT:
-        from app.core.exceptions import BadRequestError
         raise BadRequestError("Only patients can view their timeline.")
-
-    from app.services.prescription_service import PrescriptionService
-    from app.services.consultation_service import ConsultationService
-    from app.services.billing_service import BillingService
-    from app.services.medical_report_service import MedicalReportService
-    from datetime import timedelta
 
     service = PatientService(db)
     patient = await service.get_patient_by_user_id(current_user.id)
@@ -1188,8 +1096,6 @@ async def get_patient_timeline(
         })
 
     # 5. Fetch Follow-up Recommendations
-    from sqlalchemy import select
-    from app.models.appointment import Appointment
     stmt = (
         select(Appointment)
         .where(
@@ -1242,21 +1148,6 @@ async def get_patient_history_profile(
     Fetch patient demographic details, stats, upcoming and past appointments,
     prescriptions, medical history, invoices, and follow-ups.
     """
-    from app.services.appointment_service import AppointmentService
-    from app.services.prescription_service import PrescriptionService
-    from app.services.consultation_service import ConsultationService
-    from app.services.billing_service import BillingService
-    from datetime import datetime, timezone, timedelta
-    from sqlalchemy import select, func
-
-    # Import schemas
-    from app.schemas.appointment import AppointmentOut
-    from app.schemas.prescription import PrescriptionOut
-    from app.schemas.consultation import ConsultationOut
-    from app.schemas.medical_report import MedicalReportOut
-    from app.schemas.invoice import InvoiceOut
-    from app.schemas.patient import FollowUpRecommendationOut
-
     def to_patient_appt_out(a) -> AppointmentOut:
         out = AppointmentOut.model_validate(a)
         out.map_status_for_role("patient")
@@ -1265,7 +1156,6 @@ async def get_patient_history_profile(
     service = PatientService(db)
     patient = await service.get_patient(patient_id)
     if not patient:
-        from app.core.exceptions import NotFoundError
         raise NotFoundError("Patient not found.")
 
     # 1. Preferred branch details
@@ -1308,7 +1198,6 @@ async def get_patient_history_profile(
     )
 
     # 5. Get medical reports
-    from app.services.medical_report_service import MedicalReportService
     report_service = MedicalReportService(db)
     reports = await report_service.get_reports_by_user_id(patient.user_id) if patient.user_id else []
 
@@ -1321,7 +1210,6 @@ async def get_patient_history_profile(
     )
 
     # 7. Get balance due
-    from app.models.invoice import Invoice
     balance_stmt = (
         select(func.sum(Invoice.balance_due))
         .where(
@@ -1335,7 +1223,6 @@ async def get_patient_history_profile(
     # 8. Get visits this year
     current_year = datetime.now(timezone.utc).year
     start_of_year = datetime(current_year, 1, 1, tzinfo=timezone.utc)
-    from app.models.consultation import Consultation
     visits_stmt = (
         select(func.count(Consultation.id))
         .where(
@@ -1347,12 +1234,11 @@ async def get_patient_history_profile(
     visits_this_year = visits_res.scalar_one()
 
     # 9. Get follow-ups
-    from app.models.appointment import Appointment as ApptModel
     stmt = (
-        select(ApptModel)
+        select(Appointment)
         .where(
-            ApptModel.patient_id == patient_id,
-            ApptModel.status.in_(["pending", "confirmed"])
+            Appointment.patient_id == patient_id,
+            Appointment.status.in_(["pending", "confirmed"])
         )
     )
     result = await db.execute(stmt)

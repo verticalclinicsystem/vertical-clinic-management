@@ -5,16 +5,20 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, time as dt_time
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import BranchNotFoundError, ConflictError
+from app.models.appointment import Appointment
 from app.models.branch import Branch
+from app.models.consultation import Consultation
 from app.models.doctor import Doctor
 from app.models.inventory import Medicine
+from app.models.invoice import Invoice
 from app.models.patient import Patient
 from app.models.user import User
 from app.repositories.branch_repo import BranchRepository
@@ -138,13 +142,8 @@ class BranchService:
         low_stock_items = (await self.db.execute(low_stock_stmt)).scalar_one() or 0
 
         # 6. Today's Appointments & Revenue
-        from datetime import time as dt_time
         today_start = datetime.combine(date.today(), dt_time.min).replace(tzinfo=timezone.utc)
         today_end = datetime.combine(date.today(), dt_time.max).replace(tzinfo=timezone.utc)
-        
-        from app.models.appointment import Appointment
-        from app.models.invoice import Invoice
-        from app.models.consultation import Consultation
 
         today_appts_stmt = select(func.count(Appointment.id)).where(
             Appointment.branch_id == branch_id,
@@ -183,7 +182,6 @@ class BranchService:
 
     async def get_branch_doctors(self, branch_id: uuid.UUID) -> list[Doctor]:
         """Fetch all doctors linked to this branch."""
-        from sqlalchemy.orm import joinedload
         await self.get_branch(branch_id)
         stmt = (
             select(Doctor)
@@ -195,7 +193,6 @@ class BranchService:
 
     async def get_branch_patients(self, branch_id: uuid.UUID) -> list[Patient]:
         """Fetch all patients that preferred this branch."""
-        from sqlalchemy.orm import joinedload
         await self.get_branch(branch_id)
         stmt = select(Patient).options(joinedload(Patient.user)).where(Patient.preferred_branch_id == branch_id)
         result = await self.db.execute(stmt)
@@ -204,7 +201,6 @@ class BranchService:
     async def get_branch_appointments(self, branch_id: uuid.UUID) -> list[Appointment]:
         """Fetch all appointments for this branch."""
         await self.get_branch(branch_id)
-        from app.models.appointment import Appointment
         stmt = select(Appointment).where(Appointment.branch_id == branch_id)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
