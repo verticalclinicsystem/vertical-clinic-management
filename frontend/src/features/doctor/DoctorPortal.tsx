@@ -1161,6 +1161,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
     }
   };
 
+  // Silence unused variable warnings for IPD round states and helpers
+  void ipdBeds;
+  void loadingIpdBeds;
+  void setSelectedBedForRound;
+  void fetchHistoryDetails;
   useEffect(() => {
     (window as any).doctorIpdActions = {
       openRoundForBed: (bed: any) => {
