@@ -1136,6 +1136,13 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
           </button>
 
           <button
+            className={`sidebar-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            <BarChart3 size={18} /> Interactive Analytics
+          </button>
+
+          <button
             className={`sidebar-nav-item ${activeTab === 'staff' ? 'active' : ''}`}
             onClick={() => setActiveTab('staff')}
           >
@@ -1182,13 +1189,6 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
             onClick={() => setActiveTab('beds')}
           >
             <Bed size={18} /> Bed Management
-          </button>
-
-          <button
-            className={`sidebar-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
-            onClick={() => setActiveTab('analytics')}
-          >
-            <BarChart3 size={18} /> Interactive Analytics
           </button>
 
           <div className="sidebar-section-heading" style={{ marginTop: '16px' }}>PROFILE</div>
