@@ -854,6 +854,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         setIsAdmitModalOpen(false);
         setAdmitForm({ patient_id: '', admitting_doctor_id: '', diagnosis: '', initial_deposit: 0 });
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to admit patient.', 'error');
@@ -873,6 +874,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         setIsTransferModalOpen(false);
         setTransferForm({ to_bed_id: '', reason: '' });
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to transfer patient.', 'error');
@@ -897,6 +899,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         setIsVitalsModalOpen(false);
         setVitalsForm({ temp: 98.6, pulse: 72, systolic_bp: 120, diastolic_bp: 80, spo2: 98, respiratory_rate: 16, nursing_notes: '' });
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to log vitals.', 'error');
@@ -945,6 +948,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         setIsCheckoutModalOpen(false);
         setCheckoutBill(null);
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('Failed to finalize checkout.', 'error');
@@ -957,6 +961,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       if (res.data && res.data.success) {
         showToast('Bed marked as available and ready for use!', 'success');
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('Failed to mark bed as clean.', 'error');
