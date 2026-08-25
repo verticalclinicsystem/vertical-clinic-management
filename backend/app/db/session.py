@@ -38,11 +38,13 @@ AsyncSessionLocal = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency that yields a database session per request.
-    Guarantees clean release of connections back to the pool.
+    Guarantees clean release of connections back to the pool and commits transactions.
     """
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            await session.commit()
         except Exception:
             await session.rollback()
             raise
+

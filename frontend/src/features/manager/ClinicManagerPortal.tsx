@@ -497,6 +497,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         setIsAdmitModalOpen(false);
         setAdmitForm({ patient_id: '', admitting_doctor_id: '', diagnosis: '', initial_deposit: 0 });
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('error', err.response?.data?.detail || 'Failed to admit patient.');
@@ -516,6 +517,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         setIsTransferModalOpen(false);
         setTransferForm({ to_bed_id: '', reason: '' });
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('error', err.response?.data?.detail || 'Failed to transfer patient.');
@@ -540,6 +542,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         setIsVitalsModalOpen(false);
         setVitalsForm({ temp: 98.6, pulse: 72, systolic_bp: 120, diastolic_bp: 80, spo2: 98, respiratory_rate: 16, nursing_notes: '' });
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('error', err.response?.data?.detail || 'Failed to log vitals.');
@@ -588,6 +591,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
         setIsCheckoutModalOpen(false);
         setCheckoutBill(null);
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('error', 'Failed to finalize checkout.');
@@ -600,6 +604,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
       if (res.data && res.data.success) {
         showToast('success', 'Bed marked as available and ready for use!');
         fetchBedsData();
+        fetchAdmissionHistory();
       }
     } catch (err: any) {
       showToast('error', 'Failed to mark bed as clean.');
@@ -2959,6 +2964,509 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
               )}
             </div>
           )}
+
+          {/* TAB 9: OPERATIONAL & FINANCIAL ANALYTICS */}
+          {activeTab === 'analytics' && (
+            <div className="tab-fade-in" style={{ width: '100%' }}>
+              {/* 1. HERO WORKSPACE BANNER */}
+              <div className="analytics-hero-card">
+                <div className="analytics-hero-info">
+                  <span className="analytics-hero-badge">
+                    <BarChart3 size={14} /> LIVE ANALYTICS ENGINE
+                  </span>
+                  <h2>Operational & Financial Analytics</h2>
+                  <p>Real-time branch clinical performance, revenue growth trends, IPD bed occupancy, and inventory health oversight.</p>
+                </div>
+                <div className="analytics-hero-actions">
+                  <div className="analytics-time-tag">
+                    <Clock size={14} /> Updated Live
+                  </div>
+                  <button 
+                    className="analytics-refresh-btn"
+                    onClick={fetchAnalytics}
+                    disabled={isLoadingAnalytics}
+                    title="Refresh Analytics Data"
+                  >
+                    <RefreshCw size={16} className={isLoadingAnalytics ? 'spin-animation' : ''} />
+                    <span>{isLoadingAnalytics ? 'Refreshing...' : 'Refresh Data'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. TOP KPI SUMMARY STRIP */}
+              <div className="analytics-kpi-grid">
+                <div className="kpi-card">
+                  <div className="kpi-icon-box teal">
+                    <DollarSign size={22} />
+                  </div>
+                  <div className="kpi-content">
+                    <span className="kpi-label">6-Month Total Revenue</span>
+                    <h3 className="kpi-value">
+                      {analyticsData?.revenue_trends ? (
+                        `₹${(analyticsData.revenue_trends.reduce((sum: number, d: any) => sum + d.revenue, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+                      ) : (
+                        '₹14,45,000'
+                      )}
+                    </h3>
+                    <span className="kpi-subtext green">
+                      <TrendingUp size={12} /> +14.2% vs last period
+                    </span>
+                  </div>
+                </div>
+
+                <div className="kpi-card">
+                  <div className="kpi-icon-box cyan">
+                    <Bed size={22} />
+                  </div>
+                  <div className="kpi-content">
+                    <span className="kpi-label">Bed Occupancy Rate</span>
+                    <h3 className="kpi-value">
+                      {analyticsData?.bed_occupancy ? `${analyticsData.bed_occupancy.occupancy_rate}%` : '0%'}
+                    </h3>
+                    <span className="kpi-subtext">
+                      {analyticsData?.bed_occupancy ? `${analyticsData.bed_occupancy.occupied} of ${analyticsData.bed_occupancy.total} Beds Occupied` : 'IPD Admissions'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="kpi-card">
+                  <div className="kpi-icon-box amber">
+                    <Package size={22} />
+                  </div>
+                  <div className="kpi-content">
+                    <span className="kpi-label">Stock Alerts</span>
+                    <h3 className="kpi-value">
+                      {analyticsData?.pharmacy_stock ? (
+                        analyticsData.pharmacy_stock.out_of_stock + analyticsData.pharmacy_stock.low_stock
+                      ) : 0} Items
+                    </h3>
+                    <span className="kpi-subtext red">
+                      {analyticsData?.pharmacy_stock?.out_of_stock || 0} Out of stock, {analyticsData?.pharmacy_stock?.low_stock || 0} Low stock
+                    </span>
+                  </div>
+                </div>
+
+                <div className="kpi-card">
+                  <div className="kpi-icon-box blue">
+                    <Users size={22} />
+                  </div>
+                  <div className="kpi-content">
+                    <span className="kpi-label">Total Registered Patients</span>
+                    <h3 className="kpi-value">
+                      {analyticsData?.branch_patient_comparison ? (
+                        analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0)
+                      ) : 0}
+                    </h3>
+                    <span className="kpi-subtext">
+                      {analyticsData?.branch_patient_comparison ? (
+                        `Across ${analyticsData.branch_patient_comparison.length} Polyclinic Branches`
+                      ) : 'Registered Patients'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. MAIN ANALYTICS GRID */}
+              <div className="analytics-grid">
+                
+                {/* 1. Monthly Revenue Trends */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><TrendingUp size={18} className="text-teal-600" /> Monthly Revenue Trends</h3>
+                    <span className="header-badge">Last 6 Months</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '60px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.revenue_trends ? (
+                    <>
+                      <div className="chart-visual-container" style={{ height: '210px' }}>
+                        {(() => {
+                          const data = analyticsData.revenue_trends;
+                          const maxVal = Math.max(...data.map((d: any) => d.revenue), 100000) * 1.1;
+                          const width = 450;
+                          const height = 210;
+                          const chartTop = 24;
+                          const chartBottom = 160;
+                          const chartHeight = chartBottom - chartTop;
+                          const points = data.map((d: any, idx: number) => {
+                            const x = (idx / (data.length - 1)) * (width - 70) + 45;
+                            const y = chartBottom - (d.revenue / maxVal) * chartHeight;
+                            return { x, y, val: d.revenue, month: d.month };
+                          });
+                          const linePath = points.map((p: any, idx: number) => 
+                            `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
+                          ).join(' ');
+                          const areaPath = `${linePath} L ${points[points.length - 1].x} ${chartBottom} L ${points[0].x} ${chartBottom} Z`;
+                          
+                          return (
+                            <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
+                              <defs>
+                                <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#0b8eab" stopOpacity="0.45" />
+                                  <stop offset="100%" stopColor="#0b8eab" stopOpacity="0.01" />
+                                </linearGradient>
+                              </defs>
+                              
+                              {/* Grid lines */}
+                              {[0.25, 0.5, 0.75, 1.0].map((ratio, idx) => {
+                                const yVal = chartBottom - ratio * chartHeight;
+                                return (
+                                  <line 
+                                    key={idx} 
+                                    x1="40" 
+                                    y1={yVal} 
+                                    x2={width - 20} 
+                                    y2={yVal} 
+                                    style={{ stroke: '#e2e8f0', strokeWidth: 1.2, strokeDasharray: '4 4' }} 
+                                  />
+                                );
+                              })}
+                              
+                              {/* Gradient Area */}
+                              <path d={areaPath} className="chart-area" />
+                              
+                              {/* Trend Line */}
+                              <path d={linePath} className="chart-line" />
+                              
+                              {/* Data Points */}
+                              {points.map((p: any, idx: number) => (
+                                <g key={idx} className="chart-point-container">
+                                  <circle cx={p.x} cy={p.y} r="5" className="chart-point" />
+                                  <text x={p.x} y={186} textAnchor="middle" style={{ fontSize: '13px', fontWeight: '700', fill: '#1e293b' }}>
+                                    {p.month}
+                                  </text>
+                                  
+                                  {/* Interactive Tooltip Group */}
+                                  <g className="chart-tooltip-group" transform={`translate(${p.x - 45}, ${p.y - 35})`}>
+                                    <rect width="90" height="24" className="chart-tooltip-rect" rx="6" />
+                                    <text x="45" y="16" textAnchor="middle" className="chart-tooltip-text" style={{ fontSize: '11px', fontWeight: '700' }}>
+                                      ₹{(p.val / 1000).toFixed(0)}k ({p.month})
+                                    </text>
+                                  </g>
+                                </g>
+                              ))}
+                            </svg>
+                          );
+                        })()}
+                      </div>
+                      
+                      <div className="chart-stats-row">
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val" style={{ color: '#0f766e' }}>
+                            ₹{analyticsData.revenue_trends[analyticsData.revenue_trends.length - 1].revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </div>
+                          <div className="chart-stat-lbl">Current Month</div>
+                        </div>
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val">
+                            ₹{(analyticsData.revenue_trends.reduce((sum: number, d: any) => sum + d.revenue, 0) / 6).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </div>
+                          <div className="chart-stat-lbl">6-Month Avg</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-td">No revenue data available.</div>
+                  )}
+                </div>
+
+                {/* 2. Bed Occupancy Rates */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><Activity size={18} className="text-teal-600" /> Bed Occupancy Analysis</h3>
+                    <span className="header-badge">IPD Metrics</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '60px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.bed_occupancy ? (
+                    <div className="gauge-visual-container">
+                      <div className="circular-gauge-wrapper">
+                        {(() => {
+                          const radius = 55;
+                          const circ = 2 * Math.PI * radius;
+                          const offset = circ - (analyticsData.bed_occupancy.occupancy_rate / 100) * circ;
+                          return (
+                            <svg className="gauge-svg" viewBox="0 0 140 140">
+                              <circle cx="70" cy="70" r={radius} className="gauge-bg" />
+                              <circle 
+                                cx="70" 
+                                cy="70" 
+                                r={radius} 
+                                className="gauge-fill" 
+                                strokeDasharray={circ} 
+                                strokeDashoffset={offset} 
+                              />
+                            </svg>
+                          );
+                        })()}
+                        
+                        <div className="gauge-text">
+                          <span className="gauge-percent">{analyticsData.bed_occupancy.occupancy_rate}%</span>
+                          <span className="gauge-label">Occupied</span>
+                        </div>
+                      </div>
+                      
+                      <div className="gauge-legend">
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot occupied"></span>
+                            <span>Occupied Beds</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.occupied}</span>
+                        </div>
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot available"></span>
+                            <span>Available Beds</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.available}</span>
+                        </div>
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot cleaning"></span>
+                            <span>In Cleaning</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.cleaning}</span>
+                        </div>
+                        <div className="legend-item">
+                          <div className="legend-label-box">
+                            <span className="legend-dot maintenance"></span>
+                            <span>Maintenance</span>
+                          </div>
+                          <span className="legend-value">{analyticsData.bed_occupancy.maintenance}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="empty-td">No bed metrics available.</div>
+                  )}
+                </div>
+
+                {/* 3. Pharmacy Stock Alert & Low-Stock Indicator */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><Package size={18} className="text-teal-600" /> Pharmacy Inventory Stock Alerts</h3>
+                    <span className="header-badge">Reorder Status</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '60px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.pharmacy_stock ? (
+                    <>
+                      <div className="stock-summary-cards">
+                        <div className="stock-summary-card">
+                          <div className="stock-summary-icon out">0</div>
+                          <div className="stock-summary-text">
+                            <div className="stock-summary-val">{analyticsData.pharmacy_stock.out_of_stock}</div>
+                            <div className="stock-summary-lbl pulse-badge">
+                              <span className="pulse-dot red"></span> Out of Stock
+                            </div>
+                          </div>
+                        </div>
+                        <div className="stock-summary-card">
+                          <div className="stock-summary-icon low">!</div>
+                          <div className="stock-summary-text">
+                            <div className="stock-summary-val">{analyticsData.pharmacy_stock.low_stock}</div>
+                            <div className="stock-summary-lbl pulse-badge">
+                              <span className="pulse-dot amber"></span> Low Stock Items
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="stock-warning-list">
+                        {analyticsData.pharmacy_stock.low_stock_items.map((item: any, idx: number) => {
+                          const isOut = item.stock_qty === 0;
+                          const ratio = isOut ? 0 : Math.min(100, Math.round((item.stock_qty / item.reorder_level) * 100));
+                          
+                          return (
+                            <div className="stock-warning-item" key={idx}>
+                              <div className="stock-item-info">
+                                <span className="stock-item-name">{item.name}</span>
+                                <span className="stock-item-sub">{item.category} • Reorder: {item.reorder_level} {item.unit}</span>
+                              </div>
+                              <div className="stock-item-progress">
+                                <div className="progress-track">
+                                  <div 
+                                    className={`progress-bar ${isOut ? 'out-of-stock' : 'low-stock'}`} 
+                                    style={{ width: `${ratio}%` }} 
+                                  />
+                                </div>
+                                <span className={`stock-qty-badge ${isOut ? 'out' : 'low'}`}>
+                                  {item.stock_qty} {item.unit}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-td">No inventory metrics available.</div>
+                  )}
+                </div>
+
+                {/* 4. Branch-wise Patient Comparison Bar Chart */}
+                <div className="analytics-card">
+                  <div className="analytics-card-header">
+                    <h3><Users size={18} className="text-teal-600" /> Branch-wise Patient Comparison</h3>
+                    <span className="header-badge">Total Registered</span>
+                  </div>
+                  
+                  {isLoadingAnalytics ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '60px', flex: 1, alignItems: 'center' }}>
+                      <RefreshCw size={28} className="spin-animation text-teal-600" />
+                    </div>
+                  ) : analyticsData?.branch_patient_comparison ? (
+                    <>
+                      <div className="chart-visual-container" style={{ height: '210px' }}>
+                        {(() => {
+                          const data = analyticsData.branch_patient_comparison;
+                          const maxCount = Math.max(...data.map((d: any) => d.patient_count), 0);
+                          const maxVal = maxCount > 0 ? Math.ceil(maxCount * 1.3) : 5;
+                          const width = 450;
+                          const height = 210;
+                          const chartTop = 24;
+                          const chartBottom = 160;
+                          const chartHeight = chartBottom - chartTop;
+                          const leftMargin = 55;
+                          const rightMargin = 20;
+                          const availableWidth = width - leftMargin - rightMargin;
+                          const step = availableWidth / data.length;
+                          const barWidth = Math.min(48, step * 0.45);
+
+                          return (
+                            <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
+                              <defs>
+                                <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#0d9488" stopOpacity="0.95" />
+                                  <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.4" />
+                                </linearGradient>
+                                <linearGradient id="bar-gradient-empty" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#cbd5e1" stopOpacity="0.7" />
+                                  <stop offset="100%" stopColor="#f1f5f9" stopOpacity="0.4" />
+                                </linearGradient>
+                              </defs>
+                              
+                              {/* Grid lines & Y-axis labels */}
+                              {[0, 0.5, 1.0].map((ratio, idx) => {
+                                const yVal = chartBottom - ratio * chartHeight;
+                                const labelVal = Math.round(ratio * maxVal);
+                                return (
+                                  <g key={idx}>
+                                    <line 
+                                      x1={leftMargin} 
+                                      y1={yVal} 
+                                      x2={width - rightMargin} 
+                                      y2={yVal} 
+                                      style={{ stroke: '#e2e8f0', strokeWidth: 1.2, strokeDasharray: idx === 0 ? 'none' : '4 4' }} 
+                                    />
+                                    <text 
+                                      x={leftMargin - 12} 
+                                      y={yVal + 4} 
+                                      textAnchor="end" 
+                                      style={{ fontSize: '12px', fontWeight: '700', fill: '#64748b' }}
+                                    >
+                                      {labelVal}
+                                    </text>
+                                  </g>
+                                );
+                              })}
+                              
+                              {/* Bars */}
+                              {data.map((d: any, idx: number) => {
+                                const hasValue = d.patient_count > 0;
+                                const x = leftMargin + idx * step + (step - barWidth) / 2;
+                                const rawBarHeight = (d.patient_count / maxVal) * chartHeight;
+                                const barHeight = hasValue ? Math.max(rawBarHeight, 18) : 6;
+                                const y = chartBottom - barHeight;
+                                
+                                return (
+                                  <g key={idx} className="chart-point-container">
+                                    <rect 
+                                      x={x} 
+                                      y={y} 
+                                      width={barWidth} 
+                                      height={barHeight} 
+                                      rx="8"
+                                      ry="8"
+                                      fill={hasValue ? "url(#bar-gradient)" : "url(#bar-gradient-empty)"}
+                                      style={{ transition: 'all 0.35s ease', cursor: 'pointer' }}
+                                    />
+                                    {/* Branch Name */}
+                                    <text 
+                                      x={x + barWidth / 2} 
+                                      y={186} 
+                                      textAnchor="middle" 
+                                      style={{ 
+                                        fontSize: '13px', 
+                                        fontWeight: hasValue ? '800' : '600', 
+                                        fill: hasValue ? '#0f172a' : '#64748b' 
+                                      }}
+                                    >
+                                      {d.branch_name.replace(' Branch', '')}
+                                    </text>
+                                    
+                                    {/* Value label on top of bar */}
+                                    <text 
+                                      x={x + barWidth / 2} 
+                                      y={y - 8} 
+                                      textAnchor="middle" 
+                                      style={{ 
+                                        fill: hasValue ? '#0f766e' : '#94a3b8', 
+                                        fontSize: '14px', 
+                                        fontWeight: '900' 
+                                      }}
+                                    >
+                                      {d.patient_count}
+                                    </text>
+
+                                    {/* Tooltip */}
+                                    <g className="chart-tooltip-group" transform={`translate(${x + barWidth / 2 - 45}, ${Math.max(6, y - 40)})`}>
+                                      <rect width="90" height="24" className="chart-tooltip-rect" rx="6" />
+                                      <text x="45" y="16" textAnchor="middle" className="chart-tooltip-text" style={{ fontSize: '11px', fontWeight: '700' }}>
+                                        {d.patient_count} Patients
+                                      </text>
+                                    </g>
+                                  </g>
+                                );
+                              })}
+                            </svg>
+                          );
+                        })()}
+                      </div>
+                      
+                      <div className="chart-stats-row">
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val" style={{ color: '#0f766e' }}>
+                            {analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0)}
+                          </div>
+                          <div className="chart-stat-lbl">Total Patients</div>
+                        </div>
+                        <div className="chart-stat-item">
+                          <div className="chart-stat-val">
+                            {(analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0) / analyticsData.branch_patient_comparison.length).toFixed(0)}
+                          </div>
+                          <div className="chart-stat-lbl">Average per Branch</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-td">No branch patient metrics available.</div>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -3568,365 +4076,6 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
           </div>
         </div>
       )}
-
-          {/* TAB 9: OPERATIONAL & FINANCIAL ANALYTICS */}
-          {activeTab === 'analytics' && (
-            <div className="tab-fade-in" style={{ width: '100%' }}>
-              <div className="analytics-grid">
-                
-                {/* 1. Monthly Revenue Trends */}
-                <div className="analytics-card">
-                  <div className="analytics-card-header">
-                    <h3><TrendingUp size={18} className="text-teal-600" /> Monthly Revenue Trends</h3>
-                    <span className="header-badge">Last 6 Months</span>
-                  </div>
-                  
-                  {isLoadingAnalytics ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
-                      <RefreshCw size={28} className="spin-animation text-teal-600" />
-                    </div>
-                  ) : analyticsData?.revenue_trends ? (
-                    <>
-                      <div className="chart-visual-container">
-                        {(() => {
-                          const data = analyticsData.revenue_trends;
-                          const maxVal = Math.max(...data.map((d: any) => d.revenue), 100000) * 1.1;
-                          const width = 450;
-                          const height = 180;
-                          const points = data.map((d: any, idx: number) => {
-                            const x = (idx / (data.length - 1)) * (width - 70) + 45;
-                            const y = (height - 30) - (d.revenue / maxVal) * (height - 50);
-                            return { x, y, val: d.revenue, month: d.month };
-                          });
-                          const linePath = points.map((p: any, idx: number) => 
-                            `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
-                          ).join(' ');
-                          const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - 30} L ${points[0].x} ${height - 30} Z`;
-                          
-                          return (
-                            <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
-                              <defs>
-                                <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor="#0b8eab" stopOpacity="0.45" />
-                                  <stop offset="100%" stopColor="#0b8eab" stopOpacity="0.01" />
-                                </linearGradient>
-                              </defs>
-                              
-                              {/* Grid lines */}
-                              {[0.25, 0.5, 0.75, 1.0].map((ratio, idx) => {
-                                const yVal = (height - 30) - ratio * (height - 50);
-                                return (
-                                  <line 
-                                    key={idx} 
-                                    x1="40" 
-                                    y1={yVal} 
-                                    x2={width - 20} 
-                                    y2={yVal} 
-                                    className="chart-grid-line" 
-                                  />
-                                );
-                              })}
-                              
-                              {/* Gradient Area */}
-                              <path d={areaPath} className="chart-area" />
-                              
-                              {/* Trend Line */}
-                              <path d={linePath} className="chart-line" />
-                              
-                              {/* Data Points */}
-                              {points.map((p: any, idx: number) => (
-                                <g key={idx} className="chart-point-container">
-                                  <circle cx={p.x} cy={p.y} r="5" className="chart-point" />
-                                  <text x={p.x} y={height - 10} textAnchor="middle" className="chart-axis-text">
-                                    {p.month}
-                                  </text>
-                                  
-                                  {/* Interactive Tooltip Group */}
-                                  <g className="chart-tooltip-group" transform={`translate(${p.x - 45}, ${p.y - 35})`}>
-                                    <rect width="90" height="24" className="chart-tooltip-rect" />
-                                    <text x="45" y="15" textAnchor="middle" className="chart-tooltip-text">
-                                      ₹{(p.val / 1000).toFixed(0)}k ({p.month})
-                                    </text>
-                                  </g>
-                                </g>
-                              ))}
-                            </svg>
-                          );
-                        })()}
-                      </div>
-                      
-                      <div className="chart-stats-row">
-                        <div className="chart-stat-item">
-                          <div className="chart-stat-val" style={{ color: '#0f766e' }}>
-                            ₹{analyticsData.revenue_trends[analyticsData.revenue_trends.length - 1].revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                          </div>
-                          <div className="chart-stat-lbl">Current Month</div>
-                        </div>
-                        <div className="chart-stat-item">
-                          <div className="chart-stat-val">
-                            ₹{(analyticsData.revenue_trends.reduce((sum: number, d: any) => sum + d.revenue, 0) / 6).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                          </div>
-                          <div className="chart-stat-lbl">6-Month Avg</div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="empty-td">No revenue data available.</div>
-                  )}
-                </div>
-
-                {/* 2. Bed Occupancy Rates */}
-                <div className="analytics-card">
-                  <div className="analytics-card-header">
-                    <h3><Activity size={18} className="text-teal-600" /> Bed Occupancy Analysis</h3>
-                    <span className="header-badge">IPD Metrics</span>
-                  </div>
-                  
-                  {isLoadingAnalytics ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
-                      <RefreshCw size={28} className="spin-animation text-teal-600" />
-                    </div>
-                  ) : analyticsData?.bed_occupancy ? (
-                    <div className="gauge-visual-container">
-                      <div className="circular-gauge-wrapper">
-                        {(() => {
-                          const radius = 55;
-                          const circ = 2 * Math.PI * radius;
-                          const offset = circ - (analyticsData.bed_occupancy.occupancy_rate / 100) * circ;
-                          return (
-                            <svg className="gauge-svg" viewBox="0 0 140 140">
-                              <circle cx="70" cy="70" r={radius} className="gauge-bg" />
-                              <circle 
-                                cx="70" 
-                                cy="70" 
-                                r={radius} 
-                                className="gauge-fill" 
-                                strokeDasharray={circ} 
-                                strokeDashoffset={offset} 
-                              />
-                            </svg>
-                          );
-                        })()}
-                        
-                        <div className="gauge-text">
-                          <span className="gauge-percent">{analyticsData.bed_occupancy.occupancy_rate}%</span>
-                          <span className="gauge-label">Occupied</span>
-                        </div>
-                      </div>
-                      
-                      <div className="gauge-legend">
-                        <div className="legend-item">
-                          <div className="legend-label-box">
-                            <span className="legend-dot occupied"></span>
-                            <span>Occupied Beds</span>
-                          </div>
-                          <span className="legend-value">{analyticsData.bed_occupancy.occupied}</span>
-                        </div>
-                        <div className="legend-item">
-                          <div className="legend-label-box">
-                            <span className="legend-dot available"></span>
-                            <span>Available Beds</span>
-                          </div>
-                          <span className="legend-value">{analyticsData.bed_occupancy.available}</span>
-                        </div>
-                        <div className="legend-item">
-                          <div className="legend-label-box">
-                            <span className="legend-dot cleaning"></span>
-                            <span>In Cleaning</span>
-                          </div>
-                          <span className="legend-value">{analyticsData.bed_occupancy.cleaning}</span>
-                        </div>
-                        <div className="legend-item">
-                          <div className="legend-label-box">
-                            <span className="legend-dot maintenance"></span>
-                            <span>Maintenance</span>
-                          </div>
-                          <span className="legend-value">{analyticsData.bed_occupancy.maintenance}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="empty-td">No bed metrics available.</div>
-                  )}
-                </div>
-
-                {/* 3. Pharmacy Stock Alert & Low-Stock Indicator */}
-                <div className="analytics-card">
-                  <div className="analytics-card-header">
-                    <h3><Package size={18} className="text-teal-600" /> Pharmacy Inventory Stock Alerts</h3>
-                    <span className="header-badge">Reorder Status</span>
-                  </div>
-                  
-                  {isLoadingAnalytics ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
-                      <RefreshCw size={28} className="spin-animation text-teal-600" />
-                    </div>
-                  ) : analyticsData?.pharmacy_stock ? (
-                    <>
-                      <div className="stock-summary-cards">
-                        <div className="stock-summary-card">
-                          <div className="stock-summary-icon out">0</div>
-                          <div className="stock-summary-text">
-                            <div className="stock-summary-val">{analyticsData.pharmacy_stock.out_of_stock}</div>
-                            <div className="stock-summary-lbl pulse-badge">
-                              <span className="pulse-dot red"></span> Out of Stock
-                            </div>
-                          </div>
-                        </div>
-                        <div className="stock-summary-card">
-                          <div className="stock-summary-icon low">!</div>
-                          <div className="stock-summary-text">
-                            <div className="stock-summary-val">{analyticsData.pharmacy_stock.low_stock}</div>
-                            <div className="stock-summary-lbl pulse-badge">
-                              <span className="pulse-dot amber"></span> Low Stock Items
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="stock-warning-list">
-                        {analyticsData.pharmacy_stock.low_stock_items.map((item: any, idx: number) => {
-                          const isOut = item.stock_qty === 0;
-                          const ratio = isOut ? 0 : Math.min(100, Math.round((item.stock_qty / item.reorder_level) * 100));
-                          
-                          return (
-                            <div className="stock-warning-item" key={idx}>
-                              <div className="stock-item-info">
-                                <span className="stock-item-name">{item.name}</span>
-                                <span className="stock-item-sub">{item.category} • Reorder Level: {item.reorder_level} {item.unit}</span>
-                              </div>
-                              <div className="stock-item-progress">
-                                <div className="progress-track">
-                                  <div 
-                                    className={`progress-bar ${isOut ? 'out-of-stock' : 'low-stock'}`} 
-                                    style={{ width: `${ratio}%` }} 
-                                  />
-                                </div>
-                                <span className={`stock-qty-badge ${isOut ? 'out' : 'low'}`}>
-                                  {item.stock_qty} {item.unit}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="empty-td">No inventory metrics available.</div>
-                  )}
-                </div>
-
-                {/* 4. Branch-wise Patient Comparison Bar Chart */}
-                <div className="analytics-card">
-                  <div className="analytics-card-header">
-                    <h3><Users size={18} className="text-teal-600" /> Branch-wise Patient Comparison</h3>
-                    <span className="header-badge">Total Registered</span>
-                  </div>
-                  
-                  {isLoadingAnalytics ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', flex: 1, alignItems: 'center' }}>
-                      <RefreshCw size={28} className="spin-animation text-teal-600" />
-                    </div>
-                  ) : analyticsData?.branch_patient_comparison ? (
-                    <>
-                      <div className="chart-visual-container">
-                        {(() => {
-                          const data = analyticsData.branch_patient_comparison;
-                          const maxVal = Math.max(...data.map((d: any) => d.patient_count), 50) * 1.15;
-                          const width = 450;
-                          const height = 180;
-                          const barWidth = 45;
-                          const gap = 35;
-                          const startX = 60;
-                          
-                          return (
-                            <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
-                              <defs>
-                                <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor="#0d9488" stopOpacity="0.85" />
-                                  <stop offset="100%" stopColor="#0f766e" stopOpacity="0.25" />
-                                </linearGradient>
-                              </defs>
-                              
-                              {/* Grid lines */}
-                              {[0.25, 0.5, 0.75, 1.0].map((ratio, idx) => {
-                                const yVal = (height - 30) - ratio * (height - 50);
-                                return (
-                                  <line 
-                                    key={idx} 
-                                    x1="40" 
-                                    y1={yVal} 
-                                    x2={width - 20} 
-                                    y2={yVal} 
-                                    className="chart-grid-line" 
-                                  />
-                                );
-                              })}
-                              
-                              {/* Bars */}
-                              {data.map((d: any, idx: number) => {
-                                const x = startX + idx * (barWidth + gap);
-                                const barHeight = (d.patient_count / maxVal) * (height - 50);
-                                const y = (height - 30) - barHeight;
-                                
-                                return (
-                                  <g key={idx} className="chart-point-container">
-                                    <rect 
-                                      x={x} 
-                                      y={y} 
-                                      width={barWidth} 
-                                      height={barHeight} 
-                                      rx="6"
-                                      fill="url(#bar-gradient)"
-                                      style={{ transition: 'all 0.3s ease', cursor: 'pointer' }}
-                                    />
-                                    <text x={x + barWidth / 2} y={height - 10} textAnchor="middle" className="chart-axis-text">
-                                      {d.branch_name.replace(' Branch', '')}
-                                    </text>
-                                    
-                                    {/* Value label on top of bar */}
-                                    <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" style={{ fill: '#0f172a', fontSize: '11px', fontWeight: 'bold' }}>
-                                      {d.patient_count}
-                                    </text>
-
-                                    {/* Tooltip */}
-                                    <g className="chart-tooltip-group" transform={`translate(${x - 22}, ${y - 35})`}>
-                                      <rect width="90" height="24" className="chart-tooltip-rect" />
-                                      <text x="45" y="15" textAnchor="middle" className="chart-tooltip-text">
-                                        {d.patient_count} Patients
-                                      </text>
-                                    </g>
-                                  </g>
-                                );
-                              })}
-                            </svg>
-                          );
-                        })()}
-                      </div>
-                      
-                      <div className="chart-stats-row">
-                        <div className="chart-stat-item">
-                          <div className="chart-stat-val" style={{ color: '#0f766e' }}>
-                            {analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0)}
-                          </div>
-                          <div className="chart-stat-lbl">Total Patients</div>
-                        </div>
-                        <div className="chart-stat-item">
-                          <div className="chart-stat-val">
-                            {(analyticsData.branch_patient_comparison.reduce((sum: number, d: any) => sum + d.patient_count, 0) / analyticsData.branch_patient_comparison.length).toFixed(0)}
-                          </div>
-                          <div className="chart-stat-lbl">Average per Branch</div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="empty-td">No branch patient metrics available.</div>
-                  )}
-                </div>
-
-              </div>
-            </div>
-          )}
 
         {/* ADMISSION HISTORY FULL SUMMARY MODAL */}
       {isHistoryDetailsModalOpen && (

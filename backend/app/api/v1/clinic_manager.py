@@ -375,11 +375,14 @@ async def create_announcement(
     dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CLINIC_MANAGER))],
 )
 async def get_analytics(
+    branch_id: Optional[uuid.UUID] = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get monthly revenue, bed occupancy, and low stock medicine metrics."""
+    target_branch = branch_id or current_user.branch_id
     service = ClinicManagerService(db)
-    return await service.get_analytics_dashboard(branch_id=current_user.branch_id)
+    return await service.get_analytics_dashboard(branch_id=target_branch)
+
 
 

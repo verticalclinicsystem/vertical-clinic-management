@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db
@@ -84,20 +85,24 @@ class MedicationAdministerRequest(BaseModel):
 
 # ── 1. GET /ipd/dashboard/beds ────────────────────────────────────────────────
 @router.get("/dashboard/beds", response_class=JSONResponse)
-async def get_beds_dashboard(
+async def get_dashboard_beds(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ) -> JSONResponse:
     """Get real-time bed occupancy and details."""
     # Build query to fetch all beds
-    stmt = select(Bed)
+    stmt = select(Bed).options(selectinload(Bed.category), selectinload(Bed.branch))
     if current_user.branch_id:
         stmt = stmt.where(Bed.branch_id == current_user.branch_id)
     res = await db.execute(stmt)
     beds = res.scalars().all()
 
     # Build active admissions dict
-    adm_stmt = select(Admission).join(Bed).where(Admission.admission_status != "discharged")
+    adm_stmt = select(Admission).join(Bed).where(Admission.admission_status != "discharged").options(
+        selectinload(Admission.patient).selectinload(Patient.user),
+        selectinload(Admission.doctor).selectinload(Doctor.user),
+        selectinload(Admission.bed).selectinload(Bed.category)
+    )
     if current_user.branch_id:
         adm_stmt = adm_stmt.where(Bed.branch_id == current_user.branch_id)
     adm_res = await db.execute(adm_stmt)
@@ -109,12 +114,20 @@ async def get_beds_dashboard(
         active_adm = adm_map.get(bed.id)
         patient_info = None
         if active_adm:
+            p_name = "Patient"
+            if active_adm.patient:
+                p_name = active_adm.patient.name or (active_adm.patient.user.full_name if active_adm.patient.user else "Patient")
+            
+            d_name = "Doctor"
+            if active_adm.doctor:
+                d_name = active_adm.doctor.name or (active_adm.doctor.user.full_name if active_adm.doctor.user else "Doctor")
+
             patient_info = {
                 "admission_id": str(active_adm.id),
                 "patient_id": str(active_adm.patient_id),
-                "patient_name": active_adm.patient.name or active_adm.patient.user.full_name,
-                "patient_code": active_adm.patient.patient_code,
-                "admitting_doctor": active_adm.doctor.name or active_adm.doctor.user.full_name,
+                "patient_name": p_name,
+                "patient_code": active_adm.patient.patient_code if active_adm.patient else "N/A",
+                "admitting_doctor": d_name,
                 "admission_datetime": active_adm.admission_datetime.isoformat(),
                 "diagnosis": active_adm.diagnosis,
                 "initial_deposit": active_adm.initial_deposit,
@@ -131,9 +144,9 @@ async def get_beds_dashboard(
                 "base_charge_24h": bed.category.base_charge_24h,
                 "hourly_overtime_rate": bed.category.hourly_overtime_rate,
                 "tax_rate": bed.category.tax_rate
-            },
+            } if bed.category else None,
             "branch_id": str(bed.branch_id),
-            "branch_name": bed.branch.name,
+            "branch_name": bed.branch.name if bed.branch else "Main Branch",
             "active_admission": patient_info
         })
 
@@ -146,7 +159,11 @@ async def get_admissions_history(
     db: AsyncSession = Depends(get_db)
 ) -> JSONResponse:
     """Get complete bed booking / IPD admission history logs."""
-    stmt = select(Admission).join(Bed)
+    stmt = select(Admission).join(Bed).options(
+        selectinload(Admission.patient).selectinload(Patient.user),
+        selectinload(Admission.doctor).selectinload(Doctor.user),
+        selectinload(Admission.bed).selectinload(Bed.category)
+    )
     if current_user.branch_id:
         stmt = stmt.where(Bed.branch_id == current_user.branch_id)
     stmt = stmt.order_by(Admission.admission_datetime.desc())
@@ -484,7 +501,7 @@ async def admit_patient(
     # Lock Bed
     bed.status = "occupied"
 
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(
         data={"admission_id": str(admission.id)},
         message="Patient admitted successfully.",
@@ -561,7 +578,7 @@ async def transfer_patient(
     )
     db.add(bill_item)
 
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message="Patient transferred successfully.")
 
 
@@ -591,7 +608,7 @@ async def record_vitals(
         nursing_notes=request.nursing_notes
     )
     db.add(record)
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message="Rounding vitals logged successfully.", status_code=201)
 
 
@@ -642,7 +659,7 @@ async def schedule_medication(
         status="scheduled"
     )
     db.add(med)
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message="Medication scheduled successfully.", status_code=201)
 
 
@@ -692,7 +709,7 @@ async def administer_medication(
         record.administered_time = None
         record.administered_by = None
 
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message=f"Medication marked as {request.status}.")
 
 
@@ -804,7 +821,7 @@ async def finalize_checkout(
         bed.status = "cleaning"
         bed.last_cleaned_at = None
 
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message="Checkout finalized successfully. Patient discharged and Bed set to Cleaning state. Please generate the invoice from the Billing module.")
 
 
@@ -821,7 +838,7 @@ async def clean_bed(
         raise HTTPException(status_code=404, detail="Bed not found.")
     bed.status = "available"
     bed.last_cleaned_at = datetime.now(UTC)
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message="Bed marked as clean and available.")
 
 
@@ -888,7 +905,7 @@ async def create_admission_request(
         )
         db.add(notif_patient)
 
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(
         data={"request_id": str(admission_req.id)},
         message=f"IPD Admission request submitted successfully for {patient_name}."
@@ -949,6 +966,6 @@ async def fulfill_admission_request(
     
     request_obj.status = "admitted"
     request_obj.admitted_at = datetime.now(UTC)
-    await db.flush()
+    await db.commit()
     return ApiResponse.success(message="Admission request marked as fulfilled.")
 
