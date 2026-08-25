@@ -476,8 +476,26 @@ async def admit_patient(
 
     # Check patient
     pat_res = await db.execute(select(Patient).where(Patient.id == request.patient_id))
-    if not pat_res.scalar_one_or_none():
+    patient = pat_res.scalar_one_or_none()
+    if not patient:
         raise HTTPException(status_code=404, detail="Patient not found.")
+
+    # Check if patient is already actively admitted
+    active_adm_res = await db.execute(
+        select(Admission, Bed)
+        .join(Bed, Bed.id == Admission.bed_id)
+        .where(
+            Admission.patient_id == request.patient_id,
+            Admission.admission_status == "admitted"
+        )
+    )
+    active_adm = active_adm_res.first()
+    if active_adm:
+        adm_obj, adm_bed = active_adm
+        raise HTTPException(
+            status_code=400,
+            detail=f"Patient is already admitted in Bed {adm_bed.bed_number} ({adm_bed.ward_type}). Would you like to transfer the patient to a different category/bed instead?"
+        )
 
     # Check doctor
     doc_res = await db.execute(select(Doctor).where(Doctor.id == request.admitting_doctor_id))

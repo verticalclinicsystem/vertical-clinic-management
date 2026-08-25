@@ -2894,7 +2894,6 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                             </thead>
                             <tbody>
                               {filteredHistory.map((item: any, idx: number) => {
-                                const isDischarged = item.admission_status === 'discharged';
                                 return (
                                   <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                     <td style={{ padding: '12px 14px' }}>
@@ -2919,9 +2918,13 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                       {new Date(item.admission_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                                     </td>
                                     <td style={{ padding: '12px 14px', color: '#475569' }}>
-                                      {item.discharge_datetime
-                                        ? new Date(item.discharge_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
-                                        : <span style={{ color: '#059669', fontWeight: 700 }}>Active Stay</span>}
+                                      {item.admission_status === 'admitted' ? (
+                                        <span style={{ color: '#059669', fontWeight: 700 }}>Active Stay</span>
+                                      ) : item.discharge_datetime ? (
+                                        new Date(item.discharge_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                                      ) : (
+                                        <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>N/A</span>
+                                      )}
                                     </td>
                                     <td style={{ padding: '12px 14px', fontWeight: 700, color: '#0f172a' }}>
                                       {item.stay_days > 0 ? `${item.stay_days} Days (${item.stay_hours}h)` : `${item.stay_hours} Hours`}
@@ -2933,12 +2936,12 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                                           borderRadius: '20px',
                                           fontSize: '0.76rem',
                                           fontWeight: 700,
-                                          background: isDischarged ? '#f1f5f9' : '#dcfce7',
-                                          color: isDischarged ? '#475569' : '#15803d',
-                                          border: isDischarged ? '1px solid #cbd5e1' : '1px solid #86efac'
+                                          background: item.admission_status === 'admitted' ? '#dcfce7' : item.admission_status === 'discharged' ? '#f1f5f9' : '#fef3c7',
+                                          color: item.admission_status === 'admitted' ? '#15803d' : item.admission_status === 'discharged' ? '#475569' : '#b45309',
+                                          border: item.admission_status === 'admitted' ? '1px solid #86efac' : item.admission_status === 'discharged' ? '1px solid #cbd5e1' : '1px solid #fde68a'
                                         }}
                                       >
-                                        {isDischarged ? 'Discharged' : 'Admitted'}
+                                        {item.admission_status === 'admitted' ? 'Admitted' : item.admission_status === 'discharged' ? 'Discharged' : 'Cancelled'}
                                       </span>
                                     </td>
                                     <td style={{ padding: '12px 14px', textAlign: 'right' }}>
@@ -3647,11 +3650,14 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                   required
                 >
                   <option value="">-- Choose Patient --</option>
-                  {patientsList.map((p: any) => (
-                    <option key={p.id} value={p.id}>
-                      {p.user?.full_name || p.name || p.patient_code} ({p.patient_code})
-                    </option>
-                  ))}
+                  {patientsList.map((p: any) => {
+                    const isAdmitted = bedsData.some((b: any) => b.status === 'occupied' && b.active_admission && b.active_admission.patient_id === p.id);
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.user?.full_name || p.name || p.patient_code} ({p.patient_code}) {isAdmitted ? '⚠️ [Already Admitted]' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

@@ -480,11 +480,14 @@ const AdmitPatientModal: React.FC<AdmitPatientModalProps> = ({
                 }}
               >
                 <option value="">-- Choose Patient --</option>
-                {patients.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.user?.full_name || p.name || 'Patient'} ({p.patient_code})
-                  </option>
-                ))}
+                {patients.map((p: any) => {
+                  const isAdmitted = bedsData.some((b: any) => b.status === 'occupied' && b.active_admission && b.active_admission.patient_id === p.id);
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.user?.full_name || p.name || 'Patient'} ({p.patient_code}) {isAdmitted ? '⚠️ [Already Admitted]' : ''}
+                    </option>
+                  );
+                })}
               </select>
             )}
           </div>
