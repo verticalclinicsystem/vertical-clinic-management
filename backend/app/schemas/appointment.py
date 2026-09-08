@@ -101,6 +101,13 @@ class AppointmentUpdate(BaseModel):
 
 
 
+class UndoCheckInRequest(BaseModel):
+    reason: str = Field(default="accidental", description="Reason: accidental, stepped_out, doctor_delayed, other")
+    notify_patient: bool = Field(default=False, description="Whether to send notification to patient")
+    notes: str | None = Field(default=None, max_length=500, description="Optional custom notes/details")
+
+
+
 class AppointmentOut(AppointmentBase):
     id: uuid.UUID
     patient_id: uuid.UUID
