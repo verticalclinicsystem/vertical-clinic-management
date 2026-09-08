@@ -16,7 +16,12 @@ from app.api.deps import get_current_user, get_current_user_optional, get_db
 from app.core.exceptions import BadRequestError, PermissionDeniedError
 from app.core.rbac import UserRole
 from app.models.user import User
-from app.schemas.appointment import AppointmentCreate, AppointmentOut, AppointmentUpdate
+from app.schemas.appointment import (
+    AppointmentCreate,
+    AppointmentOut,
+    AppointmentUpdate,
+    UndoCheckInRequest,
+)
 from app.services.appointment_service import AppointmentService
 from app.services.doctor_service import DoctorService
 from app.services.patient_service import PatientService
@@ -389,21 +394,23 @@ async def undo_checkin_appointment_api(
     appointment_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: UndoCheckInRequest | None = None,
 ) -> JSONResponse:
-    """Move a checked-in / waiting patient back to Scheduled (confirmed)."""
+    """Move a checked-in / waiting patient back to Scheduled (confirmed) with smart notifications."""
     if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
         raise PermissionDeniedError("Only receptionists or admins can undo check-in.")
     service = AppointmentService(db)
-    appointment = await service.get_appointment(appointment_id)
-    if appointment.status not in ("checked_in", "Waiting"):
-        raise BadRequestError(
-            "Only checked-in / waiting appointments can be moved back to scheduled."
-        )
-    updated = await service.update_appointment(
+    reason = body.reason if body else "accidental"
+    notify_patient = body.notify_patient if body else False
+    notes = body.notes if body else None
+
+    updated = await service.undo_check_in(
         appointment_id,
-        AppointmentUpdate(status="confirmed"),
         current_user_id=current_user.id,
         role=current_user.role,
+        reason=reason,
+        notify_patient=notify_patient,
+        notes=notes,
     )
     return ApiResponse.success(
         data=to_appointment_out(updated, current_user.role),

@@ -1130,6 +1130,155 @@
   padding: 10px 12px;
 }
 
+/* ── Enhanced Undo Check-in Modal Styles ── */
+.recep-undo-modal {
+  width: 520px;
+}
+
+.recep-undo-reason-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.recep-undo-section-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.recep-undo-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recep-undo-reason-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-1, #fff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.recep-undo-reason-card:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 3%, white);
+}
+
+.recep-undo-reason-card.selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, white);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.recep-undo-reason-card input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.recep-undo-reason-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.recep-undo-reason-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recep-undo-reason-header .reason-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.recep-undo-reason-content .reason-desc {
+  font-size: 0.77rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.badge-silent {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.badge-notify {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.recep-undo-note-input input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  font-size: 0.85rem;
+  outline: none;
+  background: var(--surface-2);
+  color: var(--ink-1);
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.recep-undo-note-input input:focus {
+  border-color: var(--primary);
+  background: #fff;
+}
+
+.recep-undo-notify-toggle {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+}
+
+.recep-undo-notify-toggle .toggle-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.recep-undo-notify-toggle .toggle-checkbox-label input[type="checkbox"] {
+  accent-color: var(--primary);
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.recep-undo-notify-toggle .muted-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
 .btn-cancel {
   background-color: var(--surface-2);
   color: var(--ink-2);

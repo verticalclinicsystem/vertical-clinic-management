@@ -375,6 +375,9 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
   const [undoCheckInAppt, setUndoCheckInAppt] = useState<any>(null);
   const [undoingCheckIn, setUndoingCheckIn] = useState<boolean>(false);
+  const [undoReason, setUndoReason] = useState<'accidental' | 'stepped_out' | 'doctor_delayed' | 'other'>('accidental');
+  const [undoCustomNote, setUndoCustomNote] = useState<string>('');
+  const [notifyPatientOnUndo, setNotifyPatientOnUndo] = useState<boolean>(false);
   const [showBookModal, setShowBookModal] = useState<boolean>(false);
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
   const [showEditBillingModal, setShowEditBillingModal] = useState<boolean>(false);
@@ -1163,13 +1166,29 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
   const handleUndoCheckIn = (appt: any) => {
     setUndoCheckInAppt(appt);
+    setUndoReason('accidental');
+    setUndoCustomNote('');
+    setNotifyPatientOnUndo(false);
+  };
+
+  const handleReasonChange = (reason: 'accidental' | 'stepped_out' | 'doctor_delayed' | 'other') => {
+    setUndoReason(reason);
+    if (reason === 'accidental') {
+      setNotifyPatientOnUndo(false);
+    } else if (reason === 'stepped_out' || reason === 'doctor_delayed') {
+      setNotifyPatientOnUndo(true);
+    }
   };
 
   const confirmUndoCheckIn = async () => {
     if (!undoCheckInAppt?.id) return;
     setUndoingCheckIn(true);
     try {
-      const res = await api.patch(`/appointments/${undoCheckInAppt.id}/undo-check-in`);
+      const res = await api.patch(`/appointments/${undoCheckInAppt.id}/undo-check-in`, {
+        reason: undoReason,
+        notify_patient: notifyPatientOnUndo,
+        notes: undoCustomNote.trim() || undefined,
+      });
       if (res.data?.success) {
         showToast('Check-in undone. Patient moved back to Scheduled Today.', 'success');
         setUndoCheckInAppt(null);
@@ -4164,7 +4183,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       {undoCheckInAppt && (
         <div className="recep-modal-overlay" onClick={() => !undoingCheckIn && setUndoCheckInAppt(null)}>
           <div
-            className="recep-modal-content recep-confirm-modal"
+            className="recep-modal-content recep-confirm-modal recep-undo-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="recep-modal-header">
@@ -4201,6 +4220,108 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 <span>{undoCheckInAppt.treatment_type}</span>
                 <span>{formatTimeToAMPM(getLocalApptTime(undoCheckInAppt.appointment_datetime))}</span>
               </div>
+
+              {/* Reason Selector */}
+              <div className="recep-undo-reason-section">
+                <label className="recep-undo-section-label">Select Reason for Undo:</label>
+                <div className="recep-undo-reasons">
+                  <label className={`recep-undo-reason-card ${undoReason === 'accidental' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="accidental"
+                      checked={undoReason === 'accidental'}
+                      onChange={() => handleReasonChange('accidental')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Accidental Check-in</span>
+                        <span className="badge-silent">Silent</span>
+                      </div>
+                      <span className="reason-desc">Wrong patient / misclick. No notification sent to patient.</span>
+                    </div>
+                  </label>
+
+                  <label className={`recep-undo-reason-card ${undoReason === 'stepped_out' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="stepped_out"
+                      checked={undoReason === 'stepped_out'}
+                      onChange={() => handleReasonChange('stepped_out')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Patient Stepped Out</span>
+                        <span className="badge-notify">Notifies Patient</span>
+                      </div>
+                      <span className="reason-desc">Temporarily left waiting area. Asks to report back upon return.</span>
+                    </div>
+                  </label>
+
+                  <label className={`recep-undo-reason-card ${undoReason === 'doctor_delayed' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="doctor_delayed"
+                      checked={undoReason === 'doctor_delayed'}
+                      onChange={() => handleReasonChange('doctor_delayed')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Doctor Delayed / Emergency</span>
+                        <span className="badge-notify">Notifies Patient</span>
+                      </div>
+                      <span className="reason-desc">Doctor running late. Retains scheduled appointment.</span>
+                    </div>
+                  </label>
+
+                  <label className={`recep-undo-reason-card ${undoReason === 'other' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="other"
+                      checked={undoReason === 'other'}
+                      onChange={() => handleReasonChange('other')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Other Reason</span>
+                      </div>
+                      <span className="reason-desc">Custom notes (e.g. sent for vitals, diagnostics, or billing).</span>
+                    </div>
+                  </label>
+                </div>
+
+                {undoReason === 'other' && (
+                  <div className="recep-undo-note-input">
+                    <input
+                      type="text"
+                      placeholder="Enter specific reason..."
+                      value={undoCustomNote}
+                      onChange={(e) => setUndoCustomNote(e.target.value)}
+                      maxLength={200}
+                    />
+                  </div>
+                )}
+
+                {/* Patient Notification Toggle */}
+                <div className="recep-undo-notify-toggle">
+                  <label className="toggle-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={notifyPatientOnUndo}
+                      onChange={(e) => setNotifyPatientOnUndo(e.target.checked)}
+                      disabled={undoReason === 'accidental'}
+                    />
+                    <span>
+                      Notify patient via SMS / Push notification
+                      {undoReason === 'accidental' && <span className="muted-hint"> (Disabled for accidental clicks)</span>}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <p className="recep-confirm-note">
                 The patient will leave the waiting queue and return to Scheduled Today.
               </p>
@@ -4227,7 +4348,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   </>
                 ) : (
                   <>
-                    <ArrowLeft size={16} /> Undo Check-In
+                    <ArrowLeft size={16} /> Confirm Undo Check-In
                   </>
                 )}
               </button>
