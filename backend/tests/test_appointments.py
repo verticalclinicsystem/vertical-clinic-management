@@ -481,6 +481,22 @@ async def test_appointment_transitions_and_special_views(client: AsyncClient, db
     assert wq.status_code == 200
     assert len(wq.json()["data"]) >= 1
 
+    # Undo check-in → back to confirmed / Scheduled Today
+    undo = await client.patch(
+        f"/api/v1/appointments/{appt_id}/undo-check-in",
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    assert undo.status_code == 200
+    assert undo.json()["data"]["status"] == "confirmed"
+
+    # Re-check-in so the rest of the flow can continue
+    ci2 = await client.patch(
+        f"/api/v1/appointments/{appt_id}/check-in",
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    assert ci2.status_code == 200
+    assert ci2.json()["data"]["status"] == "checked_in"
+
     # Start
     login_doc = await client.post(
         "/api/v1/auth/login",
