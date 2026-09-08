@@ -1923,6 +1923,56 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
 
 
+  const currentBranch = branches.find((b: any) => b.id === selectedBranchId) || branches[0];
+  const todayApptsCount = appointments.filter((a: any) => getLocalApptDate(a.appointment_datetime) === today).length;
+  const waitingCount = waitingToday.length;
+  const pendingInvoicesCount = invoices.filter((i: any) => i.status === 'unpaid' || i.status === 'partially_paid').length;
+
+  const NAV_GROUPS = [
+    {
+      group: 'Core Operations',
+      items: [
+        { id: 'dashboard', icon: <Home size={17} />, label: 'Dashboard' },
+        { id: 'calendar', icon: <Calendar size={17} />, label: 'Calendar' },
+        { 
+          id: 'queue', 
+          icon: <Clock size={17} />, 
+          label: 'Queue Board',
+          badge: waitingCount > 0 ? `${waitingCount} Waiting` : null,
+          badgeColor: 'amber'
+        },
+      ]
+    },
+    {
+      group: 'Patient Desk',
+      items: [
+        { 
+          id: 'checkin', 
+          icon: <UserCheck size={17} />, 
+          label: 'Check-In',
+          badge: todayApptsCount > 0 ? `${todayApptsCount} Today` : null,
+          badgeColor: 'teal'
+        },
+        { id: 'patients', icon: <Users size={17} />, label: 'Patient Intake' },
+        { id: 'beds', icon: <Bed size={17} />, label: 'Bed Management' },
+      ]
+    },
+    {
+      group: 'Billing & Ops',
+      items: [
+        { id: 'billing', icon: <IndianRupee size={17} />, label: 'Billing' },
+        { 
+          id: 'invoices', 
+          icon: <FileText size={17} />, 
+          label: 'Invoices',
+          badge: pendingInvoicesCount > 0 ? `${pendingInvoicesCount} Due` : null,
+          badgeColor: 'rose'
+        },
+        { id: 'availability', icon: <Calendar size={17} />, label: 'Availability' },
+      ]
+    }
+  ];
+
   return (
     <div className="recep-layout">
       {/* Toast Notification */}
@@ -1935,43 +1985,75 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
       {/* Sidebar */}
       <aside className="recep-sidebar">
+        {/* Logo & Branding */}
         <div className="recep-sidebar-header">
-          <div className="recep-logo-badge">R</div>
+          <div className="recep-logo-badge">V</div>
           <div className="recep-clinic-info">
             <span className="recep-clinic-name">Vertical Clinic</span>
-            <span className="recep-clinic-sub">FRONT DESK OS</span>
+            <span className="recep-clinic-sub">SMART HEALTHCARE</span>
           </div>
         </div>
 
-        <div className="recep-sidebar-pill">Receptionist Portal</div>
+        {/* Active Branch & Shift Status Pill */}
+        <div className="recep-branch-pill">
+          <div className="recep-branch-icon">
+            <MapPin size={13} />
+          </div>
+          <div className="recep-branch-text">
+            <span className="recep-branch-title">{currentBranch?.name || 'Satellite'} Branch</span>
+            <span className="recep-branch-status">
+              <span className="status-ping" /> Shift Active &bull; 09:00 - 17:00
+            </span>
+          </div>
+        </div>
 
+        {/* Categorized Nav Groups */}
         <nav className="recep-sidebar-nav">
-          <div className="recep-nav-group-label">Daily Workflow</div>
-          {[
-            { id: 'dashboard', icon: <Home size={18} />, label: 'Dashboard' },
-            { id: 'calendar', icon: <Calendar size={18} />, label: 'Appointment Calendar' },
-            { id: 'queue', icon: <Clock size={18} />, label: 'Queue Board' },
-            { id: 'checkin', icon: <UserCheck size={18} />, label: 'Check-In' },
-            { id: 'patients', icon: <Users size={18} />, label: 'Patient Intake' },
-            { id: 'billing', icon: <IndianRupee size={18} />, label: 'Billing' },
-            { id: 'invoices', icon: <FileText size={18} />, label: 'Invoices' },
-            { id: 'beds', icon: <Bed size={18} />, label: 'Bed Management' },
-            { id: 'availability', icon: <Calendar size={18} />, label: 'Availability' },
-          ].map(tab => (
-            <div 
-              key={tab.id} 
-              className={`recep-nav-item ${activeTab === tab.id ? 'active' : ''}`} 
-              onClick={() => handleRootTabChange(tab.id)}
-            >
-              {tab.icon} {tab.label}
+          {NAV_GROUPS.map((group) => (
+            <div key={group.group} className="recep-nav-section">
+              <div className="recep-nav-group-label">{group.group}</div>
+              {group.items.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <div
+                    key={tab.id}
+                    className={`recep-nav-item ${isActive ? 'active' : ''}`}
+                    onClick={() => handleRootTabChange(tab.id)}
+                  >
+                    <div className="recep-nav-left">
+                      <span className="recep-nav-icon">{tab.icon}</span>
+                      <span className="recep-nav-label">{tab.label}</span>
+                    </div>
+                    {tab.badge && (
+                      <span className={`recep-nav-badge badge-${tab.badgeColor || 'teal'} ${isActive ? 'badge-active' : ''}`}>
+                        {tab.badge}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </nav>
 
+        {/* Bottom User Card */}
         <div className="recep-sidebar-footer">
-          <button className="recep-btn-switch" onClick={onLogout}>
-            <LogOut size={16} /> Logout
-          </button>
+          <div className="recep-sidebar-user-card">
+            <div className="recep-user-avatar">
+              {currentUser?.full_name?.slice(0, 2).toUpperCase() || 'PS'}
+            </div>
+            <div className="recep-user-details">
+              <span className="recep-user-name">{currentUser?.full_name || 'Preeti Sharma'}</span>
+              <span className="recep-user-role">Receptionist</span>
+            </div>
+            <button
+              className="recep-user-logout-btn"
+              onClick={onLogout}
+              title="Sign Out / Switch User"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 
