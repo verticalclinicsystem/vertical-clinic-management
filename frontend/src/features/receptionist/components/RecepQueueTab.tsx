@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface RecepQueueTabProps {
   scheduledToday: any[];
@@ -10,6 +10,7 @@ interface RecepQueueTabProps {
   formatDocName: (name: string) => string;
   setSelectedApptDetails: (appt: any) => void;
   handleCheckIn: (apptId: string) => void;
+  handleUndoCheckIn: (appt: any) => void;
   setBillingForm: (form: any) => void;
   setActiveTab: (tab: string) => void;
 }
@@ -23,6 +24,7 @@ export const RecepQueueTab: React.FC<RecepQueueTabProps> = ({
   formatDocName,
   setSelectedApptDetails,
   handleCheckIn,
+  handleUndoCheckIn,
   setBillingForm,
   setActiveTab,
 }) => {
@@ -102,9 +104,17 @@ export const RecepQueueTab: React.FC<RecepQueueTabProps> = ({
                     <span>{formatDocName(appt.doctor?.user?.full_name || 'Staff')}</span>
                     <span>{appt.treatment_type}</span>
                   </div>
-                  <p className="card-notes">
-                    <em>Wait queue...</em>
-                  </p>
+                  <div className="card-actions">
+                    <button
+                      className="btn-undo-checkin"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUndoCheckIn(appt);
+                      }}
+                    >
+                      <ArrowLeft size={14} /> Undo Check-In
+                    </button>
+                  </div>
                 </div>
               ))
             )}
