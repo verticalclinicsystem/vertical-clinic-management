@@ -14,7 +14,13 @@ import {
   Calendar,
   FileText,
   FolderKanban,
-  Share2
+  Share2,
+  Stethoscope,
+  ClipboardList,
+  Building2,
+  Shield,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './auth.css';
@@ -30,12 +36,67 @@ interface AuthPageProps {
   onLoginSuccess?: (user: any) => void;
 }
 
+const DEMO_ROLES = [
+  {
+    key: 'patient',
+    label: 'Patient',
+    icon: User,
+    identifier: 'patient1_bopal@verticalclinic.com',
+    password: 'Patient1_bopal@verticalclinic.com',
+    roleTag: 'Patient Portal',
+  },
+  {
+    key: 'doctor',
+    label: 'Doctor',
+    icon: Stethoscope,
+    identifier: 'doctor1_bopal@verticalclinic.com',
+    password: 'Doctor1_bopal@verticalclinic.com',
+    roleTag: 'Doctor Dashboard',
+  },
+  {
+    key: 'receptionist',
+    label: 'Receptionist',
+    icon: ClipboardList,
+    identifier: 'receptionist1_bopal@verticalclinic.com',
+    password: 'Receptionist1_bopal@verticalclinic.com',
+    roleTag: 'Front Desk',
+  },
+  {
+    key: 'manager',
+    label: 'Manager',
+    icon: Building2,
+    identifier: 'manager@verticalclinic.com',
+    password: 'ManagerPassword123!',
+    roleTag: 'Clinic Ops',
+  },
+  {
+    key: 'admin',
+    label: 'Admin',
+    icon: Shield,
+    identifier: 'admin@verticalclinic.com',
+    password: 'Admin@verticalclinic.com',
+    roleTag: 'Super Admin',
+  },
+];
+
 export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const [activeTab, setActiveTab] = useState<TabType>('login');
   
-  // Login Form
-  const [loginIdentifier, setLoginIdentifier] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  // Login Form with default quick-demo credentials
+  const [loginIdentifier, setLoginIdentifier] = useState('patient1_bopal@verticalclinic.com');
+  const [loginPassword, setLoginPassword] = useState('Patient1_bopal@verticalclinic.com');
+  const [selectedDemoRole, setSelectedDemoRole] = useState<string | null>('patient');
+
+  const handleSelectDemoRole = (roleKey: string) => {
+    const role = DEMO_ROLES.find((r) => r.key === roleKey);
+    if (role) {
+      setSelectedDemoRole(roleKey);
+      setLoginIdentifier(role.identifier);
+      setLoginPassword(role.password);
+      setValidationErrors({});
+      setAlert(null);
+    }
+  };
   
   // Register Form
   const [registerName, setRegisterName] = useState('');
@@ -503,6 +564,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
               <h2>Vertical Clinic</h2>
               <p>CLINIC MANAGEMENT SYSTEM</p>
             </div>
+            <div className="sidebar-live-badge">
+              <span className="pulse-dot" />
+              <span>Multi-Branch Live</span>
+            </div>
           </div>
 
           <div className="sidebar-main">
@@ -578,6 +643,34 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
               <div className="auth-header">
                 <h1>Sign in to continue</h1>
                 <p>Welcome back! Please sign in to your account.</p>
+              </div>
+
+              {/* Quick Demo Role Switcher */}
+              <div className="demo-accounts-section">
+                <div className="demo-section-header">
+                  <span className="demo-badge">
+                    <Sparkles size={13} /> Quick Demo Login
+                  </span>
+                  <span className="demo-hint">1-Click Auto-Fill</span>
+                </div>
+                <div className="demo-pills-container">
+                  {DEMO_ROLES.map((role) => {
+                    const Icon = role.icon;
+                    const isActive = selectedDemoRole === role.key && loginIdentifier === role.identifier;
+                    return (
+                      <button
+                        key={role.key}
+                        type="button"
+                        className={`demo-role-pill ${isActive ? 'active' : ''}`}
+                        onClick={() => handleSelectDemoRole(role.key)}
+                        title={`Select ${role.label} (${role.roleTag})`}
+                      >
+                        <Icon size={13} className="demo-role-icon" />
+                        <span>{role.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Login Form */}
@@ -952,8 +1045,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         </div>
       </div>
 
-      <div className="security-encryption-footer">
-          <Lock size={14} /> Your data is secure with 256-bit encryption
+        <div className="security-encryption-footer">
+          <div className="trust-item">
+            <ShieldCheck size={14} /> <span>256-bit SSL</span>
+          </div>
+          <span className="trust-sep">&bull;</span>
+          <div className="trust-item">
+            <Lock size={13} /> <span>HIPAA Ready</span>
+          </div>
+          <span className="trust-sep">&bull;</span>
+          <div className="trust-item">
+            <CheckCircle2 size={13} /> <span>Role-Based Access</span>
+          </div>
         </div>
       </div>
     </div>

@@ -8,7 +8,7 @@
   font-family: var(--font-sans);
 }
 
-/* ── SIDEBAR ── */
+/* ── MODERN SIDEBAR (ORIGINAL PALETTE) ── */
 .recep-sidebar {
   width: 270px;
   background-color: var(--dark-sidebar);
@@ -21,16 +21,16 @@
   bottom: 0;
   left: 0;
   z-index: 100;
-  padding: 24px 0;
+  padding: 22px 0 14px 0;
   box-shadow: 4px 0 25px rgba(6, 75, 98, 0.15);
 }
 
 .recep-sidebar-header {
-  padding: 0 24px;
+  padding: 0 22px;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .recep-logo-badge {
@@ -41,9 +41,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   font-weight: 800;
-  color: white;
+  color: #ffffff;
   box-shadow: 0 4px 12px rgba(22, 185, 212, 0.3);
 }
 
@@ -55,33 +55,73 @@
 .recep-clinic-name {
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.05rem;
   line-height: 1.2;
+  color: #ffffff;
 }
 
 .recep-clinic-sub {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: rgba(255, 255, 255, 0.55);
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
+  margin-top: 2px;
 }
 
-.recep-sidebar-pill {
-  margin: 0 16px 24px 16px;
+/* Branch & Shift Status Pill */
+.recep-branch-pill {
+  margin: 0 14px 16px 14px;
   padding: 8px 12px;
   border: 1px solid rgba(22, 185, 212, 0.25);
   border-radius: 8px;
   background: rgba(22, 185, 212, 0.08);
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  transition: all 0.2s ease;
 }
 
-.recep-sidebar-pill::before {
-  content: '';
+.recep-branch-pill:hover {
+  background: rgba(22, 185, 212, 0.14);
+}
+
+.recep-branch-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(22, 185, 212, 0.2);
+  color: var(--bright-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.recep-branch-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.recep-branch-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recep-branch-status {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 1px;
+}
+
+.status-ping {
   width: 6px;
   height: 6px;
   background-color: var(--bright-cyan);
@@ -89,37 +129,77 @@
   box-shadow: 0 0 8px var(--bright-cyan);
 }
 
+/* Nav Area */
 .recep-sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recep-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+.recep-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.recep-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .recep-nav-group-label {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.2px;
   color: rgba(255, 255, 255, 0.4);
-  padding: 16px 12px 8px 12px;
+  padding: 6px 12px 4px 12px;
 }
 
 .recep-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  justify-content: space-between;
+  padding: 9px 12px;
   border-radius: 8px;
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.78);
   cursor: pointer;
   transition: var(--transition-all);
-  margin-bottom: 4px;
+  position: relative;
+  user-select: none;
+}
+
+.recep-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.recep-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.recep-nav-label {
+  white-space: nowrap;
 }
 
 .recep-nav-item:hover {
   background-color: rgba(22, 185, 212, 0.15);
+  color: #ffffff;
+}
+
+.recep-nav-item:hover .recep-nav-icon {
   color: #ffffff;
 }
 
@@ -130,31 +210,118 @@
   box-shadow: 0 4px 14px rgba(11, 142, 171, 0.35);
 }
 
+.recep-nav-item.active .recep-nav-icon {
+  color: #ffffff;
+}
+
+/* Live Counter Badges */
+.recep-nav-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+
+.badge-amber {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fef08a;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-teal {
+  background: rgba(22, 185, 212, 0.25);
+  color: #ffffff;
+  border: 1px solid rgba(22, 185, 212, 0.4);
+}
+
+.badge-rose {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fecdd3;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.badge-active {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Bottom User Card */
 .recep-sidebar-footer {
-  padding: 16px 12px 0 12px;
+  padding: 12px 12px 0 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.recep-btn-switch {
+.recep-sidebar-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(22, 185, 212, 0.08);
+  border: 1px solid rgba(22, 185, 212, 0.2);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.recep-sidebar-user-card:hover {
+  background: rgba(22, 185, 212, 0.14);
+}
+
+.recep-user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background-color: var(--bright-cyan);
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: transparent;
-  color: #ffffff;
-  font-size: 0.85rem;
-  font-weight: 600;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: var(--transition-all);
+  font-weight: 700;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(22, 185, 212, 0.3);
 }
 
-.recep-btn-switch:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.4);
+.recep-user-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.recep-user-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recep-user-role {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 1px;
+}
+
+.recep-user-logout-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.recep-user-logout-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
 }
 
 /* ── MAIN CONTAINER ── */
