@@ -246,3 +246,92 @@ async def test_manager_billing_review_flow(client: AsyncClient):
     assert review_res.status_code == 200
     assert review_res.json()["status"] == "approved"
 
+
+@pytest.mark.asyncio
+async def test_calculate_pending_charges_with_prescriptions(client: AsyncClient):
+    """Verify /billing/calculate-pending runs without AttributeError when patient has prescriptions."""
+    # 1. Staff login
+    login_staff = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    token_staff = login_staff.json()["data"]["access_token"]
+    staff_headers = {"Authorization": f"Bearer {token_staff}"}
+
+    # 2. Patient profile
+    login_pat = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    token_pat = login_pat.json()["data"]["access_token"]
+    pat_res = await client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {token_pat}"})
+    patient_id = pat_res.json()["data"]["id"]
+
+    # 3. Doctor login & get profile
+    login_doc = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "doctor@verticalclinic.com", "password": "Doctor@verticalclinic.com"},
+    )
+    token_doc = login_doc.json()["data"]["access_token"]
+    doc_headers = {"Authorization": f"Bearer {token_doc}"}
+
+    docs_res = await client.get("/api/v1/doctors/")
+    doctor = docs_res.json()["data"]["items"][0]
+    doctor_id = doctor["id"]
+    branch_id = doctor["branch_id"]
+
+    # 4. Record a consultation with prescription
+    cons_res = await client.post(
+        "/api/v1/consultations/",
+        json={
+            "patient_id": patient_id,
+            "doctor_id": doctor_id,
+            "branch_id": branch_id,
+            "symptoms": "Fever and mild cough",
+            "diagnosis": "Viral Pharyngitis",
+            "notes": "Rest and hydration advised",
+        },
+        headers=doc_headers,
+    )
+    assert cons_res.status_code == 201
+    cons_id = cons_res.json()["data"]["id"]
+
+    presc_res = await client.post(
+        "/api/v1/prescriptions/",
+        json={
+            "consultation_id": cons_id,
+            "patient_id": patient_id,
+            "doctor_id": doctor_id,
+            "notes": "Take with warm water",
+            "items": [
+                {
+                    "medicine_name": "Paracetamol 500mg",
+                    "dosage": "1-0-1",
+                    "duration": "3 days",
+                }
+            ],
+        },
+        headers=doc_headers,
+    )
+    assert presc_res.status_code == 201
+
+    # 5. Call calculate-pending charges endpoint as staff
+    calc_res = await client.get(
+        f"/api/v1/billing/calculate-pending?patient_id={patient_id}",
+        headers=staff_headers,
+    )
+    assert calc_res.status_code == 200
+    data = calc_res.json()["data"]
+    assert "consultations" in data
+    assert len(data["consultations"]) >= 1
+
+    # Find the consultation we created
+    target_cons = next((c for c in data["consultations"] if c["id"] == cons_id), None)
+    assert target_cons is not None
+    assert len(target_cons["prescriptions"]) >= 1
+    # Check that diagnosis and notes are present without raising AttributeError
+    presc_item = target_cons["prescriptions"][0]
+    assert presc_item["diagnosis"] == "Viral Pharyngitis"
+    assert presc_item["notes"] == "Take with warm water"
+
+

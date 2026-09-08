@@ -253,8 +253,18 @@ async def get_patient_dashboard(
     future_appointments = list(result.scalars().all())
 
     follow_ups = []
+    seen_dash_fu = set()
     for c in consultations:
-        recommended_date = c.consultation_datetime + timedelta(days=14)
+        if not getattr(c, "followup_advised", False):
+            continue
+        days = getattr(c, "followup_after_days", 0) or 0
+        if days <= 0:
+            continue
+        if c.id in seen_dash_fu:
+            continue
+        seen_dash_fu.add(c.id)
+
+        recommended_date = c.consultation_datetime + timedelta(days=days)
         has_future_booking = any(
             appt.doctor_id == c.doctor_id and appt.appointment_datetime > c.consultation_datetime
             for appt in future_appointments
@@ -274,7 +284,7 @@ async def get_patient_dashboard(
             "branch_name": c.branch.name if c.branch else "Main Branch",
             "recommended_date": recommended_date,
             "treatment_type": treatment_type,
-            "notes": f"Recommended follow-up based on your visit on {c.consultation_datetime.strftime('%Y-%m-%d')}.",
+            "notes": f"Recommended after {days} days based on your visit on {c.consultation_datetime.strftime('%Y-%m-%d')}.",
             "status": status,
         })
 
@@ -1106,30 +1116,57 @@ async def get_patient_timeline(
     result = await db.execute(stmt)
     future_appointments = list(result.scalars().all())
 
+    seen_followup_consultations = set()
     for c in consults:
-        recommended_date = c.consultation_datetime + timedelta(days=14)
+        if not getattr(c, "followup_advised", False):
+            continue
+        days = getattr(c, "followup_after_days", 0) or 0
+        if days <= 0:
+            continue
+        if c.id in seen_followup_consultations:
+            continue
+        seen_followup_consultations.add(c.id)
+
+        recommended_date = c.consultation_datetime + timedelta(days=days)
         has_future_booking = any(
             appt.doctor_id == c.doctor_id and appt.appointment_datetime > c.consultation_datetime
             for appt in future_appointments
         )
         status = "booked" if has_future_booking else "recommended"
 
+        doc_name = c.doctor.user.full_name if c.doctor and c.doctor.user else "Doctor"
+        treatment_type = f"Follow-up for {c.diagnosis}" if c.diagnosis else "Routine Follow-up"
+
         timeline.append({
             "event_type": "followup",
-            "title": f"Follow-up Recommended with Dr. {c.doctor.user.full_name if c.doctor and c.doctor.user else 'Doctor'}",
+            "title": f"Follow-up Recommended with Dr. {doc_name}",
             "datetime": recommended_date.isoformat(),
             "details": {
                 "consultation_id": str(c.id),
+                "doctor_id": str(c.doctor_id) if c.doctor_id else None,
+                "doctor_name": doc_name,
+                "branch_id": str(c.branch_id) if c.branch_id else None,
+                "treatment_type": treatment_type,
+                "recommended_date": recommended_date.isoformat(),
                 "status": status,
-                "notes": f"Based on visit on {c.consultation_datetime.strftime('%Y-%m-%d')} for {c.diagnosis or 'Routine'}"
+                "notes": f"Recommended after {days} days based on visit on {c.consultation_datetime.strftime('%Y-%m-%d')} for {c.diagnosis or 'Routine'}."
             }
         })
 
+    # Deduplicate timeline events by unique key
+    unique_timeline = []
+    seen_timeline_keys = set()
+    for event in timeline:
+        key = (event["event_type"], event["title"], event["datetime"])
+        if key not in seen_timeline_keys:
+            seen_timeline_keys.add(key)
+            unique_timeline.append(event)
+
     # Sort timeline by datetime descending
-    timeline.sort(key=lambda x: x["datetime"], reverse=True)
+    unique_timeline.sort(key=lambda x: x["datetime"], reverse=True)
 
     return ApiResponse.success(
-        data=timeline,
+        data=unique_timeline,
         message="Patient medical timeline retrieved successfully.",
     )
 
@@ -1245,8 +1282,18 @@ async def get_patient_history_profile(
     future_appointments = list(result.scalars().all())
 
     follow_ups = []
+    seen_details_fu = set()
     for c in consultations:
-        recommended_date = c.consultation_datetime + timedelta(days=14)
+        if not getattr(c, "followup_advised", False):
+            continue
+        days = getattr(c, "followup_after_days", 0) or 0
+        if days <= 0:
+            continue
+        if c.id in seen_details_fu:
+            continue
+        seen_details_fu.add(c.id)
+
+        recommended_date = c.consultation_datetime + timedelta(days=days)
         has_future_booking = any(
             appt.doctor_id == c.doctor_id and appt.appointment_datetime > c.consultation_datetime
             for appt in future_appointments
@@ -1266,7 +1313,7 @@ async def get_patient_history_profile(
             "branch_name": c.branch.name if c.branch else "Main Branch",
             "recommended_date": recommended_date,
             "treatment_type": treatment_type,
-            "notes": f"Recommended follow-up based on visit on {c.consultation_datetime.strftime('%Y-%m-%d')}.",
+            "notes": f"Recommended after {days} days based on visit on {c.consultation_datetime.strftime('%Y-%m-%d')}.",
             "status": status,
         })
 
