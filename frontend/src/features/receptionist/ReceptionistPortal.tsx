@@ -373,6 +373,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   
   // Modal states
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
+  const [undoCheckInAppt, setUndoCheckInAppt] = useState<any>(null);
+  const [undoingCheckIn, setUndoingCheckIn] = useState<boolean>(false);
   const [showBookModal, setShowBookModal] = useState<boolean>(false);
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
   const [showEditBillingModal, setShowEditBillingModal] = useState<boolean>(false);
@@ -1035,7 +1037,10 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       }
     } catch (err: any) {
       console.error(err);
-      showToast('Error fetching database records.', 'error');
+      // Avoid spamming toasts on background polling refreshes
+      if (!silent) {
+        showToast('Error fetching database records.', 'error');
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -1156,7 +1161,26 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
   };
 
+  const handleUndoCheckIn = (appt: any) => {
+    setUndoCheckInAppt(appt);
+  };
 
+  const confirmUndoCheckIn = async () => {
+    if (!undoCheckInAppt?.id) return;
+    setUndoingCheckIn(true);
+    try {
+      const res = await api.patch(`/appointments/${undoCheckInAppt.id}/undo-check-in`);
+      if (res.data?.success) {
+        showToast('Check-in undone. Patient moved back to Scheduled Today.', 'success');
+        setUndoCheckInAppt(null);
+        await fetchPortalData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error undoing check-in.', 'error');
+    } finally {
+      setUndoingCheckIn(false);
+    }
+  };
 
   // Load available slots for rescheduling
   useEffect(() => {
@@ -2230,6 +2254,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   formatDocName={formatDocName}
                   setSelectedApptDetails={setSelectedApptDetails}
                   handleCheckIn={handleCheckIn}
+                  handleUndoCheckIn={handleUndoCheckIn}
                   setBillingForm={setBillingForm}
                   setActiveTab={setActiveTab}
                 />
@@ -4129,6 +4154,82 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
               </button>
               <button type="button" className="recep-btn-primary" onClick={() => setViewingReport(null)} style={{ fontSize: '0.85rem' }}>
                 Close Viewer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Undo Check-In Confirm */}
+      {undoCheckInAppt && (
+        <div className="recep-modal-overlay" onClick={() => !undoingCheckIn && setUndoCheckInAppt(null)}>
+          <div
+            className="recep-modal-content recep-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="recep-modal-header">
+              <div className="recep-confirm-title">
+                <div className="recep-confirm-icon">
+                  <ArrowLeft size={20} />
+                </div>
+                <div>
+                  <h3>Undo Check-In</h3>
+                  <span className="recep-confirm-subtitle">Move patient back to Scheduled Today</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="close-btn"
+                disabled={undoingCheckIn}
+                onClick={() => setUndoCheckInAppt(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="recep-confirm-body">
+              <p>
+                Are you sure you want to undo check-in for{' '}
+                <strong>{undoCheckInAppt.patient?.user?.full_name || 'this patient'}</strong>
+                {undoCheckInAppt.patient?.patient_code ? (
+                  <> ({undoCheckInAppt.patient.patient_code})</>
+                ) : null}
+                ?
+              </p>
+              <div className="recep-confirm-meta">
+                <span>{formatDocName(undoCheckInAppt.doctor?.user?.full_name || 'Staff')}</span>
+                <span>{undoCheckInAppt.treatment_type}</span>
+                <span>{formatTimeToAMPM(getLocalApptTime(undoCheckInAppt.appointment_datetime))}</span>
+              </div>
+              <p className="recep-confirm-note">
+                The patient will leave the waiting queue and return to Scheduled Today.
+              </p>
+            </div>
+
+            <div className="recep-modal-actions">
+              <button
+                type="button"
+                className="btn-cancel"
+                disabled={undoingCheckIn}
+                onClick={() => setUndoCheckInAppt(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-submit"
+                disabled={undoingCheckIn}
+                onClick={confirmUndoCheckIn}
+              >
+                {undoingCheckIn ? (
+                  <>
+                    <Loader2 size={16} className="spin-icon" /> Undoing...
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeft size={16} /> Undo Check-In
+                  </>
+                )}
               </button>
             </div>
           </div>

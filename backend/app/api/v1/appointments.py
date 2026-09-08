@@ -384,6 +384,33 @@ async def checkin_appointment_api(
     return ApiResponse.success(data=to_appointment_out(updated, current_user.role), message="Patient checked in successfully.")
 
 
+@router.patch("/{appointment_id}/undo-check-in")
+async def undo_checkin_appointment_api(
+    appointment_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Move a checked-in / waiting patient back to Scheduled (confirmed)."""
+    if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
+        raise PermissionDeniedError("Only receptionists or admins can undo check-in.")
+    service = AppointmentService(db)
+    appointment = await service.get_appointment(appointment_id)
+    if appointment.status not in ("checked_in", "Waiting"):
+        raise BadRequestError(
+            "Only checked-in / waiting appointments can be moved back to scheduled."
+        )
+    updated = await service.update_appointment(
+        appointment_id,
+        AppointmentUpdate(status="confirmed"),
+        current_user_id=current_user.id,
+        role=current_user.role,
+    )
+    return ApiResponse.success(
+        data=to_appointment_out(updated, current_user.role),
+        message="Check-in undone. Patient moved back to scheduled.",
+    )
+
+
 @router.patch("/{appointment_id}/start")
 async def start_consultation_api(
     appointment_id: UUID,

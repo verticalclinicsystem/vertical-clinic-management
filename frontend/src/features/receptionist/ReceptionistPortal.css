@@ -707,6 +707,27 @@
 }
 .btn-checkin:hover { background-color: var(--primary-dark); }
 
+.btn-undo-checkin {
+  flex: 1;
+  width: 100%;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: var(--transition-all);
+}
+.btn-undo-checkin:hover {
+  background-color: var(--border);
+  color: var(--ink);
+}
+
 .btn-bill {
   width: 100%;
   background-color: var(--success);
@@ -1038,6 +1059,75 @@
   margin-top: 24px;
   border-top: 1px solid var(--border);
   padding-top: 18px;
+}
+
+.recep-confirm-modal {
+  width: 440px;
+  max-width: 92vw;
+  padding: 24px;
+}
+
+.recep-confirm-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.recep-confirm-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 12%, white);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.recep-confirm-subtitle {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.recep-confirm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recep-confirm-body p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.recep-confirm-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recep-confirm-meta span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.recep-confirm-note {
+  font-size: 0.8rem !important;
+  color: var(--muted) !important;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 10px 12px;
 }
 
 .btn-cancel {

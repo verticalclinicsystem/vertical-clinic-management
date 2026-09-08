@@ -117,7 +117,7 @@ def invoice_to_out(invoice) -> dict:
     return data
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create new invoice")
+@router.post("/", status_code=status.HTTP_201_CREATED, summary="Create new invoice")
 async def create_invoice(
     request: InvoiceCreate,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -136,7 +136,7 @@ async def create_invoice(
     )
 
 
-@router.get("", summary="List invoices with pagination & filters")
+@router.get("/", summary="List invoices with pagination & filters")
 async def list_invoices(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
