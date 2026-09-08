@@ -232,7 +232,8 @@ async def calculate_pending_charges(
                 })
             prescriptions_list.append({
                 "id": str(p.id),
-                "diagnosis": p.diagnosis,
+                "diagnosis": c.diagnosis or "",
+                "notes": p.notes or "",
                 "items": items_list
             })
 
@@ -319,11 +320,18 @@ async def calculate_pending_charges(
         if adm.id in invoiced_adm_ids:
             continue
         
-        end_time = adm.discharge_datetime or datetime.now(timezone.utc)
-        hours_stay = max(0.5, (end_time - adm.admission_datetime).total_seconds() / 3600.0)
+        adm_dt = adm.admission_datetime
+        if adm_dt.tzinfo is None:
+            adm_dt = adm_dt.replace(tzinfo=timezone.utc)
+        dis_dt = adm.discharge_datetime
+        if dis_dt is not None and dis_dt.tzinfo is None:
+            dis_dt = dis_dt.replace(tzinfo=timezone.utc)
+
+        end_time = dis_dt or datetime.now(timezone.utc)
+        hours_stay = max(0.5, (end_time - adm_dt).total_seconds() / 3600.0)
         bed = adm.bed
-        base_charge_24h = bed.category.base_charge_24h
-        hourly_rate = bed.category.hourly_overtime_rate
+        base_charge_24h = bed.category.base_charge_24h if (bed and bed.category) else 0.0
+        hourly_rate = bed.category.hourly_overtime_rate if (bed and bed.category) else 0.0
 
         days = int(hours_stay // 24)
         rem_hours = hours_stay % 24
@@ -353,9 +361,9 @@ async def calculate_pending_charges(
 
         unbilled_admissions.append({
             "id": str(adm.id),
-            "admission_number": adm.admission_number,
-            "bed_number": bed.bed_number,
-            "category_name": bed.category.name,
+            "admission_number": getattr(adm, "admission_number", f"ADM-{str(adm.id)[:8].upper()}"),
+            "bed_number": bed.bed_number if bed else "N/A",
+            "category_name": bed.category.name if (bed and bed.category) else "Standard",
             "admission_datetime": adm.admission_datetime.isoformat(),
             "discharge_datetime": adm.discharge_datetime.isoformat() if adm.discharge_datetime else None,
             "hours_stay": round(hours_stay, 1),
@@ -363,7 +371,7 @@ async def calculate_pending_charges(
             "initial_deposit": float(adm.initial_deposit),
             "insurance_approved_amount": float(adm.insurance_approved_amount),
             "past_items": past_items_list,
-            "status": adm.status
+            "status": getattr(adm, "admission_status", "admitted")
         })
 
     return ApiResponse.success(

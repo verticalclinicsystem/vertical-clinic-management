@@ -121,8 +121,18 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({
     return title.includes(cleanTerm) || type.includes(cleanTerm) || detailsText.includes(cleanTerm);
   };
 
-  // Filter & Search timeline data
-  const filteredTimeline = (timeline || []).filter(event => {
+  // Deduplicate & filter timeline data
+  const deduplicatedTimeline = React.useMemo(() => {
+    const seen = new Set<string>();
+    return (timeline || []).filter((event: any) => {
+      const key = `${event.event_type}-${event.title}-${event.datetime}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [timeline]);
+
+  const filteredTimeline = deduplicatedTimeline.filter((event: any) => {
     const matchesFilter = activeFilter === 'all' || event.event_type === activeFilter || (activeFilter === 'followup' && event.event_type === 'follow_up');
     const matchesQuery = !searchTerm || matchesSearch(event, searchTerm);
     return matchesFilter && matchesQuery;
@@ -394,14 +404,16 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({
                               <button 
                                 className="timeline-action-btn success"
                                 onClick={() => {
-                                  const found = followups.find(f => String(f.consultation_id) === String(event.details.consultation_id));
+                                  const found = followups.find(f => String(f.consultation_id) === String(event.details?.consultation_id));
                                   if (found) {
                                     handleBookFollowup(found);
                                   } else {
-                                    // Fallback mockup followup item
                                     handleBookFollowup({
+                                      doctor_id: event.details?.doctor_id,
+                                      doctor_name: event.details?.doctor_name || event.title?.replace('Follow-up Recommended with ', '') || 'Doctor',
                                       recommended_date: event.datetime,
-                                      notes: event.details.notes
+                                      treatment_type: event.details?.treatment_type || 'Follow-up',
+                                      notes: event.details?.notes
                                     });
                                   }
                                 }}
