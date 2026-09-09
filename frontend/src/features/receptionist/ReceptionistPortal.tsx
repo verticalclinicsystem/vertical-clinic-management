@@ -687,7 +687,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
   const fetchMyRequests = async () => {
     try {
-      const res = await api.get('/doctors/availability-requests/');
+      const res = await api.get('/doctors/availability-requests');
       if (res.data?.success) {
         setMyRequests(res.data.data);
       }
@@ -711,7 +711,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
         reason: reqReason.trim()
       };
 
-      const res = await api.post('/doctors/availability-requests/', payload);
+      const res = await api.post('/doctors/availability-requests', payload);
       if (res.data?.success) {
         showToast('Leave request submitted successfully!', 'success');
         setIsRequestingChange(false);
@@ -1029,7 +1029,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       }
 
       // 3. Fetch invoices
-      const invoiceRes = await api.get('/billing/?limit=100');
+      const invoiceRes = await api.get('/billing?limit=100');
       if (invoiceRes.data?.success) {
         setInvoices(invoiceRes.data.data.items || []);
       }
@@ -1552,7 +1552,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
     setSubmitLoading(true);
     try {
-      const res = await api.post('/billing/', {
+      const res = await api.post('/billing', {
         patient_id: billingForm.patient_id,
         total_amount: Number(billingForm.total_amount),
         discount_amount: Number(billingForm.discount_amount),

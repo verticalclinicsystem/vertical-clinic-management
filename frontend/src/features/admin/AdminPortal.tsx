@@ -773,7 +773,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
   const fetchAvailabilityRequests = async () => {
     try {
-      const res = await api.get('/doctors/availability-requests/');
+      const res = await api.get('/doctors/availability-requests');
       if (res.data?.success) {
         setAvailabilityRequests(res.data.data);
       }
