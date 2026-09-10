@@ -9,8 +9,56 @@ export const api = axios.create({
   },
 });
 
+// Client-side in-memory cache for static/rarely-changing endpoints (branches, doctors list)
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+const apiCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const isCacheableRequest = (url?: string, method?: string) => {
+  if (!url || (method && method.toLowerCase() !== 'get')) return false;
+  const cleanPath = url.split('?')[0].replace(/\/$/, '');
+  return cleanPath === '/branches' || cleanPath === '/doctors';
+};
+
 api.interceptors.request.use(
   (config) => {
+    (config as any)._startTime = performance.now();
+
+    // Invalidate cached lists when a branch or doctor is created/updated/deleted
+    if (config.method && ['post', 'put', 'delete', 'patch'].includes(config.method.toLowerCase())) {
+      const url = config.url || '';
+      if (url.includes('/branches')) {
+        for (const k of apiCache.keys()) {
+          if (k.includes('/branches')) apiCache.delete(k);
+        }
+      }
+      if (url.includes('/doctors')) {
+        for (const k of apiCache.keys()) {
+          if (k.includes('/doctors')) apiCache.delete(k);
+        }
+      }
+    }
+
+    // Check in-memory cache for static listing endpoints
+    if (isCacheableRequest(config.url, config.method)) {
+      const cacheKey = `${config.method?.toUpperCase()}:${config.url}`;
+      const cached = apiCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        console.log(`⚡ [CACHED 0ms] ${config.method?.toUpperCase()} ${config.url}`);
+        config.adapter = async () => ({
+          data: JSON.parse(JSON.stringify(cached.data)),
+          status: 200,
+          statusText: 'OK (Cached)',
+          headers: {},
+          config,
+        });
+        return config;
+      }
+    }
+
     const token = localStorage.getItem('access_token');
     const skipAuth = (config as any).skipAuth;
     
@@ -50,8 +98,36 @@ const processQueue = (error: any, token: string | null = null) => {
 
 // Intercept 401 response and handle token refresh / redirect to login
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const startTime = (response.config as any)?._startTime;
+    const duration = startTime ? Math.round(performance.now() - startTime) : 0;
+    
+    if (response.statusText !== 'OK (Cached)') {
+      console.log(`⚡ [API ${duration}ms] ${response.config.method?.toUpperCase()} ${response.config.url} (${response.status})`);
+    }
+
+    // Cache successful GET response for cacheable endpoints
+    if (
+      isCacheableRequest(response.config?.url, response.config?.method) &&
+      response.status >= 200 &&
+      response.status < 300 &&
+      response.statusText !== 'OK (Cached)'
+    ) {
+      const cacheKey = `${response.config.method?.toUpperCase()}:${response.config.url}`;
+      apiCache.set(cacheKey, {
+        data: response.data,
+        timestamp: Date.now(),
+      });
+    }
+
+    return response;
+  },
   async (error) => {
+    const startTime = (error.config as any)?._startTime;
+    const duration = startTime ? Math.round(performance.now() - startTime) : 0;
+    if (error.config?.url) {
+      console.warn(`⚠️ [API ${duration}ms] ${error.config?.method?.toUpperCase()} ${error.config?.url} (${error.response?.status || error.message})`);
+    }
     const originalRequest = error.config;
     
     // If unauthorized and we haven't retried yet, and it is not a login or refresh request

@@ -373,6 +373,11 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   
   // Modal states
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
+  const [undoCheckInAppt, setUndoCheckInAppt] = useState<any>(null);
+  const [undoingCheckIn, setUndoingCheckIn] = useState<boolean>(false);
+  const [undoReason, setUndoReason] = useState<'accidental' | 'stepped_out' | 'doctor_delayed' | 'other'>('accidental');
+  const [undoCustomNote, setUndoCustomNote] = useState<string>('');
+  const [notifyPatientOnUndo, setNotifyPatientOnUndo] = useState<boolean>(false);
   const [showBookModal, setShowBookModal] = useState<boolean>(false);
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
   const [showEditBillingModal, setShowEditBillingModal] = useState<boolean>(false);
@@ -1035,7 +1040,10 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       }
     } catch (err: any) {
       console.error(err);
-      showToast('Error fetching database records.', 'error');
+      // Avoid spamming toasts on background polling refreshes
+      if (!silent) {
+        showToast('Error fetching database records.', 'error');
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -1156,7 +1164,42 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
   };
 
+  const handleUndoCheckIn = (appt: any) => {
+    setUndoCheckInAppt(appt);
+    setUndoReason('accidental');
+    setUndoCustomNote('');
+    setNotifyPatientOnUndo(false);
+  };
 
+  const handleReasonChange = (reason: 'accidental' | 'stepped_out' | 'doctor_delayed' | 'other') => {
+    setUndoReason(reason);
+    if (reason === 'accidental') {
+      setNotifyPatientOnUndo(false);
+    } else if (reason === 'stepped_out' || reason === 'doctor_delayed') {
+      setNotifyPatientOnUndo(true);
+    }
+  };
+
+  const confirmUndoCheckIn = async () => {
+    if (!undoCheckInAppt?.id) return;
+    setUndoingCheckIn(true);
+    try {
+      const res = await api.patch(`/appointments/${undoCheckInAppt.id}/undo-check-in`, {
+        reason: undoReason,
+        notify_patient: notifyPatientOnUndo,
+        notes: undoCustomNote.trim() || undefined,
+      });
+      if (res.data?.success) {
+        showToast('Check-in undone. Patient moved back to Scheduled Today.', 'success');
+        setUndoCheckInAppt(null);
+        await fetchPortalData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error undoing check-in.', 'error');
+    } finally {
+      setUndoingCheckIn(false);
+    }
+  };
 
   // Load available slots for rescheduling
   useEffect(() => {
@@ -1880,6 +1923,56 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
 
 
+  const currentBranch = branches.find((b: any) => b.id === selectedBranchId) || branches[0];
+  const todayApptsCount = appointments.filter((a: any) => getLocalApptDate(a.appointment_datetime) === today).length;
+  const waitingCount = waitingToday.length;
+  const pendingInvoicesCount = invoices.filter((i: any) => i.status === 'unpaid' || i.status === 'partially_paid').length;
+
+  const NAV_GROUPS = [
+    {
+      group: 'Core Operations',
+      items: [
+        { id: 'dashboard', icon: <Home size={17} />, label: 'Dashboard' },
+        { id: 'calendar', icon: <Calendar size={17} />, label: 'Calendar' },
+        { 
+          id: 'queue', 
+          icon: <Clock size={17} />, 
+          label: 'Queue Board',
+          badge: waitingCount > 0 ? `${waitingCount} Waiting` : null,
+          badgeColor: 'amber'
+        },
+      ]
+    },
+    {
+      group: 'Patient Desk',
+      items: [
+        { 
+          id: 'checkin', 
+          icon: <UserCheck size={17} />, 
+          label: 'Check-In',
+          badge: todayApptsCount > 0 ? `${todayApptsCount} Today` : null,
+          badgeColor: 'teal'
+        },
+        { id: 'patients', icon: <Users size={17} />, label: 'Patient Intake' },
+        { id: 'beds', icon: <Bed size={17} />, label: 'Bed Management' },
+      ]
+    },
+    {
+      group: 'Billing & Ops',
+      items: [
+        { id: 'billing', icon: <IndianRupee size={17} />, label: 'Billing' },
+        { 
+          id: 'invoices', 
+          icon: <FileText size={17} />, 
+          label: 'Invoices',
+          badge: pendingInvoicesCount > 0 ? `${pendingInvoicesCount} Due` : null,
+          badgeColor: 'rose'
+        },
+        { id: 'availability', icon: <Calendar size={17} />, label: 'Availability' },
+      ]
+    }
+  ];
+
   return (
     <div className="recep-layout">
       {/* Toast Notification */}
@@ -1892,43 +1985,75 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
 
       {/* Sidebar */}
       <aside className="recep-sidebar">
+        {/* Logo & Branding */}
         <div className="recep-sidebar-header">
-          <div className="recep-logo-badge">R</div>
+          <div className="recep-logo-badge">V</div>
           <div className="recep-clinic-info">
             <span className="recep-clinic-name">Vertical Clinic</span>
-            <span className="recep-clinic-sub">FRONT DESK OS</span>
+            <span className="recep-clinic-sub">SMART HEALTHCARE</span>
           </div>
         </div>
 
-        <div className="recep-sidebar-pill">Receptionist Portal</div>
+        {/* Active Branch & Shift Status Pill */}
+        <div className="recep-branch-pill">
+          <div className="recep-branch-icon">
+            <MapPin size={13} />
+          </div>
+          <div className="recep-branch-text">
+            <span className="recep-branch-title">{currentBranch?.name || 'Satellite'} Branch</span>
+            <span className="recep-branch-status">
+              <span className="status-ping" /> Shift Active &bull; 09:00 - 17:00
+            </span>
+          </div>
+        </div>
 
+        {/* Categorized Nav Groups */}
         <nav className="recep-sidebar-nav">
-          <div className="recep-nav-group-label">Daily Workflow</div>
-          {[
-            { id: 'dashboard', icon: <Home size={18} />, label: 'Dashboard' },
-            { id: 'calendar', icon: <Calendar size={18} />, label: 'Appointment Calendar' },
-            { id: 'queue', icon: <Clock size={18} />, label: 'Queue Board' },
-            { id: 'checkin', icon: <UserCheck size={18} />, label: 'Check-In' },
-            { id: 'patients', icon: <Users size={18} />, label: 'Patient Intake' },
-            { id: 'billing', icon: <IndianRupee size={18} />, label: 'Billing' },
-            { id: 'invoices', icon: <FileText size={18} />, label: 'Invoices' },
-            { id: 'beds', icon: <Bed size={18} />, label: 'Bed Management' },
-            { id: 'availability', icon: <Calendar size={18} />, label: 'Availability' },
-          ].map(tab => (
-            <div 
-              key={tab.id} 
-              className={`recep-nav-item ${activeTab === tab.id ? 'active' : ''}`} 
-              onClick={() => handleRootTabChange(tab.id)}
-            >
-              {tab.icon} {tab.label}
+          {NAV_GROUPS.map((group) => (
+            <div key={group.group} className="recep-nav-section">
+              <div className="recep-nav-group-label">{group.group}</div>
+              {group.items.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <div
+                    key={tab.id}
+                    className={`recep-nav-item ${isActive ? 'active' : ''}`}
+                    onClick={() => handleRootTabChange(tab.id)}
+                  >
+                    <div className="recep-nav-left">
+                      <span className="recep-nav-icon">{tab.icon}</span>
+                      <span className="recep-nav-label">{tab.label}</span>
+                    </div>
+                    {tab.badge && (
+                      <span className={`recep-nav-badge badge-${tab.badgeColor || 'teal'} ${isActive ? 'badge-active' : ''}`}>
+                        {tab.badge}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </nav>
 
+        {/* Bottom User Card */}
         <div className="recep-sidebar-footer">
-          <button className="recep-btn-switch" onClick={onLogout}>
-            <LogOut size={16} /> Logout
-          </button>
+          <div className="recep-sidebar-user-card">
+            <div className="recep-user-avatar">
+              {currentUser?.full_name?.slice(0, 2).toUpperCase() || 'PS'}
+            </div>
+            <div className="recep-user-details">
+              <span className="recep-user-name">{currentUser?.full_name || 'Preeti Sharma'}</span>
+              <span className="recep-user-role">Receptionist</span>
+            </div>
+            <button
+              className="recep-user-logout-btn"
+              onClick={onLogout}
+              title="Sign Out / Switch User"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -2230,6 +2355,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   formatDocName={formatDocName}
                   setSelectedApptDetails={setSelectedApptDetails}
                   handleCheckIn={handleCheckIn}
+                  handleUndoCheckIn={handleUndoCheckIn}
                   setBillingForm={setBillingForm}
                   setActiveTab={setActiveTab}
                 />
@@ -4129,6 +4255,184 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
               </button>
               <button type="button" className="recep-btn-primary" onClick={() => setViewingReport(null)} style={{ fontSize: '0.85rem' }}>
                 Close Viewer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Undo Check-In Confirm */}
+      {undoCheckInAppt && (
+        <div className="recep-modal-overlay" onClick={() => !undoingCheckIn && setUndoCheckInAppt(null)}>
+          <div
+            className="recep-modal-content recep-confirm-modal recep-undo-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="recep-modal-header">
+              <div className="recep-confirm-title">
+                <div className="recep-confirm-icon">
+                  <ArrowLeft size={20} />
+                </div>
+                <div>
+                  <h3>Undo Check-In</h3>
+                  <span className="recep-confirm-subtitle">Move patient back to Scheduled Today</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="close-btn"
+                disabled={undoingCheckIn}
+                onClick={() => setUndoCheckInAppt(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="recep-confirm-body">
+              <p>
+                Are you sure you want to undo check-in for{' '}
+                <strong>{undoCheckInAppt.patient?.user?.full_name || 'this patient'}</strong>
+                {undoCheckInAppt.patient?.patient_code ? (
+                  <> ({undoCheckInAppt.patient.patient_code})</>
+                ) : null}
+                ?
+              </p>
+              <div className="recep-confirm-meta">
+                <span>{formatDocName(undoCheckInAppt.doctor?.user?.full_name || 'Staff')}</span>
+                <span>{undoCheckInAppt.treatment_type}</span>
+                <span>{formatTimeToAMPM(getLocalApptTime(undoCheckInAppt.appointment_datetime))}</span>
+              </div>
+
+              {/* Reason Selector */}
+              <div className="recep-undo-reason-section">
+                <label className="recep-undo-section-label">Select Reason for Undo:</label>
+                <div className="recep-undo-reasons">
+                  <label className={`recep-undo-reason-card ${undoReason === 'accidental' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="accidental"
+                      checked={undoReason === 'accidental'}
+                      onChange={() => handleReasonChange('accidental')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Accidental Check-in</span>
+                        <span className="badge-silent">Silent</span>
+                      </div>
+                      <span className="reason-desc">Wrong patient / misclick. No notification sent to patient.</span>
+                    </div>
+                  </label>
+
+                  <label className={`recep-undo-reason-card ${undoReason === 'stepped_out' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="stepped_out"
+                      checked={undoReason === 'stepped_out'}
+                      onChange={() => handleReasonChange('stepped_out')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Patient Stepped Out</span>
+                        <span className="badge-notify">Notifies Patient</span>
+                      </div>
+                      <span className="reason-desc">Temporarily left waiting area. Asks to report back upon return.</span>
+                    </div>
+                  </label>
+
+                  <label className={`recep-undo-reason-card ${undoReason === 'doctor_delayed' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="doctor_delayed"
+                      checked={undoReason === 'doctor_delayed'}
+                      onChange={() => handleReasonChange('doctor_delayed')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Doctor Delayed / Emergency</span>
+                        <span className="badge-notify">Notifies Patient</span>
+                      </div>
+                      <span className="reason-desc">Doctor running late. Retains scheduled appointment.</span>
+                    </div>
+                  </label>
+
+                  <label className={`recep-undo-reason-card ${undoReason === 'other' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="undoReason"
+                      value="other"
+                      checked={undoReason === 'other'}
+                      onChange={() => handleReasonChange('other')}
+                    />
+                    <div className="recep-undo-reason-content">
+                      <div className="recep-undo-reason-header">
+                        <span className="reason-title">Other Reason</span>
+                      </div>
+                      <span className="reason-desc">Custom notes (e.g. sent for vitals, diagnostics, or billing).</span>
+                    </div>
+                  </label>
+                </div>
+
+                {undoReason === 'other' && (
+                  <div className="recep-undo-note-input">
+                    <input
+                      type="text"
+                      placeholder="Enter specific reason..."
+                      value={undoCustomNote}
+                      onChange={(e) => setUndoCustomNote(e.target.value)}
+                      maxLength={200}
+                    />
+                  </div>
+                )}
+
+                {/* Patient Notification Toggle */}
+                <div className="recep-undo-notify-toggle">
+                  <label className="toggle-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={notifyPatientOnUndo}
+                      onChange={(e) => setNotifyPatientOnUndo(e.target.checked)}
+                      disabled={undoReason === 'accidental'}
+                    />
+                    <span>
+                      Notify patient via SMS / Push notification
+                      {undoReason === 'accidental' && <span className="muted-hint"> (Disabled for accidental clicks)</span>}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <p className="recep-confirm-note">
+                The patient will leave the waiting queue and return to Scheduled Today.
+              </p>
+            </div>
+
+            <div className="recep-modal-actions">
+              <button
+                type="button"
+                className="btn-cancel"
+                disabled={undoingCheckIn}
+                onClick={() => setUndoCheckInAppt(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-submit"
+                disabled={undoingCheckIn}
+                onClick={confirmUndoCheckIn}
+              >
+                {undoingCheckIn ? (
+                  <>
+                    <Loader2 size={16} className="spin-icon" /> Undoing...
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeft size={16} /> Confirm Undo Check-In
+                  </>
+                )}
               </button>
             </div>
           </div>

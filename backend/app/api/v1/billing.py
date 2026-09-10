@@ -117,7 +117,7 @@ def invoice_to_out(invoice) -> dict:
     return data
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create new invoice")
+@router.post("/", status_code=status.HTTP_201_CREATED, summary="Create new invoice")
 async def create_invoice(
     request: InvoiceCreate,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -136,7 +136,7 @@ async def create_invoice(
     )
 
 
-@router.get("", summary="List invoices with pagination & filters")
+@router.get("/", summary="List invoices with pagination & filters")
 async def list_invoices(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -335,7 +335,11 @@ async def calculate_pending_charges(
                 continue
             
             adm_dt = getattr(adm, "admission_datetime", None) or datetime.now(timezone.utc)
+            if adm_dt.tzinfo is None:
+                adm_dt = adm_dt.replace(tzinfo=timezone.utc)
             dis_dt = getattr(adm, "discharge_datetime", None)
+            if dis_dt is not None and dis_dt.tzinfo is None:
+                dis_dt = dis_dt.replace(tzinfo=timezone.utc)
             end_time = dis_dt or datetime.now(timezone.utc)
             hours_stay = max(0.5, (end_time - adm_dt).total_seconds() / 3600.0)
             
@@ -378,7 +382,7 @@ async def calculate_pending_charges(
 
             unbilled_admissions.append({
                 "id": str(adm.id),
-                "admission_number": f"ADM-{str(adm.id)[:8].upper()}",
+                "admission_number": getattr(adm, "admission_number", f"ADM-{str(adm.id)[:8].upper()}"),
                 "bed_number": bed_num,
                 "category_name": category_name,
                 "admission_datetime": adm_dt.isoformat(),

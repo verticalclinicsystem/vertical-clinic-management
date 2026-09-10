@@ -481,6 +481,38 @@ async def test_appointment_transitions_and_special_views(client: AsyncClient, db
     assert wq.status_code == 200
     assert len(wq.json()["data"]) >= 1
 
+    # Undo check-in → back to confirmed / Scheduled Today (default: accidental)
+    undo = await client.patch(
+        f"/api/v1/appointments/{appt_id}/undo-check-in",
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    assert undo.status_code == 200
+    assert undo.json()["data"]["status"] == "confirmed"
+
+    # Re-check-in and test undo with reason payload
+    ci2 = await client.patch(
+        f"/api/v1/appointments/{appt_id}/check-in",
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    assert ci2.status_code == 200
+    assert ci2.json()["data"]["status"] == "checked_in"
+
+    undo_stepped = await client.patch(
+        f"/api/v1/appointments/{appt_id}/undo-check-in",
+        headers={"Authorization": f"Bearer {token_staff}"},
+        json={"reason": "stepped_out", "notify_patient": True, "notes": "Patient went to park car"},
+    )
+    assert undo_stepped.status_code == 200
+    assert undo_stepped.json()["data"]["status"] == "confirmed"
+
+    # Final check-in so consultation flow can proceed
+    ci3 = await client.patch(
+        f"/api/v1/appointments/{appt_id}/check-in",
+        headers={"Authorization": f"Bearer {token_staff}"},
+    )
+    assert ci3.status_code == 200
+    assert ci3.json()["data"]["status"] == "checked_in"
+
     # Start
     login_doc = await client.post(
         "/api/v1/auth/login",

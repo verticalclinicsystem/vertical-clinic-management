@@ -233,7 +233,7 @@ class AppointmentService:
         if not patient:
             raise PatientNotFoundError()
 
-        role_str = str(role.value) if hasattr(role, "value") else str(role) if role else ""
+        role_str = str(role.value) if hasattr(role, "value") else (role or "")
         role_lower = role_str.lower()
         is_staff = role_lower in ["receptionist", "admin", "clinic_manager"]
 
@@ -763,6 +763,104 @@ class AppointmentService:
                     )
         except Exception as e:
             logger.error(f"Error sending update notification: {e}")
+
+        return full_appt
+
+    async def undo_check_in(
+        self,
+        appointment_id: uuid.UUID,
+        *,
+        current_user_id: uuid.UUID,
+        role: str,
+        reason: str = "accidental",
+        notify_patient: bool = False,
+        notes: str | None = None,
+    ) -> Appointment:
+        """Move a checked-in / waiting patient back to Scheduled (confirmed) with smart notifications."""
+        appointment = await self.get_appointment(appointment_id)
+        if appointment.status not in ("checked_in", "Waiting"):
+            raise BadRequestError("Only checked-in / waiting appointments can be moved back to scheduled.")
+
+        reason_labels = {
+            "accidental": "Accidental Check-in",
+            "stepped_out": "Patient Stepped Out",
+            "doctor_delayed": "Doctor Delayed",
+            "other": "Other",
+        }
+        label = reason_labels.get(reason, reason)
+        audit_entry = f"[Check-in Undone: {label}]"
+        if notes and notes.strip():
+            audit_entry += f" {notes.strip()}"
+
+        existing_notes = appointment.notes or ""
+        combined_notes = f"{existing_notes}\n{audit_entry}".strip() if existing_notes else audit_entry
+
+        updated = await self.appointment_repo.update(
+            appointment,
+            {
+                "status": "confirmed",
+                "notes": combined_notes,
+            }
+        )
+        await self.db.commit()
+
+        # Broadcast real-time queue update via WebSocket
+        try:
+            await ws_manager.send_to_branch(
+                str(appointment.branch_id),
+                {"event": "queue_updated", "branch_id": str(appointment.branch_id)}
+            )
+        except Exception as ws_err:
+            logger.warning(f"Failed to broadcast websocket event: {ws_err}")
+
+        full_appt = await self.get_appointment(updated.id)
+
+        # Smart notifications
+        try:
+            noti_service = NotificationService(self.db)
+            pat_name = full_appt.patient.user.full_name if full_appt.patient and full_appt.patient.user else "Patient"
+            doc_name = full_appt.doctor.user.full_name if full_appt.doctor and full_appt.doctor.user else "Doctor"
+
+            # 1. Notify Doctor (keep doctor's queue status in sync)
+            if full_appt.doctor and full_appt.doctor.user_id:
+                if reason == "stepped_out":
+                    doc_msg = f"{pat_name} has stepped out temporarily and was moved out of your waiting queue."
+                elif reason == "doctor_delayed":
+                    doc_msg = f"{pat_name} was returned to scheduled status due to consultation delay."
+                elif reason == "accidental":
+                    doc_msg = f"{pat_name}'s check-in was undone by front desk (accidental misclick)."
+                else:
+                    custom_info = f" ({notes.strip()})" if notes and notes.strip() else ""
+                    doc_msg = f"{pat_name} was removed from your waiting queue{custom_info}."
+
+                await noti_service.send_multichannel_notification(
+                    user_id=full_appt.doctor.user_id,
+                    title="Patient Queue Update",
+                    message=doc_msg,
+                    type="check_in",
+                )
+
+            # 2. Notify Patient (only if notify_patient is True and reason is not accidental)
+            if notify_patient and reason != "accidental" and full_appt.patient and full_appt.patient.user_id:
+                if reason == "stepped_out":
+                    pat_title = "Queue Status Update"
+                    pat_msg = f"Hi {pat_name}, your check-in for Dr. {doc_name} has been placed on hold. Please inform the front desk as soon as you return to rejoin the queue."
+                elif reason == "doctor_delayed":
+                    pat_title = "Doctor Schedule Update"
+                    pat_msg = f"Hi {pat_name}, Dr. {doc_name} is currently running late. Your appointment remains scheduled, and the front desk will notify you once consultations resume."
+                else:
+                    pat_title = "Check-In Status Update"
+                    extra_note = f" Note: {notes.strip()}." if notes and notes.strip() else ""
+                    pat_msg = f"Hi {pat_name}, your check-in status for Dr. {doc_name} has been moved back to scheduled.{extra_note} Please contact the reception desk upon arrival."
+
+                await noti_service.send_multichannel_notification(
+                    user_id=full_appt.patient.user_id,
+                    title=pat_title,
+                    message=pat_msg,
+                    type="check_in",
+                )
+        except Exception as e:
+            logger.error(f"Error sending undo check-in notification: {e}")
 
         return full_appt
 
