@@ -174,8 +174,8 @@ async def transcribe_voice_dictation(
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
-    # Use Groq Whisper Large V3 if GROQ_API_KEY is configured
-    if settings.AI_PROVIDER == "groq" and settings.GROQ_API_KEY and not settings.GROQ_API_KEY.startswith("gsk_REPLACE_WITH"):
+    # Use Groq Whisper Large V3 if GROQ_API_KEY is configured (regardless of LLM provider)
+    if settings.GROQ_API_KEY and not settings.GROQ_API_KEY.startswith("gsk_REPLACE_WITH"):
         try:
             headers = {
                 "Authorization": f"Bearer {settings.GROQ_API_KEY}"
@@ -322,32 +322,41 @@ async def analyze_clinical_notes(
             
             elif settings.AI_PROVIDER == "gemini":
                 headers = {"Content-Type": "application/json"}
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL or 'gemini-1.5-flash'}:generateContent?key={settings.GEMINI_API_KEY}"
-                payload = {
-                    "contents": [{
-                        "parts": [{"text": f"{system_prompt}\n\nInput dictation:\n{text}"}]
-                    }],
-                    "generationConfig": {
-                        "responseMimeType": "application/json"
-                    }
-                }
+                gemini_models = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+                seen_g = set()
+                gemini_models = [m for m in gemini_models if m and not (m in seen_g or seen_g.add(m))]
+                
                 async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.post(url, json=payload, headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        content = data["candidates"][0]["content"]["parts"][0]["text"]
-                        
-                        cleaned = content.strip()
-                        if cleaned.startswith("```json"):
-                            cleaned = cleaned[7:]
-                        if cleaned.startswith("```"):
-                            cleaned = cleaned[3:]
-                        if cleaned.endswith("```"):
-                            cleaned = cleaned[:-3]
+                    for g_model in gemini_models:
+                        logger.info(f"Initiating Google Gemini AI request using model '{g_model}'...")
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={settings.GEMINI_API_KEY}"
+                        payload = {
+                            "contents": [{
+                                "parts": [{"text": f"{system_prompt}\n\nInput dictation:\n{text}"}]
+                            }],
+                            "generationConfig": {
+                                "responseMimeType": "application/json"
+                            }
+                        }
+                        resp = await client.post(url, json=payload, headers=headers)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            content = data["candidates"][0]["content"]["parts"][0]["text"]
+                            
+                            cleaned = content.strip()
+                            if cleaned.startswith("```json"):
+                                cleaned = cleaned[7:]
+                            if cleaned.startswith("```"):
+                                cleaned = cleaned[3:]
+                            if cleaned.endswith("```"):
+                                cleaned = cleaned[:-3]
 
-                        parsed = json.loads(cleaned.strip())
-                        parsed["allergy_warnings"] = check_allergy_conflicts(parsed.get("suggested_medications", []), allergies)
-                        return ApiResponse.success(data=parsed, message="AI analysis completed successfully via Gemini.")
+                            parsed = json.loads(cleaned.strip())
+                            parsed["allergy_warnings"] = check_allergy_conflicts(parsed.get("suggested_medications", []), allergies)
+                            logger.info(f"Google Gemini AI clinical analysis SUCCESSFUL using model '{g_model}'.")
+                            return ApiResponse.success(data=parsed, message=f"AI analysis completed successfully via Google Gemini ({g_model}).")
+                        else:
+                            logger.warning(f"Google Gemini API model '{g_model}' returned status {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error calling LLM provider {settings.AI_PROVIDER}: {e}. Falling back to local analyzer.")
 

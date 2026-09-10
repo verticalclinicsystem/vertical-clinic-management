@@ -621,7 +621,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   const fetchMyRequests = async () => {
     try {
-      const res = await api.get('/doctors/availability-requests/');
+      const res = await api.get('/doctors/availability-requests');
       if (res.data?.success) {
         setMyRequests(res.data.data);
       }
@@ -650,7 +650,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         payload.proposed_end_time = reqEndTime;
       }
 
-      const res = await api.post('/doctors/availability-requests/', payload);
+      const res = await api.post('/doctors/availability-requests', payload);
       if (res.data?.success) {
         showToast('Availability change request submitted successfully!', 'success');
         setIsRequestingChange(false);
@@ -4091,7 +4091,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                     showToast('Please speak or type clinical notes first.', 'error');
                                     return;
                                   }
-                                  showToast('Re-analyzing clinical notes with Groq AI...');
+                                  showToast('Analyzing clinical notes with AI Clinical Assistant...');
                                   triggerAIAnalysis(symptoms);
                                 }} 
                                 className="doc-btn-primary" 
@@ -4209,7 +4209,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 </div>
                               </div>
                               {isAnalyzing ? (
-                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#0d9488' }}>Analyzing voice stream & synthesizing clinical record via Groq LLM...</p>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#0d9488' }}>Analyzing voice stream & synthesizing clinical record via AI Engine...</p>
                               ) : (
                                 <div style={{ fontSize: '0.78rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                   {isEditingSummary ? (
