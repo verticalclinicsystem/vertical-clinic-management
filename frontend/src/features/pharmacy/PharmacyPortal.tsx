@@ -208,7 +208,7 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
 
   const fetchMyRequests = async () => {
     try {
-      const res = await api.get('/doctors/availability-requests/');
+      const res = await api.get('/doctors/availability-requests');
       if (res.data?.success) {
         setMyRequests(res.data.data);
       }
@@ -232,7 +232,7 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
         reason: reqReason.trim()
       };
 
-      const res = await api.post('/doctors/availability-requests/', payload);
+      const res = await api.post('/doctors/availability-requests', payload);
       if (res.data?.success) {
         showToast('Leave request submitted successfully!', 'success');
         setIsRequestingChange(false);
