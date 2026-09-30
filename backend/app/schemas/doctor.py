@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.auth import UserOut
 
@@ -16,6 +17,26 @@ class DoctorSlotBase(BaseModel):
     end_time: str = Field(..., description="End time in HH:MM format (e.g. 13:00)")
     slot_duration_minutes: int = Field(30, ge=10, le=120)
     is_active: bool = True
+
+    @model_validator(mode="after")
+    def validate_slot_times(self) -> "DoctorSlotBase":
+        time_regex = r"^([01]\d|2[0-3]):[0-5]\d$"
+        if not re.match(time_regex, self.start_time):
+            raise ValueError(f"Invalid start_time format '{self.start_time}', expected HH:MM")
+        if not re.match(time_regex, self.end_time):
+            raise ValueError(f"Invalid end_time format '{self.end_time}', expected HH:MM")
+        if self.start_time >= self.end_time:
+            raise ValueError(f"start_time ({self.start_time}) must be earlier than end_time ({self.end_time})")
+
+        s_h, s_m = map(int, self.start_time.split(':'))
+        e_h, e_m = map(int, self.end_time.split(':'))
+        diff_minutes = (e_h * 60 + e_m) - (s_h * 60 + s_m)
+        if diff_minutes < self.slot_duration_minutes:
+            raise ValueError(
+                f"Shift interval {self.start_time}–{self.end_time} ({diff_minutes} mins) "
+                f"must be at least as long as slot duration ({self.slot_duration_minutes} mins)."
+            )
+        return self
 
 
 class DoctorSlotCreate(DoctorSlotBase):

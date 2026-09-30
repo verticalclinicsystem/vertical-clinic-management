@@ -10,9 +10,9 @@ from typing import Any
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
-from app.core.exceptions import DoctorNotFoundError, BranchNotFoundError
+from app.core.exceptions import DoctorNotFoundError, BranchNotFoundError, BadRequestError
 from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.models.doctor import Doctor, DoctorSlot
@@ -85,16 +85,41 @@ class DoctorService:
         await self.get_doctor(doctor_id)
         return await self.doctor_repo.ensure_slots(doctor_id)
 
-    async def set_doctor_slots(self, doctor_id: uuid.UUID, slot_requests: list[DoctorSlotCreate]) -> list[DoctorSlot]:
-        """Bulk set weekly availability slots for a doctor (deletes old ones, inserts new ones)."""
+    async def set_doctor_slots(
+        self, doctor_id: uuid.UUID, slot_requests: list[DoctorSlotCreate]
+    ) -> tuple[list[DoctorSlot], list[dict[str, Any]]]:
+        """
+        Bulk set weekly availability slots for a doctor.
+        Validates shift overlaps, deletes old slots, inserts new slots,
+        and detects if any future confirmed/scheduled appointments conflict with the new hours.
+        """
         await self.get_doctor(doctor_id)
-        
-        # 1. Fetch and delete existing slots
+
+        # 1. Overlap validation for active shifts on the same weekday
+        weekday_shifts: dict[int, list[DoctorSlotCreate]] = {}
+        for req in slot_requests:
+            if req.is_active:
+                weekday_shifts.setdefault(req.weekday, []).append(req)
+
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        for weekday, shifts in weekday_shifts.items():
+            if len(shifts) > 1:
+                sorted_shifts = sorted(shifts, key=lambda s: s.start_time)
+                for i in range(len(sorted_shifts) - 1):
+                    s1 = sorted_shifts[i]
+                    s2 = sorted_shifts[i + 1]
+                    if s2.start_time < s1.end_time:
+                        d_name = day_names[weekday] if 0 <= weekday <= 6 else f"Day {weekday}"
+                        raise BadRequestError(
+                            f"Overlapping shifts detected on {d_name}: {s1.start_time}–{s1.end_time} overlaps with {s2.start_time}–{s2.end_time}."
+                        )
+
+        # 2. Fetch and delete existing slots
         existing_slots = await self.doctor_repo.get_slots(doctor_id)
         for slot in existing_slots:
             await self.doctor_repo.delete_slot(slot.id)
-            
-        # 2. Insert new slots
+
+        # 3. Insert new slots
         new_slots = []
         for req in slot_requests:
             slot = DoctorSlot(
@@ -103,14 +128,78 @@ class DoctorService:
                 start_time=req.start_time,
                 end_time=req.end_time,
                 slot_duration_minutes=req.slot_duration_minutes,
-                is_active=req.is_active
+                is_active=req.is_active,
             )
             await self.doctor_repo.save_slot(slot)
             new_slots.append(slot)
-            
+
+        # 4. Detect future conflicting appointments
+        now_utc = datetime.now(timezone.utc)
+        appts_stmt = (
+            select(Appointment)
+            .where(
+                Appointment.doctor_id == doctor_id,
+                Appointment.appointment_datetime >= now_utc,
+                Appointment.status.in_(["scheduled", "confirmed"]),
+            )
+        )
+        appts_res = await self.db.execute(appts_stmt)
+        upcoming_appts = list(appts_res.scalars().all())
+
+        conflicts = []
+        IST = timezone(timedelta(hours=5, minutes=30))
+
+        active_slots_by_day: dict[int, list[DoctorSlotCreate]] = {}
+        for req in slot_requests:
+            if req.is_active:
+                active_slots_by_day.setdefault(req.weekday, []).append(req)
+
+        for appt in upcoming_appts:
+            appt_ist = appt.appointment_datetime.astimezone(IST)
+            appt_weekday = appt_ist.weekday()
+            appt_time_str = appt_ist.strftime("%H:%M")
+
+            day_slots = active_slots_by_day.get(appt_weekday, [])
+            fits_in_slot = False
+            for slot_req in day_slots:
+                s_h, s_m = map(int, slot_req.start_time.split(':'))
+                e_h, e_m = map(int, slot_req.end_time.split(':'))
+                cur_min = s_h * 60 + s_m
+                end_min = e_h * 60 + e_m
+                appt_min = int(appt_time_str.split(':')[0]) * 60 + int(appt_time_str.split(':')[1])
+
+                while cur_min < end_min:
+                    if cur_min == appt_min:
+                        fits_in_slot = True
+                        break
+                    cur_min += slot_req.slot_duration_minutes
+                if fits_in_slot:
+                    break
+
+            if not fits_in_slot:
+                patient_name = "Patient"
+                if appt.patient_id:
+                    stmt_pat = (
+                        select(Patient)
+                        .where(Patient.id == appt.patient_id)
+                        .options(joinedload(Patient.user))
+                    )
+                    res_pat = await self.db.execute(stmt_pat)
+                    pat_obj = res_pat.scalar_one_or_none()
+                    if pat_obj and pat_obj.user:
+                        patient_name = pat_obj.user.full_name
+
+                conflicts.append({
+                    "id": str(appt.id),
+                    "patient_name": patient_name,
+                    "appointment_datetime": appt.appointment_datetime.isoformat(),
+                    "date": appt_ist.strftime("%Y-%m-%d"),
+                    "time": appt_ist.strftime("%I:%M %p"),
+                })
+
         await self.db.commit()
-        logger.info(f"Set {len(new_slots)} slots for doctor {doctor_id}")
-        return new_slots
+        logger.info(f"Set {len(new_slots)} slots for doctor {doctor_id}, detected {len(conflicts)} conflicts")
+        return new_slots, conflicts
 
     async def get_doctor_dashboard(self, user_id: uuid.UUID) -> dict[str, Any]:
         """Fetch dashboard analytics, today's schedule, patient queue, and recent consultations."""
