@@ -230,14 +230,21 @@ async def get_admin_dashboard(
         staff_q = staff_q.where(User.branch_id == branch_id)
     staff_res = await db.execute(staff_q.order_by(User.full_name))
     staff_members = staff_res.scalars().all()
+
+    # Preload doctors by user_id
+    doc_stmt = select(Doctor.id, Doctor.user_id)
+    doc_res = await db.execute(doc_stmt)
+    doc_user_to_id = {row[1]: str(row[0]) for row in doc_res.all()}
+
     staff_list = []
     for u in staff_members:
         is_suspended = u.suspended_until and u.suspended_until > now
         status_str = "suspended" if is_suspended else ("active" if u.is_active else "inactive")
         staff_list.append({
             "id": str(u.id),
+            "doctor_id": doc_user_to_id.get(u.id),
             "name": u.full_name,
-            "role": str(u.role),
+            "role": u.role,
             "email": u.email,
             "phone": u.phone or "—",
             "branch_id": str(u.branch_id) if u.branch_id else None,

@@ -173,3 +173,101 @@ async def test_doctor_followups(client: AsyncClient):
     assert "pending" in res_data["data"]
     assert "booked" in res_data["data"]
 
+
+@pytest.mark.asyncio
+async def test_custom_interval_and_slot_duration(client: AsyncClient):
+    """Verify that Doctor and Admin can configure 1 PM - 3 PM interval with 30m or 15m duration."""
+    # 1. Login as Admin
+    login_admin = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    assert login_admin.status_code == 200
+    admin_token = login_admin.json()["data"]["access_token"]
+
+    # Get Rohan's ID
+    list_res = await client.get("/api/v1/doctors/")
+    rohan_doc = next(d for d in list_res.json()["data"]["items"] if "Rohan" in d["user"]["full_name"])
+    rohan_id = rohan_doc["id"]
+
+    # 2. Test Invalid slot validation: start_time >= end_time
+    invalid_payload = [
+        {"weekday": 0, "start_time": "15:00", "end_time": "13:00", "slot_duration_minutes": 30}
+    ]
+    invalid_res = await client.post(
+        f"/api/v1/doctors/{rohan_id}/slots",
+        json=invalid_payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert invalid_res.status_code == 422
+
+    # 2b. Test short interval (shorter than slot duration: 15 mins interval vs 30 mins slot)
+    short_payload = [
+        {"weekday": 0, "start_time": "13:00", "end_time": "13:15", "slot_duration_minutes": 30}
+    ]
+    short_res = await client.post(
+        f"/api/v1/doctors/{rohan_id}/slots",
+        json=short_payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert short_res.status_code == 422
+
+    # 2c. Test overlapping shifts on same weekday (09:00 - 13:00 and 12:00 - 15:00)
+    overlap_payload = [
+        {"weekday": 0, "start_time": "09:00", "end_time": "13:00", "slot_duration_minutes": 30},
+        {"weekday": 0, "start_time": "12:00", "end_time": "15:00", "slot_duration_minutes": 30},
+    ]
+    overlap_res = await client.post(
+        f"/api/v1/doctors/{rohan_id}/slots",
+        json=overlap_payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert overlap_res.status_code == 400
+    assert "Overlapping shifts" in overlap_res.json()["message"]
+
+    # 3. Admin sets 13:00 to 15:00 (1 PM - 3 PM) with 30 min duration for Monday (weekday=0)
+    payload_30 = [
+        {"weekday": 0, "start_time": "13:00", "end_time": "15:00", "slot_duration_minutes": 30}
+    ]
+    set_30_res = await client.post(
+        f"/api/v1/doctors/{rohan_id}/slots",
+        json=payload_30,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert set_30_res.status_code == 200
+
+    # Query available slots for a Monday
+    slots_30_res = await client.get(
+        f"/api/v1/appointments/available-slots?doctor_id={rohan_id}&date=2026-07-20"
+    )
+    assert slots_30_res.status_code == 200
+    times_30 = [s["time"] for s in slots_30_res.json()["data"]]
+    assert times_30 == ["13:00", "13:30", "14:00", "14:30"]
+
+    # 4. Doctor sets 13:00 to 15:00 with 15 min duration
+    login_doc = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "doctor@verticalclinic.com", "password": "Doctor@verticalclinic.com"},
+    )
+    doc_token = login_doc.json()["data"]["access_token"]
+
+    payload_15 = [
+        {"weekday": 0, "start_time": "13:00", "end_time": "15:00", "slot_duration_minutes": 15}
+    ]
+    set_15_res = await client.post(
+        f"/api/v1/doctors/{rohan_id}/slots",
+        json=payload_15,
+        headers={"Authorization": f"Bearer {doc_token}"},
+    )
+    assert set_15_res.status_code == 200
+
+    slots_15_res = await client.get(
+        f"/api/v1/appointments/available-slots?doctor_id={rohan_id}&date=2026-07-20"
+    )
+    assert slots_15_res.status_code == 200
+    times_15 = [s["time"] for s in slots_15_res.json()["data"]]
+    assert times_15 == [
+        "13:00", "13:15", "13:30", "13:45",
+        "14:00", "14:15", "14:30", "14:45"
+    ]
+
