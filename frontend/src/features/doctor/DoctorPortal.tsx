@@ -38,6 +38,7 @@ import { api, getWebSocketUrl } from '../../services/api';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import './DoctorPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
+import { DoctorSlotManager } from '../../components/DoctorSlotManager';
 
 interface DoctorPortalProps {
   onLogout: () => void;
@@ -2708,42 +2709,63 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
               {/* TAB: AVAILABILITY SETTINGS MANAGER */}
               {activeTab === 'availability' && (
-                <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-                  {/* Top Banner Accent */}
+                <div style={{ maxWidth: '960px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* Interactive Doctor Time Slot Manager */}
+                  {dashboardData?.doctor?.id ? (
+                    <DoctorSlotManager
+                      doctorId={dashboardData.doctor.id}
+                      doctorName={dashboardData.doctor?.user?.full_name || dashboardData.doctor?.name || 'My'}
+                      isDoctorView={true}
+                      onSaved={() => {
+                        fetchDashboard();
+                        showToast('Schedule & slots updated successfully!');
+                      }}
+                    />
+                  ) : (
+                    <div style={{ padding: '32px', backgroundColor: '#ffffff', borderRadius: '14px', textAlign: 'center', color: '#64748b' }}>
+                      <RefreshCw className="spin" size={20} style={{ marginBottom: '8px' }} />
+                      <p>Loading doctor profile...</p>
+                    </div>
+                  )}
+
+                  {/* Top Banner Accent for Leaves and Special Changes */}
                   <div style={{
                     background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
                     color: '#ffffff',
                     padding: '24px 28px',
-                    borderRadius: '12px',
-                    marginBottom: '24px',
+                    borderRadius: '16px',
                     boxShadow: '0 4px 12px rgba(15, 118, 110, 0.08)'
                   }}>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Calendar size={22} /> Availability & Schedule Settings
-                    </h2>
-                    <p style={{ margin: '8px 0 0 0', fontSize: '0.85rem', color: '#ccfbf1', lineHeight: 1.4, opacity: 0.9 }}>
-                      Your clinical timing parameters are locked for patient scheduling safety. If you need to make changes to your lunch break, teleconsultation window, shift timing, or take leaves, please click <strong>Request Schedule Change</strong> to ask the clinic admin for approval.
-                    </p>
-                    <div style={{ marginTop: '16px' }}>
-                      <button
-                        onClick={() => setIsRequestingChange(true)}
-                        style={{
-                          backgroundColor: '#ffffff',
-                          color: '#0f766e',
-                          border: 'none',
-                          padding: '10px 20px',
-                          borderRadius: '8px',
-                          fontWeight: '700',
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                        }}
-                      >
-                        <Plus size={16} /> Request Schedule Change
-                      </button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Calendar size={20} /> Request Leave & Admin Approvals
+                        </h2>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '0.84rem', color: '#ccfbf1', lineHeight: 1.4, opacity: 0.9 }}>
+                          Need temporary clinical leave or emergency time off? Submit a change request for administrator approval.
+                        </p>
+                      </div>
+                      <div>
+                        <button
+                          onClick={() => setIsRequestingChange(true)}
+                          style={{
+                            backgroundColor: '#ffffff',
+                            color: '#0f766e',
+                            border: 'none',
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            fontWeight: '700',
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}
+                        >
+                          <Plus size={16} /> Request Leave / Emergency Off
+                        </button>
+                      </div>
                     </div>
                   </div>
 

@@ -8,6 +8,7 @@ import {
 import { api } from '../../services/api';
 import './AdminPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
+import { DoctorSlotManager } from '../../components/DoctorSlotManager';
 
 interface AdminPortalProps { onLogout: () => void; }
 
@@ -53,7 +54,7 @@ function DonutChart({ segments, total, label }: { segments: { value: number; col
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTabInternal] = useState<string>(() => {
     const saved = localStorage.getItem('admin_portal_tab');
-    const validTabs = ['dashboard', 'reports', 'inventory', 'staff', 'attendance', 'branches', 'beds', 'availability-requests', 'active-sessions', 'settings'];
+    const validTabs = ['dashboard', 'reports', 'inventory', 'staff', 'doctor-slots', 'attendance', 'branches', 'beds', 'availability-requests', 'active-sessions', 'settings'];
     return saved && validTabs.includes(saved) ? saved : 'dashboard';
   });
   const [tabHistory, setTabHistory] = useState<string[]>([]);
@@ -782,6 +783,45 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
   };
 
+  // Doctor Time Slots & Schedule state
+  const [doctorsList, setDoctorsList] = useState<any[]>([]);
+  const [selectedSlotDoctorId, setSelectedSlotDoctorId] = useState<string>('');
+  const [slotModalDoctor, setSlotModalDoctor] = useState<{ id: string; name: string } | null>(null);
+
+  const fetchDoctorsList = async () => {
+    try {
+      const res = await api.get('/doctors/?limit=100');
+      if (res.data?.success) {
+        const items = res.data.data?.items || [];
+        setDoctorsList(items);
+        if (items.length > 0) {
+          setSelectedSlotDoctorId((prev) => prev || items[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching doctors list in admin:', err);
+    }
+  };
+
+  const handleOpenDoctorSlots = (staffMember: any) => {
+    let docId = staffMember.doctor_id;
+    if (!docId) {
+      const matched = doctorsList.find(
+        (d: any) =>
+          d.user_id === staffMember.id ||
+          d.user?.id === staffMember.id ||
+          (d.user?.full_name && d.user.full_name.toLowerCase() === staffMember.name.toLowerCase())
+      );
+      if (matched) docId = matched.id;
+    }
+    if (docId) {
+      setSelectedSlotDoctorId(docId);
+      setSlotModalDoctor({ id: docId, name: staffMember.name });
+    } else {
+      alert(`Doctor profile not found for ${staffMember.name}. Please ensure doctor profile is registered.`);
+    }
+  };
+
   const [systemSettings, setSystemSettings] = useState({
     gst_rate: 18,
     default_teleconsultation_fee: 500,
@@ -1171,6 +1211,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       if (activeTab === 'availability-requests') {
         await fetchAvailabilityRequests();
       }
+      if (activeTab === 'doctor-slots') {
+        await fetchDoctorsList();
+      }
     } catch (e) { console.error(e); }
     setLoading(false);
   };
@@ -1200,7 +1243,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     }
   };
 
-  useEffect(() => { fetchDashboard(); }, []);
+  useEffect(() => {
+    fetchDashboard();
+    fetchDoctorsList();
+  }, []);
 
   const kpis = data?.kpis || {};
   const apptStatus = data?.appointment_status_today || {};
@@ -1299,6 +1345,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           <div className="admin-nav-group-label">Manage</div>
           {[
             { id: 'staff', icon: <Users size={18} />, label: 'Staff Management' },
+            { id: 'doctor-slots', icon: <Clock size={18} />, label: 'Doctor Time Slots' },
             { id: 'attendance', icon: <Clock size={18} />, label: 'Staff Attendance' },
             { id: 'branches', icon: <Layers size={18} />, label: 'Branch Management' },
             { id: 'beds', icon: <Bed size={18} />, label: 'Bed Assets & Registry' },
@@ -1336,6 +1383,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 {activeTab === 'reports' && 'Reports'}
                 {activeTab === 'inventory' && 'Inventory Reports'}
                 {activeTab === 'staff' && 'Staff Management'}
+                {activeTab === 'doctor-slots' && 'Doctor Time Slots & Schedule'}
                 {activeTab === 'attendance' && 'Staff Attendance Dashboard'}
                 {activeTab === 'branches' && 'Branch Management'}
                 {activeTab === 'beds' && 'Bed Assets & Category Registry'}
@@ -2399,27 +2447,119 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                           <td>{s.phone}</td>
                           <td><span className={`admin-status-badge ${s.status}`}>{s.status}</span></td>
                           <td>
-                            <button
-                              onClick={() => handleEditStaffClick(s)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--admin-primary)',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                fontSize: '0.8rem',
-                                fontWeight: '600'
-                              }}
-                            >
-                              <Edit size={14} /> Edit
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <button
+                                onClick={() => handleEditStaffClick(s)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--admin-primary)',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600'
+                                }}
+                              >
+                                <Edit size={14} /> Edit
+                              </button>
+                              {s.role === 'doctor' && (
+                                <button
+                                  onClick={() => handleOpenDoctorSlots(s)}
+                                  title="Configure Doctor Weekly Time Slots & Intervals"
+                                  style={{
+                                    background: '#e0f2fe',
+                                    border: '1px solid #bae6fd',
+                                    color: '#0369a1',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '600'
+                                  }}
+                                >
+                                  <Clock size={13} /> Slots
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── DOCTOR TIME SLOTS MANAGEMENT TAB ── */}
+          {activeTab === 'doctor-slots' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Doctor Selector Card */}
+              <div className="admin-card" style={{ padding: '20px 24px', margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <h2 className="admin-card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
+                      Doctor Availability & Shift Intervals
+                    </h2>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--admin-text-muted)' }}>
+                      Select a doctor to manage their shift timings (e.g. 1 PM to 3 PM) and appointment slot durations (15m, 30m, etc.)
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '320px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--admin-text-dark)', whiteSpace: 'nowrap' }}>
+                      Choose Doctor:
+                    </label>
+                    <select
+                      className="admin-select"
+                      style={{ height: '42px', fontSize: '0.88rem', fontWeight: 600, flex: 1, borderRadius: '8px', border: '1px solid var(--admin-border)' }}
+                      value={selectedSlotDoctorId}
+                      onChange={(e) => setSelectedSlotDoctorId(e.target.value)}
+                    >
+                      {doctorsList.length === 0 ? (
+                        <option value="">No doctors available</option>
+                      ) : (
+                        doctorsList.map((doc: any) => {
+                          const docName = doc.user?.full_name || doc.name || 'Doctor';
+                          const spec = doc.specialization ? ` (${doc.specialization})` : '';
+                          const branch = doc.branch_name ? ` · ${doc.branch_name}` : '';
+                          return (
+                            <option key={doc.id} value={doc.id}>
+                              Dr. {docName}{spec}{branch}
+                            </option>
+                          );
+                        })
+                      )}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slot Manager Component for Selected Doctor */}
+              {selectedSlotDoctorId ? (
+                <DoctorSlotManager
+                  key={selectedSlotDoctorId}
+                  doctorId={selectedSlotDoctorId}
+                  doctorName={
+                    (() => {
+                      const found = doctorsList.find((d: any) => d.id === selectedSlotDoctorId);
+                      return found?.user?.full_name || found?.name || 'Doctor';
+                    })()
+                  }
+                  isDoctorView={false}
+                  onSaved={() => {
+                    fetchDashboard();
+                  }}
+                />
+              ) : (
+                <div className="admin-card" style={{ padding: '48px', textAlign: 'center', color: 'var(--admin-text-muted)' }}>
+                  <Clock size={36} style={{ marginBottom: '12px', opacity: 0.5, color: '#0b7894' }} />
+                  <p style={{ fontWeight: 600 }}>Please select a doctor above to configure their weekly time slots.</p>
                 </div>
               )}
             </div>
@@ -4013,6 +4153,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                 Dismiss & Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DOCTOR TIME SLOTS QUICK MODAL ── */}
+      {slotModalDoctor && (
+        <div
+          className="admin-modal-overlay"
+          onClick={() => setSlotModalDoctor(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(16, 42, 67, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="admin-modal-content"
+            style={{
+              maxWidth: '960px',
+              width: '100%',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              borderRadius: '16px',
+              padding: 0,
+              backgroundColor: '#ffffff',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              border: 'none',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DoctorSlotManager
+              key={slotModalDoctor.id}
+              doctorId={slotModalDoctor.id}
+              doctorName={slotModalDoctor.name}
+              isDoctorView={false}
+              onClose={() => setSlotModalDoctor(null)}
+              onSaved={() => {
+                fetchDashboard();
+              }}
+            />
           </div>
         </div>
       )}

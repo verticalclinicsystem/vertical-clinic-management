@@ -182,14 +182,16 @@ async def set_doctor_slots(
     service = DoctorService(db)
     doctor = await service.get_doctor(doctor_id)
 
-    is_admin = current_user.role == UserRole.ADMIN
+    is_admin = current_user.role in (UserRole.ADMIN, UserRole.CLINIC_MANAGER)
     is_owner = doctor.user_id == current_user.id
 
     if not (is_admin or is_owner):
         raise PermissionDeniedError("You do not have permission to define slots for this doctor.")
 
-    slots = await service.set_doctor_slots(doctor_id, request)
+    slots, conflicts = await service.set_doctor_slots(doctor_id, request)
+    warning_text = f" Warning: {len(conflicts)} upcoming appointment(s) may need rescheduling." if conflicts else ""
     return ApiResponse.success(
         data=[DoctorSlotOut.model_validate(slot) for slot in slots],
-        message="Doctor availability slots updated successfully.",
+        meta={"conflicts": conflicts} if conflicts else None,
+        message=f"Doctor availability slots updated successfully.{warning_text}",
     )
