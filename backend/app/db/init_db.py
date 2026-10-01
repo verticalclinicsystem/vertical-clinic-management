@@ -72,7 +72,9 @@ async def create_tables() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP WITH TIME ZONE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;",
-            "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS admission_id UUID REFERENCES admissions(id) ON DELETE SET NULL;"
+            "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS admission_id UUID REFERENCES admissions(id) ON DELETE SET NULL;",
+            "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS previous_doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL;",
+            "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reassigned_at TIMESTAMP WITH TIME ZONE;"
         ]
         for stmt in alter_statements:
             with contextlib.suppress(Exception):

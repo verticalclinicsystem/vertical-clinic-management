@@ -9,6 +9,8 @@ import { api } from '../../services/api';
 import './AdminPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { DoctorSlotManager } from '../../components/DoctorSlotManager';
+import { ThemeToggle } from '../../components/ThemeToggle';
+import { LeaveConflictResolutionModal } from '../../components/LeaveConflictResolutionModal';
 
 interface AdminPortalProps { onLogout: () => void; }
 
@@ -1218,6 +1220,54 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     setLoading(false);
   };
 
+  // Leave Conflict Resolution Modal State
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [activeConflictRequest, setActiveConflictRequest] = useState<any>(null);
+  const [activeConflictsList, setActiveConflictsList] = useState<any[]>([]);
+  const [conflictDoctorsList, setConflictDoctorsList] = useState<any[]>([]);
+
+  const handleInitiateApprove = async (req: any) => {
+    try {
+      const res = await api.get(`/doctors/availability-requests/${req.id}/conflicts`);
+      const data = res.data?.data;
+      const conflicts = data?.conflicts || [];
+      const doctors = data?.doctors || [];
+
+      if (conflicts.length > 0) {
+        setActiveConflictRequest(data?.request || req);
+        setActiveConflictsList(conflicts);
+        setConflictDoctorsList(doctors);
+        setConflictModalOpen(true);
+      } else {
+        await handleResolveRequest(req.id, 'approved');
+      }
+    } catch (err: any) {
+      console.error('Failed to preview conflicts, approving directly:', err);
+      await handleResolveRequest(req.id, 'approved');
+    }
+  };
+
+  const handleConfirmConflictResolutions = async (resolutions: any[]) => {
+    if (!activeConflictRequest) return;
+    try {
+      const res = await api.put(`/doctors/availability-requests/${activeConflictRequest.id}`, {
+        status: 'approved',
+        resolutions,
+      });
+      if (res.data?.success) {
+        setConflictModalOpen(false);
+        setActiveConflictRequest(null);
+        await fetchAvailabilityRequests();
+        alert('Leave approved and conflicting appointments resolved!');
+      } else {
+        alert(res.data?.message || 'Failed to update request.');
+      }
+    } catch (err: any) {
+      console.error('Failed to resolve conflicts:', err);
+      alert(err.response?.data?.message || 'Error occurred while resolving conflicts.');
+    }
+  };
+
   const handleResolveRequest = async (requestId: string, status: 'approved' | 'rejected') => {
     try {
       const res = await api.put(`/doctors/availability-requests/${requestId}`, {
@@ -1395,6 +1445,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </div>
           </div>
           <div className="admin-topbar-right">
+            <ThemeToggle />
             <button className="admin-icon-btn" title="Refresh" onClick={() => fetchDashboard()}>
               <RefreshCw size={16} className={loading ? 'spin' : ''} />
             </button>
@@ -1819,19 +1870,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
                   {/* Start Date */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Start Date:</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--muted, #475569)' }}>Start Date:</label>
                     <CustomDatePicker
                       value={reportStartDate}
-                      onChange={setReportStartDate}
+                      maxDate={reportEndDate || undefined}
+                      onChange={(date) => {
+                        setReportStartDate(date);
+                        if (date && reportEndDate && date > reportEndDate) {
+                          setReportEndDate(date);
+                        }
+                      }}
                     />
                   </div>
 
                   {/* End Date */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>End Date:</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--muted, #475569)' }}>End Date:</label>
                     <CustomDatePicker
                       value={reportEndDate}
-                      onChange={setReportEndDate}
+                      minDate={reportStartDate || undefined}
+                      onChange={(date) => {
+                        if (reportStartDate && date && date < reportStartDate) {
+                          setReportEndDate(reportStartDate);
+                        } else {
+                          setReportEndDate(date);
+                        }
+                      }}
                     />
                   </div>
 
@@ -3171,7 +3235,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                                 <td>
                                   <div style={{ display: 'flex', gap: '8px' }}>
                                     <button
-                                      onClick={() => handleResolveRequest(req.id, 'approved')}
+                                      onClick={() => handleInitiateApprove(req)}
                                       style={{
                                         background: '#10b981',
                                         border: 'none',
@@ -4035,6 +4099,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       <label className="admin-form-label">Suspended Until</label>
                       <CustomDatePicker
                         value={suspensionUntilDate}
+                        minDate={new Date().toISOString().split('T')[0]}
                         onChange={setSuspensionUntilDate}
                       />
                     </div>
@@ -4202,6 +4267,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           </div>
         </div>
       )}
+
+      {/* ── LEAVE CONFLICT RESOLUTION MODAL ── */}
+      <LeaveConflictResolutionModal
+        isOpen={conflictModalOpen}
+        onClose={() => setConflictModalOpen(false)}
+        request={activeConflictRequest}
+        conflicts={activeConflictsList}
+        availableDoctors={conflictDoctorsList}
+        onConfirm={handleConfirmConflictResolutions}
+      />
     </div>
   );
 };

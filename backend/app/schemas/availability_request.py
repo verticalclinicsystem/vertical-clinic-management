@@ -14,12 +14,21 @@ class AvailabilityChangeRequestCreate(BaseModel):
     proposed_end_time: str | None = Field(None, description="Proposed end time format HH:MM")
     proposed_start_date: date | None = Field(None, description="Proposed start date")
     proposed_end_date: date | None = Field(None, description="Proposed end date")
-    reason: str = Field(..., min_length=5, description="Doctor's reason or description of the issue")
+    reason: str = Field(..., min_length=1, description="Doctor's reason or description of the issue")
+
+
+class ConflictResolutionItem(BaseModel):
+    appointment_id: uuid.UUID
+    action: str = Field(..., description="Action to take: 'reassign', 'cancel', or 'leave_pending'")
+    new_doctor_id: uuid.UUID | None = Field(None, description="Doctor ID to reassign appointment to")
+    new_time: str | None = Field(None, description="Proposed alternative time in HH:MM format if needed")
+    reason: str | None = Field(None, description="Reason if cancelled or notes")
 
 
 class AvailabilityChangeRequestUpdate(BaseModel):
     status: str = Field(..., description="Target status: approved or rejected")
     rejection_reason: str | None = Field(None, description="Optional rejection description")
+    resolutions: list[ConflictResolutionItem] | None = Field(None, description="List of conflict resolutions for booked appointments")
 
 
 class AvailabilityChangeRequestOut(BaseModel):

@@ -35,6 +35,8 @@ import {
 import { api } from '../../services/api';
 import './ClinicManagerPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
+import { ThemeToggle } from '../../components/ThemeToggle';
+import { LeaveConflictResolutionModal } from '../../components/LeaveConflictResolutionModal';
 
 interface ClinicManagerPortalProps {
   onLogout: () => void;
@@ -831,6 +833,51 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
     }
   };
 
+  // Leave Conflict Resolution Modal State
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [activeConflictRequest, setActiveConflictRequest] = useState<any>(null);
+  const [activeConflictsList, setActiveConflictsList] = useState<any[]>([]);
+  const [conflictDoctorsList, setConflictDoctorsList] = useState<any[]>([]);
+
+  const handleInitiateApprove = async (req: any) => {
+    try {
+      const res = await api.get(`/doctors/availability-requests/${req.id}/conflicts`);
+      const data = res.data?.data;
+      const conflicts = data?.conflicts || [];
+      const doctors = data?.doctors || [];
+
+      if (conflicts.length > 0) {
+        setActiveConflictRequest(data?.request || req);
+        setActiveConflictsList(conflicts);
+        setConflictDoctorsList(doctors);
+        setConflictModalOpen(true);
+      } else {
+        await handleReviewRequest(req.id, 'approve');
+      }
+    } catch (err: any) {
+      console.error('Failed to preview conflicts, approving directly:', err);
+      await handleReviewRequest(req.id, 'approve');
+    }
+  };
+
+  const handleConfirmConflictResolutions = async (resolutions: any[]) => {
+    if (!activeConflictRequest) return;
+    try {
+      const res = await api.post(`/clinic-manager/schedule-requests/${activeConflictRequest.id}/review`, {
+        action: 'approve',
+        response_notes: reviewNotes[activeConflictRequest.id] || '',
+        resolutions,
+      });
+      showToast('success', res.data?.message || 'Leave approved and conflicting appointments resolved!');
+      setConflictModalOpen(false);
+      setActiveConflictRequest(null);
+      fetchRequests();
+    } catch (err: any) {
+      console.error('Failed to resolve schedule conflicts:', err);
+      showToast('error', err.response?.data?.message || 'Failed to resolve appointment conflicts.');
+    }
+  };
+
   // Filtered staff, billing, requests and notices datasets based on topbar search query
   const query = staffSearchQuery.trim().toLowerCase();
 
@@ -1423,6 +1470,8 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
               )}
             </div>
 
+            <ThemeToggle />
+
             <div
               className="topbar-user-profile"
               onClick={() => setIsProfileOpen((prev) => !prev)}
@@ -1978,7 +2027,14 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                       <label>Emergency Absence Date *</label>
                       <CustomDatePicker
                         value={emergencyForm.leave_date}
-                        onChange={(date) => setEmergencyForm({ ...emergencyForm, leave_date: date })}
+                        minDate={new Date().toISOString().split('T')[0]}
+                        onChange={(date) => {
+                          const updated = { ...emergencyForm, leave_date: date };
+                          if (date && emergencyForm.target_reschedule_date && date > emergencyForm.target_reschedule_date) {
+                            updated.target_reschedule_date = date;
+                          }
+                          setEmergencyForm(updated);
+                        }}
                       />
                     </div>
 
@@ -1986,7 +2042,14 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                       <label>Target Reschedule Date (Optional)</label>
                       <CustomDatePicker
                         value={emergencyForm.target_reschedule_date}
-                        onChange={(date) => setEmergencyForm({ ...emergencyForm, target_reschedule_date: date })}
+                        minDate={emergencyForm.leave_date || new Date().toISOString().split('T')[0]}
+                        onChange={(date) => {
+                          if (emergencyForm.leave_date && date && date < emergencyForm.leave_date) {
+                            setEmergencyForm({ ...emergencyForm, target_reschedule_date: emergencyForm.leave_date });
+                          } else {
+                            setEmergencyForm({ ...emergencyForm, target_reschedule_date: date });
+                          }
+                        }}
                       />
                     </div>
                   </div>
@@ -2248,7 +2311,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                               <button
                                 type="button"
                                 className="btn-approve"
-                                onClick={() => handleReviewRequest(req.id, 'approve')}
+                                onClick={() => handleInitiateApprove(req)}
                               >
                                 <CheckCircle size={14} /> Approve
                               </button>
@@ -4299,6 +4362,16 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
           </div>
         </div>
       )}
+
+      {/* ── LEAVE CONFLICT RESOLUTION MODAL ── */}
+      <LeaveConflictResolutionModal
+        isOpen={conflictModalOpen}
+        onClose={() => setConflictModalOpen(false)}
+        request={activeConflictRequest}
+        conflicts={activeConflictsList}
+        availableDoctors={conflictDoctorsList}
+        onConfirm={handleConfirmConflictResolutions}
+      />
     </div>
   );
 };

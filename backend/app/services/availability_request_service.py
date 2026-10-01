@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from app.core.exceptions import BadRequestError, PermissionDeniedError
 from app.models.availability_request import AvailabilityChangeRequest
 from app.models.doctor import Doctor, DoctorSlot
+from app.models.patient import Patient
 from app.models.appointment import Appointment
 from app.models.user import User
 from app.schemas.availability_request import AvailabilityChangeRequestCreate, AvailabilityChangeRequestUpdate
@@ -64,7 +65,7 @@ class AvailabilityRequestService:
 
     async def get_requests(self, user_id: uuid.UUID, role: str) -> list[AvailabilityChangeRequest]:
         """Fetch all requests, filtering by doctor/user if not admin."""
-        if role == "admin":
+        if role in ["admin", "clinic_manager"]:
             stmt = select(AvailabilityChangeRequest).order_by(AvailabilityChangeRequest.created_at.desc())
         elif role == "doctor":
             res = await self.db.execute(select(Doctor).where(Doctor.user_id == user_id))
@@ -89,21 +90,127 @@ class AvailabilityRequestService:
                 stmt_doc = select(User).join(Doctor, Doctor.user_id == User.id).where(Doctor.id == r.doctor_id)
                 res_user = await self.db.execute(stmt_doc)
                 user = res_user.scalar_one_or_none()
-                r.doctor_name = user.full_name if user else "Doctor"
+                setattr(r, "doctor_name", user.full_name if user else "Doctor")
             elif r.user_id:
                 stmt_user = select(User).where(User.id == r.user_id)
                 res_user = await self.db.execute(stmt_user)
                 user = res_user.scalar_one_or_none()
-                r.doctor_name = user.full_name if user else "Staff"
+                setattr(r, "doctor_name", user.full_name if user else "Staff")
             else:
-                r.doctor_name = "Staff"
+                setattr(r, "doctor_name", "Staff")
 
         return reqs
+
+    async def get_request_conflicts(self, request_id: uuid.UUID) -> dict:
+        """Fetch all appointments conflicting with a schedule change request, along with available replacement doctors in the same branch/specialty."""
+        stmt = select(AvailabilityChangeRequest).where(AvailabilityChangeRequest.id == request_id)
+        res = await self.db.execute(stmt)
+        req = res.scalar_one_or_none()
+        if not req:
+            raise BadRequestError("Availability request not found.")
+
+        if not req.doctor_id:
+            return {"conflicts": [], "doctors": [], "request": None}
+
+        stmt_doc = select(Doctor).options(selectinload(Doctor.user)).where(Doctor.id == req.doctor_id)
+        res_doc = await self.db.execute(stmt_doc)
+        doctor = res_doc.scalar_one_or_none()
+        if not doctor:
+            return {"conflicts": [], "doctors": [], "request": None}
+
+        # Find other active doctors in same branch (or other active doctors)
+        stmt_other_docs = (
+            select(Doctor)
+            .options(selectinload(Doctor.user))
+            .where(Doctor.id != doctor.id, Doctor.is_available.is_(True))
+        )
+        if doctor.branch_id:
+            stmt_other_docs = stmt_other_docs.where(Doctor.branch_id == doctor.branch_id)
+        res_other_docs = await self.db.execute(stmt_other_docs)
+        other_doctors = list(res_other_docs.scalars().all())
+
+        doctors_list = [
+            {
+                "id": str(d.id),
+                "name": f"Dr. {d.user.full_name}" if d.user and not d.user.full_name.lower().startswith("dr") else (d.user.full_name if d.user else "Doctor"),
+                "specialization": d.specialization or "General Physician",
+                "consultation_fee": float(d.consultation_fee or 0),
+            }
+            for d in other_doctors
+        ]
+
+        # Check for conflicting appointments
+        stmt_appt = (
+            select(Appointment)
+            .options(joinedload(Appointment.patient).joinedload(Patient.user))
+            .where(
+                Appointment.doctor_id == doctor.id,
+                Appointment.status.notin_(["cancelled", "rejected", "completed"]),
+            )
+        )
+        res_appts = await self.db.execute(stmt_appt)
+        appts = list(res_appts.scalars().all())
+
+        conflicts = []
+        for appt in appts:
+            appt_dt = appt.appointment_datetime.astimezone(IST)
+            appt_date = appt_dt.date()
+            appt_time_str = appt_dt.strftime("%H:%M")
+
+            is_conflict = False
+            if req.request_type == "leave" and req.proposed_start_date and req.proposed_end_date:
+                if req.proposed_start_date <= appt_date <= req.proposed_end_date:
+                    is_conflict = True
+            elif req.request_type == "lunch_break" and req.proposed_start_time and req.proposed_end_time:
+                if req.proposed_start_time <= appt_time_str < req.proposed_end_time:
+                    is_conflict = True
+            elif req.request_type == "shift_timing" and req.proposed_start_time and req.proposed_end_time:
+                if not (req.proposed_start_time <= appt_time_str < req.proposed_end_time):
+                    is_conflict = True
+
+            if is_conflict:
+                p_name = "Patient"
+                p_code = ""
+                p_phone = ""
+                if appt.patient:
+                    p_code = appt.patient.patient_code or ""
+                    if appt.patient.user:
+                        p_name = appt.patient.user.full_name
+                        p_phone = appt.patient.user.phone or ""
+
+                conflicts.append({
+                    "id": str(appt.id),
+                    "patient_id": str(appt.patient_id),
+                    "patient_name": p_name,
+                    "patient_code": p_code,
+                    "patient_phone": p_phone,
+                    "appointment_datetime": appt_dt.isoformat(),
+                    "date": appt_date.strftime("%Y-%m-%d"),
+                    "time": appt_time_str,
+                    "treatment_type": appt.treatment_type,
+                    "consultation_type": appt.consultation_type,
+                    "status": appt.status,
+                })
+
+        return {
+            "conflicts": conflicts,
+            "doctors": doctors_list,
+            "request": {
+                "id": str(req.id),
+                "doctor_name": doctor.user.full_name if doctor.user else "Doctor",
+                "request_type": req.request_type,
+                "start_date": str(req.proposed_start_date) if req.proposed_start_date else None,
+                "end_date": str(req.proposed_end_date) if req.proposed_end_date else None,
+                "start_time": req.proposed_start_time,
+                "end_time": req.proposed_end_time,
+                "reason": req.reason,
+            }
+        }
 
     async def update_request_status(
         self, request_id: uuid.UUID, request_data: AvailabilityChangeRequestUpdate
     ) -> dict:
-        """Update availability request status (Approve or Reject). If approved, update doctor availability metadata."""
+        """Update availability request status (Approve or Reject). If approved, update doctor availability metadata and resolve conflicts."""
         stmt = select(AvailabilityChangeRequest).where(AvailabilityChangeRequest.id == request_id)
         res = await self.db.execute(stmt)
         req = res.scalar_one_or_none()
@@ -124,6 +231,10 @@ class AvailabilityRequestService:
             doctor = res_doc.scalar_one_or_none()
  
         conflicts = []
+        resolutions_map = {}
+        if request_data.resolutions:
+            for item in request_data.resolutions:
+                resolutions_map[str(item.appointment_id)] = item
  
         if request_data.status == "approved":
             if doctor:
@@ -151,24 +262,24 @@ class AvailabilityRequestService:
                     })
                     meta["leaves"] = leaves
                 elif req.request_type == "shift_timing":
-                    # Shift timings change
-                    # We can update the metadata and doctor slots
                     meta["shift_start"] = req.proposed_start_time
                     meta["shift_end"] = req.proposed_end_time
                     
-                    # Update existing weekly slots to fit the new timings
                     stmt_slots = select(DoctorSlot).where(DoctorSlot.doctor_id == doctor.id)
                     res_slots = await self.db.execute(stmt_slots)
                     slots = list(res_slots.scalars().all())
-                    for slot in slots:
-                        slot.start_time = req.proposed_start_time
-                        slot.end_time = req.proposed_end_time
+                    if req.proposed_start_time and req.proposed_end_time:
+                        for slot in slots:
+                            slot.start_time = req.proposed_start_time
+                            slot.end_time = req.proposed_end_time
  
                 doctor.availability_metadata = json.dumps(meta)
                 self.db.add(doctor)
  
                 # Check for conflicting appointments
-                stmt_appt = select(Appointment).options(joinedload(Appointment.patient)).where(
+                stmt_appt = select(Appointment).options(
+                    joinedload(Appointment.patient).joinedload(Patient.user)
+                ).where(
                     Appointment.doctor_id == doctor.id,
                     Appointment.status.notin_(["cancelled", "rejected", "completed"])
                 )
@@ -195,39 +306,121 @@ class AvailabilityRequestService:
                             is_conflict = True
  
                     if is_conflict:
-                        # Flag this appointment as pending/rescheduling needed
-                        appt.status = "pending"
-                        self.db.add(appt)
-                        
-                        # Fetch patient name
+                        res_item = resolutions_map.get(str(appt.id))
+
                         p_name = "Patient"
+                        p_user_id = doctor.user_id
                         if appt.patient:
-                            # Need to load user name
-                            stmt_user = select(User).where(User.id == appt.patient.user_id)
-                            res_user = await self.db.execute(stmt_user)
-                            p_user = res_user.scalar_one_or_none()
-                            if p_user:
-                                p_name = p_user.full_name
- 
-                        conflicts.append({
-                            "id": str(appt.id),
-                            "appointment_datetime": appt_dt.isoformat(),
-                            "patient_name": p_name,
-                        })
-                        
-                        # Notify Patient
-                        title = "Appointment Schedule Update"
-                        msg = (
-                            f"Dear patient, due to a doctor schedule change, your appointment with Dr. {doctor.user.full_name} "
-                            f"on {appt_date.strftime('%Y-%m-%d')} at {appt_dt.strftime('%I:%M %p')} needs to be rescheduled. "
-                            f"Please log in and select a new available slot."
-                        )
-                        await self.noti_service.send_multichannel_notification(
-                            user_id=appt.patient.user_id if appt.patient else doctor.user_id,
-                            title=title,
-                            message=msg,
-                            type="alert"
-                        )
+                            if appt.patient.user:
+                                p_name = appt.patient.user.full_name
+                                p_user_id = appt.patient.user_id
+                            else:
+                                stmt_user = select(User).where(User.id == appt.patient.user_id)
+                                res_user = await self.db.execute(stmt_user)
+                                p_user = res_user.scalar_one_or_none()
+                                if p_user:
+                                    p_name = p_user.full_name
+                                    p_user_id = p_user.id
+
+                        if res_item and res_item.action == "reassign" and res_item.new_doctor_id:
+                            # Reassign to Doctor B
+                            res_doc_b = await self.db.execute(
+                                select(Doctor).options(selectinload(Doctor.user)).where(Doctor.id == res_item.new_doctor_id)
+                            )
+                            new_doc = res_doc_b.scalar_one_or_none()
+
+                            appt.previous_doctor_id = doctor.id
+                            appt.doctor_id = res_item.new_doctor_id
+                            appt.status = "reassigned_pending"
+                            appt.reassigned_at = datetime.now(timezone.utc)
+
+                            target_dt = appt.appointment_datetime
+                            if res_item.new_time:
+                                try:
+                                    nh, nm = map(int, res_item.new_time.strip().split(":"))
+                                    appt_dt_ist = target_dt.astimezone(IST)
+                                    new_dt_ist = appt_dt_ist.replace(hour=nh, minute=nm, second=0, microsecond=0)
+                                    appt.appointment_datetime = new_dt_ist
+                                    target_dt = new_dt_ist
+                                except Exception as parse_e:
+                                    logger.warning(f"Could not parse new time {res_item.new_time}: {parse_e}")
+
+                            self.db.add(appt)
+
+                            new_doc_name = f"Dr. {new_doc.user.full_name}" if new_doc and new_doc.user and not new_doc.user.full_name.lower().startswith("dr") else (new_doc.user.full_name if new_doc and new_doc.user else "another specialist")
+
+                            title = "Doctor Reassigned — Action Required"
+                            msg = (
+                                f"Dear {p_name}, Dr. {doctor.user.full_name} is on approved leave. Your appointment on "
+                                f"{target_dt.astimezone(IST).strftime('%Y-%m-%d')} has been proposed with {new_doc_name} at "
+                                f"{target_dt.astimezone(IST).strftime('%I:%M %p')}. Please log in to your portal to Accept or Reschedule."
+                            )
+                            await self.noti_service.send_multichannel_notification(
+                                user_id=p_user_id,
+                                title=title,
+                                message=msg,
+                                type="alert"
+                            )
+
+                            conflicts.append({
+                                "id": str(appt.id),
+                                "appointment_datetime": target_dt.astimezone(IST).isoformat(),
+                                "patient_name": p_name,
+                                "action": "reassigned",
+                                "new_doctor_name": new_doc_name
+                            })
+
+                        elif res_item and res_item.action == "cancel":
+                            appt.status = "cancelled"
+                            appt.cancelled_by = "Clinic Management (Doctor Leave)"
+                            appt.cancel_reason = res_item.reason or f"Cancelled due to Dr. {doctor.user.full_name}'s approved leave"
+                            appt.cancelled_at = datetime.now(timezone.utc)
+                            self.db.add(appt)
+
+                            title = "Appointment Cancelled (Doctor Leave)"
+                            msg = (
+                                f"Dear {p_name}, your appointment with Dr. {doctor.user.full_name} on "
+                                f"{appt_date.strftime('%Y-%m-%d')} at {appt_dt.strftime('%I:%M %p')} has been cancelled "
+                                f"due to approved doctor leave. Please log in to choose an alternate date."
+                            )
+                            await self.noti_service.send_multichannel_notification(
+                                user_id=p_user_id,
+                                title=title,
+                                message=msg,
+                                type="alert"
+                            )
+
+                            conflicts.append({
+                                "id": str(appt.id),
+                                "appointment_datetime": appt_dt.isoformat(),
+                                "patient_name": p_name,
+                                "action": "cancelled"
+                            })
+
+                        else:
+                            # Flag this appointment as pending/rescheduling needed
+                            appt.status = "pending"
+                            self.db.add(appt)
+
+                            title = "Appointment Schedule Update"
+                            msg = (
+                                f"Dear {p_name}, due to a doctor schedule change, your appointment with Dr. {doctor.user.full_name} "
+                                f"on {appt_date.strftime('%Y-%m-%d')} at {appt_dt.strftime('%I:%M %p')} needs to be rescheduled. "
+                                f"Please log in and select a new available slot."
+                            )
+                            await self.noti_service.send_multichannel_notification(
+                                user_id=p_user_id,
+                                title=title,
+                                message=msg,
+                                type="alert"
+                            )
+
+                            conflicts.append({
+                                "id": str(appt.id),
+                                "appointment_datetime": appt_dt.isoformat(),
+                                "patient_name": p_name,
+                                "action": "pending_reschedule"
+                            })
  
                 # Notify Doctor about approval
                 title = "Availability Change Request Approved"

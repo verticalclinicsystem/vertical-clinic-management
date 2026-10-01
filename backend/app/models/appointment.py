@@ -62,6 +62,15 @@ class Appointment(Base):
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Reassignment Tracking
+    previous_doctor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("doctors.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    reassigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Reminder Tracking
     reminder_sent_24h: Mapped[bool] = mapped_column(default=False, nullable=False)
     reminder_sent_2h: Mapped[bool] = mapped_column(default=False, nullable=False)
@@ -81,7 +90,8 @@ class Appointment(Base):
 
     # Relationships
     patient: Mapped["Patient"] = relationship("Patient", lazy="selectin")  # type: ignore
-    doctor: Mapped["Doctor"] = relationship("Doctor", lazy="selectin")  # type: ignore
+    doctor: Mapped["Doctor"] = relationship("Doctor", foreign_keys=[doctor_id], lazy="selectin")  # type: ignore
+    previous_doctor: Mapped["Doctor | None"] = relationship("Doctor", foreign_keys=[previous_doctor_id], lazy="selectin")  # type: ignore
     branch: Mapped["Branch"] = relationship("Branch", lazy="selectin")  # type: ignore
     teleconsultation: Mapped["TeleConsultation | None"] = relationship("TeleConsultation", back_populates="appointment", cascade="all, delete-orphan", uselist=False, lazy="selectin")  # type: ignore
 

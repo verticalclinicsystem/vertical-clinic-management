@@ -120,11 +120,14 @@ class AppointmentOut(AppointmentBase):
     cancelled_by: str | None
     cancel_reason: str | None
     cancelled_at: datetime | None
+    previous_doctor_id: uuid.UUID | None = None
+    reassigned_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     
     patient: PatientMinOut | None = None
     doctor: DoctorMinOut | None = None
+    previous_doctor: DoctorMinOut | None = None
     branch: BranchMinOut | None = None
 
     def map_status_for_role(self, role: str) -> None:
@@ -141,7 +144,7 @@ class AppointmentOut(AppointmentBase):
                 self.status = "completed"
             elif self.status in ["cancelled", "rejected"]:
                 self.status = "cancelled"
-            elif self.status in ["checked_in", "in_consultation", "no_show", "no-show", "not-show", "not_show"]:
+            elif self.status in ["checked_in", "in_consultation", "no_show", "no-show", "not-show", "not_show", "reassigned_pending"]:
                 pass
             elif self.reschedule_count > 0:
                 self.status = "rescheduled"

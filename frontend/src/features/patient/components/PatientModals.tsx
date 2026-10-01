@@ -358,6 +358,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                 <label className="form-label">New Date</label>
                 <CustomDatePicker
                   value={rescheduleDate}
+                  minDate={new Date().toISOString().split('T')[0]}
                   onChange={(date) => handleRescheduleDateSelect(date)}
                 />
               </div>

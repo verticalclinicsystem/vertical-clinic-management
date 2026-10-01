@@ -124,6 +124,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           {isEditingProfile ? (
             <CustomDatePicker
               value={profileForm.date_of_birth}
+              maxDate={new Date().toISOString().split('T')[0]}
               onChange={date => setProfileForm({ ...profileForm, date_of_birth: date })}
             />
           ) : (

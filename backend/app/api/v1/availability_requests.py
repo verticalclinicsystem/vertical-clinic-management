@@ -27,6 +27,12 @@ router = APIRouter()
 
 # ── 1. POST /doctors/availability-requests/ ───────────────────────────────────
 @router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a schedule change request",
+    include_in_schema=False,
+)
+@router.post(
     "/",
     status_code=status.HTTP_201_CREATED,
     summary="Submit a schedule change request",
@@ -44,7 +50,7 @@ async def create_availability_request(
     req = await service.create_request(current_user.id, request)
     
     # Hydrate doctor name
-    req.doctor_name = current_user.full_name
+    setattr(req, "doctor_name", current_user.full_name)
 
     return ApiResponse.success(
         data=AvailabilityChangeRequestOut.model_validate(req),
@@ -54,6 +60,11 @@ async def create_availability_request(
 
 
 # ── 2. GET /doctors/availability-requests/ ────────────────────────────────────
+@router.get(
+    "",
+    summary="List schedule change requests",
+    include_in_schema=False,
+)
 @router.get(
     "/",
     summary="List schedule change requests",
@@ -78,19 +89,39 @@ async def list_availability_requests(
 # ── 3. PUT /doctors/availability-requests/{id} ─────────────────────────────────
 @router.put(
     "/{request_id}",
-    summary="Approve or Reject a schedule change request (admin only)",
-    dependencies=[Depends(require_roles(UserRole.ADMIN))],
+    summary="Approve or Reject a schedule change request (admin / manager)",
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CLINIC_MANAGER))],
 )
 async def resolve_availability_request(
     request_id: UUID,
     request: AvailabilityChangeRequestUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
-    """Approve or Reject a doctor schedule change request, updating the doctor's operational settings and flagging conflicts."""
+    """Approve or Reject a doctor schedule change request, updating the doctor's operational settings and resolving conflicts."""
     service = AvailabilityRequestService(db)
     result = await service.update_request_status(request_id, request)
     
     return ApiResponse.success(
         data=result,
         message="Availability change request status updated successfully.",
+    )
+
+
+# ── 4. GET /doctors/availability-requests/{request_id}/conflicts ───────────────
+@router.get(
+    "/{request_id}/conflicts",
+    summary="Preview conflicting appointments for a schedule change request",
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CLINIC_MANAGER))],
+)
+async def preview_availability_request_conflicts(
+    request_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Preview all conflicting appointments that will be affected by this schedule change, with replacement doctors."""
+    service = AvailabilityRequestService(db)
+    result = await service.get_request_conflicts(request_id)
+
+    return ApiResponse.success(
+        data=result,
+        message="Conflicting appointments retrieved successfully.",
     )

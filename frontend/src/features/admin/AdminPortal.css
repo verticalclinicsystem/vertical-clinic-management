@@ -7,10 +7,10 @@
   --admin-sidebar-bg: var(--dark-sidebar);
   --admin-sidebar-hover: rgba(22, 185, 212, 0.15);
   --admin-sidebar-active: var(--active-nav);
-  --admin-bg-light: #EAF6FA;
-  --admin-text-dark: #102A43;
-  --admin-text-muted: #58758A;
-  --admin-border: #D6E7ED;
+  --admin-bg-light: var(--bg);
+  --admin-text-dark: var(--ink);
+  --admin-text-muted: var(--muted);
+  --admin-border: var(--border);
   
   /* Color system matching cards */
   --revenue-green: #18B981;

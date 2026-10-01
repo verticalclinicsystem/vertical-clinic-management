@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './auth.css';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 type TabType = 'login' | 'register' | 'otp' | 'forgot' | 'verify-reset' | 'reset-password';
 
@@ -624,6 +625,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
       {/* ── Right Content panel ── */}
       <div className="auth-content">
+        <div style={{ width: '100%', maxWidth: '490px', display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <ThemeToggle variant="pill" />
+        </div>
         <div className="auth-card-wrapper">
           <div className="auth-card">
           {/* Notification Alert Banner */}
