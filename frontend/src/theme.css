@@ -1,0 +1,545 @@
+/* ══════════════════════════════════════════════════════════════════
+   VERTICAL CLINIC OS — LIGHT & DARK THEME ENGINE
+   Ensures complete readability, rich aesthetics, and medical contrast
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. LIGHT THEME (DEFAULT) ── */
+:root {
+  --bg:                 #EAF6FA;
+  --surface:            #FFFFFF;
+  --surface-2:          #F1F8FA;
+  --surface-3:          #E2EEF2;
+
+  --ink:                #102A43;
+  --ink-2:              #1E3A8A;
+  --muted:              #58758A;
+  --border:             #D6E7ED;
+  --border-color:       #D6E7ED;
+  --border-focus:       #0B8EAB;
+
+  --primary-teal:       #0B7894;
+  --bright-cyan:        #16B9D4;
+  --dark-sidebar:       #064B62;
+  --deep-blue:          #073B55;
+  --active-nav:         #0B8EAB;
+
+  --primary:            #0B8EAB;
+  --primary-dark:       #064B62;
+  --primary-light:      #E8F7FA;
+
+  --primary-teal-dark:  #064B62;
+  --primary-teal-light: #E8F7FA;
+
+  --accent:             #16B9D4;
+  --accent-light:       #E8F7FA;
+  --accent-green:       #18B981;
+  --accent-green-light: #D1FAE5;
+
+  --text-dark:          #102A43;
+  --text-muted:         #58758A;
+  --text-light:         #FFFFFF;
+  --bg-light:           #EAF6FA;
+  --bg-white:           #FFFFFF;
+
+  --success:            #18B981;
+  --success-bg:         #D1FAE5;
+  --warning:            #F59E0B;
+  --warning-bg:         #FEF3C7;
+  --danger:             #EF4444;
+  --danger-bg:          #FEE2E2;
+  --info:               #3B82F6;
+  --info-bg:            #DBEAFE;
+  --error-red:          #EF4444;
+  --success-green:      #18B981;
+
+  --shadow-sm:          0 1px 3px rgba(16, 42, 67, 0.05);
+  --shadow-md:          0 4px 12px rgba(16, 42, 67, 0.08);
+  --shadow-lg:          0 12px 28px rgba(16, 42, 67, 0.12);
+  --shadow-xl:          0 20px 25px -5px rgba(6, 75, 98, 0.15);
+  --shadow-card:        0 0 0 1px #D6E7ED, 0 2px 8px rgba(16, 42, 67, 0.04);
+}
+
+/* ── 2. DARK THEME DEFINITION ── */
+[data-theme="dark"],
+body.dark-theme {
+  --bg:                 #0a101d;
+  --surface:            #111c2e;
+  --surface-2:          #16253c;
+  --surface-3:          #1e304d;
+
+  --ink:                #f8fafc;
+  --ink-2:              #cbd5e1;
+  --muted:              #94a3b8;
+  --border:             #1f3049;
+  --border-color:       #1f3049;
+  --border-focus:       #38bdf8;
+
+  --primary-teal:       #14b8a6;
+  --bright-cyan:        #38bdf8;
+  --dark-sidebar:       #060c17;
+  --deep-blue:          #040810;
+  --active-nav:         #0284c7;
+
+  --primary:            #0ea5e9;
+  --primary-dark:       #0284c7;
+  --primary-light:      #0c2538;
+
+  --primary-teal-dark:  #071221;
+  --primary-teal-light: #0d283c;
+
+  --accent:             #38bdf8;
+  --accent-light:       #0d283c;
+  --accent-green:       #10b981;
+  --accent-green-light: rgba(16, 185, 129, 0.16);
+
+  --text-dark:          #f8fafc;
+  --text-muted:         #94a3b8;
+  --text-light:         #ffffff;
+  --bg-light:           #0a101d;
+  --bg-white:           #111c2e;
+
+  --success:            #34d399;
+  --success-bg:         rgba(52, 211, 153, 0.15);
+  --warning:            #fbbf24;
+  --warning-bg:         rgba(251, 191, 36, 0.15);
+  --danger:             #f87171;
+  --danger-bg:          rgba(248, 113, 113, 0.16);
+  --info:               #60a5fa;
+  --info-bg:            rgba(96, 165, 250, 0.16);
+  --error-red:          #f87171;
+  --success-green:      #34d399;
+
+  --shadow-sm:          0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md:          0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg:          0 12px 28px rgba(0, 0, 0, 0.6);
+  --shadow-xl:          0 20px 25px -5px rgba(0, 0, 0, 0.7);
+  --shadow-card:        0 0 0 1px #1f3049, 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* ── 3. GLOBAL DARK MODE BASE STYLING ── */
+[data-theme="dark"] body {
+  background-color: var(--bg);
+  color: var(--ink);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #253956;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+/* ── 4. PORTAL TOPBARS & HEADERS ── */
+[data-theme="dark"] .portal-topbar,
+[data-theme="dark"] .admin-topbar,
+[data-theme="dark"] .doc-topbar,
+[data-theme="dark"] .recep-topbar,
+[data-theme="dark"] .pharmacy-topbar,
+[data-theme="dark"] .manager-topbar {
+  background-color: var(--surface) !important;
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
+}
+
+[data-theme="dark"] .topbar-title,
+[data-theme="dark"] .admin-page-title,
+[data-theme="dark"] .doc-page-title,
+[data-theme="dark"] .recep-page-title,
+[data-theme="dark"] .pharmacy-page-title {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .topbar-subtitle,
+[data-theme="dark"] .admin-page-subtitle,
+[data-theme="dark"] .doc-page-subtitle,
+[data-theme="dark"] .recep-page-subtitle,
+[data-theme="dark"] .pharmacy-page-subtitle {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] .admin-back-btn,
+[data-theme="dark"] .doc-back-btn,
+[data-theme="dark"] .recep-back-btn {
+  background-color: var(--surface-2) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--border) !important;
+}
+
+[data-theme="dark"] .admin-icon-btn,
+[data-theme="dark"] .topbar-icon-btn,
+[data-theme="dark"] .pharmacy-icon-btn {
+  background-color: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .admin-icon-btn:hover,
+[data-theme="dark"] .topbar-icon-btn:hover,
+[data-theme="dark"] .pharmacy-icon-btn:hover {
+  background-color: var(--surface-3) !important;
+  color: var(--primary) !important;
+}
+
+/* ── 5. PORTAL MAIN CONTAINERS ── */
+[data-theme="dark"] .portal-container,
+[data-theme="dark"] .admin-layout,
+[data-theme="dark"] .doc-layout,
+[data-theme="dark"] .recep-layout,
+[data-theme="dark"] .pharmacy-layout,
+[data-theme="dark"] .manager-app-container,
+[data-theme="dark"] .doc-main,
+[data-theme="dark"] .portal-main,
+[data-theme="dark"] .admin-main,
+[data-theme="dark"] .recep-main,
+[data-theme="dark"] .pharmacy-main,
+[data-theme="dark"] .manager-main-wrapper {
+  background-color: var(--bg) !important;
+  color: var(--ink) !important;
+}
+
+/* ── 6. CARDS, PANELS & CONTAINERS ── */
+[data-theme="dark"] .portal-card,
+[data-theme="dark"] .admin-card,
+[data-theme="dark"] .doc-stat-card,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .recep-card,
+[data-theme="dark"] .manager-card,
+[data-theme="dark"] .doctor-slot-manager-card,
+[data-theme="dark"] .billing-card,
+[data-theme="dark"] .overview-card,
+[data-theme="dark"] .chart-card,
+[data-theme="dark"] .doc-chart-card,
+[data-theme="dark"] .doc-queue-card,
+[data-theme="dark"] .report-card,
+[data-theme="dark"] .settings-card,
+[data-theme="dark"] .patient-card,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .dashboard-section,
+[data-theme="dark"] .ipd-bed-card,
+[data-theme="dark"] .teleconsult-card {
+  background-color: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+[data-theme="dark"] .doc-stat-val,
+[data-theme="dark"] .stat-number,
+[data-theme="dark"] .stat-value {
+  color: var(--ink) !important;
+}
+
+/* ── 7. FORMS, INPUTS, SELECTS, TEXTAREAS ── */
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="tel"],
+[data-theme="dark"] input[type="date"],
+[data-theme="dark"] input[type="time"],
+[data-theme="dark"] input[type="search"],
+[data-theme="dark"] select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .form-input,
+[data-theme="dark"] .doc-input,
+[data-theme="dark"] .recep-input,
+[data-theme="dark"] .manager-input,
+[data-theme="dark"] .admin-input,
+[data-theme="dark"] .topbar-search-input,
+[data-theme="dark"] .topbar-search-box input {
+  background-color: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus {
+  border-color: var(--bright-cyan) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+  outline: none !important;
+}
+
+/* ── 8. TABLES, ROWS, HEADERS ── */
+[data-theme="dark"] table {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] th,
+[data-theme="dark"] .table-header,
+[data-theme="dark"] thead th {
+  background-color: var(--surface-2) !important;
+  color: var(--ink-2) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+[data-theme="dark"] td,
+[data-theme="dark"] tbody td {
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--ink) !important;
+  background-color: transparent !important;
+}
+
+[data-theme="dark"] tr:hover td {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme="dark"] .table-container,
+[data-theme="dark"] .recep-table-container,
+[data-theme="dark"] .admin-table-wrapper {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ── 9. MODALS & POPUPS ── */
+[data-theme="dark"] .modal-content,
+[data-theme="dark"] .recep-modal-content,
+[data-theme="dark"] .doc-modal,
+[data-theme="dark"] .booking-wizard-card,
+[data-theme="dark"] .patient-modal-card {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-body,
+[data-theme="dark"] .modal-footer {
+  color: var(--ink) !important;
+  border-color: var(--border) !important;
+}
+
+/* ── 10. DROPDOWNS & NOTIFICATIONS ── */
+[data-theme="dark"] .notifications-dropdown,
+[data-theme="dark"] .profile-dropdown-menu,
+[data-theme="dark"] .manager-profile-dropdown-menu,
+[data-theme="dark"] .search-results-dropdown,
+[data-theme="dark"] .dropdown-menu {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-xl) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .notifications-header {
+  border-bottom: 1px solid var(--border) !important;
+  background-color: var(--surface-2) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .notifications-header h4 {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .notification-item {
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .notification-item:hover {
+  background-color: var(--surface-2) !important;
+}
+
+[data-theme="dark"] .notification-item.unread {
+  background-color: rgba(14, 165, 233, 0.08) !important;
+}
+
+[data-theme="dark"] .notification-item-title span {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .notification-item-msg {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] .profile-dropdown-menu button,
+[data-theme="dark"] .dropdown-menu-item {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .profile-dropdown-menu button:hover,
+[data-theme="dark"] .dropdown-menu-item:hover {
+  background-color: var(--surface-2) !important;
+}
+
+[data-theme="dark"] .profile-dropdown-divider {
+  background-color: var(--border) !important;
+}
+
+/* ── 11. AUTHENTICATION PAGE (LOGIN / REGISTER) ── */
+[data-theme="dark"] .auth-container {
+  background-color: var(--bg) !important;
+}
+
+[data-theme="dark"] .auth-content {
+  background: 
+    radial-gradient(ellipse at 85% 15%, rgba(20, 184, 166, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 85%, rgba(14, 165, 233, 0.05) 0%, transparent 55%),
+    var(--bg) !important;
+}
+
+[data-theme="dark"] .auth-card {
+  background-color: var(--surface) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 20px 45px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .auth-header h1 {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .auth-header p {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] .demo-accounts-section {
+  background-color: var(--surface-2) !important;
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .demo-role-pill {
+  background-color: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--ink-2) !important;
+}
+
+[data-theme="dark"] .demo-role-pill:hover {
+  background-color: var(--surface-3) !important;
+  border-color: var(--bright-cyan) !important;
+  color: var(--bright-cyan) !important;
+}
+
+[data-theme="dark"] .demo-badge {
+  color: var(--bright-cyan) !important;
+}
+
+[data-theme="dark"] .auth-input-group input {
+  background-color: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .auth-input-icon {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] .auth-label {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .auth-switch-text {
+  color: var(--muted) !important;
+}
+
+/* ── 12. TAB BARS, PILLS, BADGES & CHIPS ── */
+[data-theme="dark"] .tab-btn:not(.active),
+[data-theme="dark"] .portal-tab-btn:not(.active),
+[data-theme="dark"] .nav-tab:not(.active) {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] .tab-btn:hover,
+[data-theme="dark"] .portal-tab-btn:hover {
+  color: var(--ink) !important;
+  background-color: var(--surface-2) !important;
+}
+
+[data-theme="dark"] .custom-tag,
+[data-theme="dark"] .badge-light {
+  background-color: var(--surface-2) !important;
+  color: var(--ink-2) !important;
+  border-color: var(--border) !important;
+}
+
+/* ── 13. SAFETY OVERRIDES FOR HARDCODED INLINE STYLES ── */
+/* Catches inline #ffffff / white backgrounds */
+[data-theme="dark"] [style*="background-color: rgb(255, 255, 255)"],
+[data-theme="dark"] [style*="background-color: #ffffff"],
+[data-theme="dark"] [style*="background-color: #fff"],
+[data-theme="dark"] [style*="backgroundColor: rgb(255, 255, 255)"],
+[data-theme="dark"] [style*="backgroundColor: #ffffff"],
+[data-theme="dark"] [style*="backgroundColor: #fff"],
+[data-theme="dark"] [style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] [style*="background: #ffffff"],
+[data-theme="dark"] [style*="background: #fff"] {
+  background-color: var(--surface) !important;
+}
+
+/* Catches inline light backgrounds (e.g. #f8fafc, #F1F8FA, #EAF6FA) */
+[data-theme="dark"] [style*="background-color: rgb(248, 250, 252)"],
+[data-theme="dark"] [style*="background-color: #f8fafc"],
+[data-theme="dark"] [style*="background-color: #F1F8FA"],
+[data-theme="dark"] [style*="background-color: #f1f8fa"],
+[data-theme="dark"] [style*="background-color: #EAF6FA"],
+[data-theme="dark"] [style*="background-color: #eaf6fa"],
+[data-theme="dark"] [style*="backgroundColor: #f8fafc"],
+[data-theme="dark"] [style*="backgroundColor: #F1F8FA"],
+[data-theme="dark"] [style*="backgroundColor: #EAF6FA"] {
+  background-color: var(--surface-2) !important;
+}
+
+/* Catches inline dark text colors (e.g. #102A43, #1e293b, #0f172a) so they stay readable */
+[data-theme="dark"] [style*="color: rgb(16, 42, 67)"],
+[data-theme="dark"] [style*="color: #102A43"],
+[data-theme="dark"] [style*="color: #102a43"],
+[data-theme="dark"] [style*="color: rgb(30, 41, 59)"],
+[data-theme="dark"] [style*="color: #1e293b"],
+[data-theme="dark"] [style*="color: rgb(15, 23, 42)"],
+[data-theme="dark"] [style*="color: #0f172a"] {
+  color: var(--ink) !important;
+}
+
+/* Catches inline muted text colors (e.g. #58758A, #64748b, #475569) */
+[data-theme="dark"] [style*="color: rgb(88, 117, 138)"],
+[data-theme="dark"] [style*="color: #58758A"],
+[data-theme="dark"] [style*="color: #58758a"],
+[data-theme="dark"] [style*="color: rgb(100, 116, 139)"],
+[data-theme="dark"] [style*="color: #64748b"],
+[data-theme="dark"] [style*="color: #475569"] {
+  color: var(--muted) !important;
+}
+
+/* Catches inline border colors */
+[data-theme="dark"] [style*="border-color: rgb(214, 231, 237)"],
+[data-theme="dark"] [style*="border-color: #D6E7ED"],
+[data-theme="dark"] [style*="border-color: #d6e7ed"],
+[data-theme="dark"] [style*="border-color: rgb(226, 232, 240)"],
+[data-theme="dark"] [style*="border-color: #e2e8f0"],
+[data-theme="dark"] [style*="borderColor: #e2e8f0"],
+[data-theme="dark"] [style*="borderColor: #D6E7ED"] {
+  border-color: var(--border) !important;
+}
+
+/* ── 14. PRESERVE ACCENTED STATUS PILLS & BADGES ── */
+[data-theme="dark"] .status-confirmed,
+[data-theme="dark"] .status-completed,
+[data-theme="dark"] .status-available,
+[data-theme="dark"] .status-active {
+  background-color: rgba(16, 185, 129, 0.18) !important;
+  color: #34d399 !important;
+  border-color: rgba(52, 211, 153, 0.3) !important;
+}
+
+[data-theme="dark"] .status-cancelled,
+[data-theme="dark"] .status-failed,
+[data-theme="dark"] .status-rejected {
+  background-color: rgba(239, 68, 68, 0.18) !important;
+  color: #f87171 !important;
+  border-color: rgba(248, 113, 113, 0.3) !important;
+}
+
+[data-theme="dark"] .status-pending,
+[data-theme="dark"] .status-warning,
+[data-theme="dark"] .status-in_progress {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(251, 191, 36, 0.3) !important;
+}

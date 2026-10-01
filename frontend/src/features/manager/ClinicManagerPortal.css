@@ -2,9 +2,9 @@
 .manager-app-container {
   display: flex;
   min-height: 100vh;
-  background-color: #EAF6FA;
+  background-color: var(--bg);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: #102A43;
+  color: var(--ink);
 }
 
 /* ── LEFT SIDEBAR NAVIGATION ── */

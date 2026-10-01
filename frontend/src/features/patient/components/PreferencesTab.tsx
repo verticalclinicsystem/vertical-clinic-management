@@ -1,5 +1,6 @@
 import React from 'react';
-import { Settings, Bell } from 'lucide-react';
+import { Settings, Bell, Palette } from 'lucide-react';
+import { ThemeToggle } from '../../../components/ThemeToggle';
 
 interface PreferencesTabProps {
   preferences: any;
@@ -78,6 +79,18 @@ export const PreferencesTab: React.FC<PreferencesTabProps> = ({
               style={{ transform: 'scale(1.2)' }}
             />
           </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '24px', marginBottom: '16px' }}>
+          <Palette size={16} className="text-primary" style={{ color: 'var(--primary-teal)' }} />
+          <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Appearance & Theme</h4>
+        </div>
+        <div className="toggle-row" style={{ alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Interface Theme</div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Switch between light mode and dark mode</span>
+          </div>
+          <ThemeToggle variant="pill" />
         </div>
 
         <button type="submit" className="btn-primary" style={{ marginTop: '28px', width: '100%', justifyContent: 'center' }}>

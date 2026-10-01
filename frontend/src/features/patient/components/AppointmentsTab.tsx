@@ -34,6 +34,30 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   triggerToast,
 }) => {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState<string>(appointmentDateFilter || '');
+  const [endDate, setEndDate] = useState<string>('');
+
+  const handleStartDateChange = (date: string) => {
+    setStartDate(date);
+    setAppointmentDateFilter(date);
+    if (date && endDate && date > endDate) {
+      setEndDate(date);
+    }
+  };
+
+  const handleEndDateChange = (date: string) => {
+    if (startDate && date && date < startDate) {
+      setEndDate(startDate);
+    } else {
+      setEndDate(date);
+    }
+  };
+
+  const handleClearDates = () => {
+    setStartDate('');
+    setEndDate('');
+    setAppointmentDateFilter('');
+  };
 
   if (!dashboardData) return null;
 
@@ -51,9 +75,11 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
       if (appt.status !== 'cancelled') return false;
     }
 
-    if (appointmentDateFilter) {
+    if (startDate || endDate || appointmentDateFilter) {
       const apptDate = appt.appointment_datetime ? appt.appointment_datetime.split('T')[0] : '';
-      if (apptDate !== appointmentDateFilter) return false;
+      if (startDate && apptDate < startDate) return false;
+      if (endDate && apptDate > endDate) return false;
+      if (!startDate && !endDate && appointmentDateFilter && apptDate !== appointmentDateFilter) return false;
     }
 
     return true;
@@ -64,16 +90,61 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
       <div className="card-title-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <h3 className="card-title" style={{ margin: 0 }}><Calendar size={18} /> My Appointments</h3>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Filter Date:</label>
-            <CustomDatePicker value={appointmentDateFilter} onChange={setAppointmentDateFilter} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>From:</label>
+              <div style={{ width: '145px' }}>
+                <CustomDatePicker
+                  value={startDate}
+                  maxDate={endDate || undefined}
+                  onChange={handleStartDateChange}
+                  placeholder="Start Date"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>To:</label>
+              <div style={{ width: '145px' }}>
+                <CustomDatePicker
+                  value={endDate}
+                  minDate={startDate || undefined}
+                  onChange={handleEndDateChange}
+                  placeholder="End Date"
+                />
+              </div>
+            </div>
+
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={handleClearDates}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  color: 'var(--muted, #64748b)',
+                  backgroundColor: 'var(--surface-2, #f1f5f9)',
+                  border: '1px solid var(--border, #cbd5e1)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  height: '38px'
+                }}
+                title="Clear date filter"
+              >
+                <X size={14} /> Clear
+              </button>
+            )}
           </div>
 
           <button
             onClick={() => { setBookingStep(1); setScreen('book'); }}
             className="btn-primary"
-            style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+            style={{ padding: '8px 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
           >
             + Book Appointment
           </button>

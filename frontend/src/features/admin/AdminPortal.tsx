@@ -9,6 +9,7 @@ import { api } from '../../services/api';
 import './AdminPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { DoctorSlotManager } from '../../components/DoctorSlotManager';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 interface AdminPortalProps { onLogout: () => void; }
 
@@ -1395,6 +1396,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </div>
           </div>
           <div className="admin-topbar-right">
+            <ThemeToggle />
             <button className="admin-icon-btn" title="Refresh" onClick={() => fetchDashboard()}>
               <RefreshCw size={16} className={loading ? 'spin' : ''} />
             </button>
@@ -1819,19 +1821,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
                   {/* Start Date */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>Start Date:</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--muted, #475569)' }}>Start Date:</label>
                     <CustomDatePicker
                       value={reportStartDate}
-                      onChange={setReportStartDate}
+                      maxDate={reportEndDate || undefined}
+                      onChange={(date) => {
+                        setReportStartDate(date);
+                        if (date && reportEndDate && date > reportEndDate) {
+                          setReportEndDate(date);
+                        }
+                      }}
                     />
                   </div>
 
                   {/* End Date */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>End Date:</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--muted, #475569)' }}>End Date:</label>
                     <CustomDatePicker
                       value={reportEndDate}
-                      onChange={setReportEndDate}
+                      minDate={reportStartDate || undefined}
+                      onChange={(date) => {
+                        if (reportStartDate && date && date < reportStartDate) {
+                          setReportEndDate(reportStartDate);
+                        } else {
+                          setReportEndDate(date);
+                        }
+                      }}
                     />
                   </div>
 
@@ -4035,6 +4050,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       <label className="admin-form-label">Suspended Until</label>
                       <CustomDatePicker
                         value={suspensionUntilDate}
+                        minDate={new Date().toISOString().split('T')[0]}
                         onChange={setSuspensionUntilDate}
                       />
                     </div>

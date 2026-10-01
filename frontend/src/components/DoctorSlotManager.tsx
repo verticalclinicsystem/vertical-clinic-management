@@ -519,7 +519,7 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
   }, [schedule]);
 
   return (
-    <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)' }}>
+    <div className="doctor-slot-manager-card" style={{ backgroundColor: 'var(--surface, #ffffff)', color: 'var(--ink, #102a43)', borderRadius: '16px', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
       {/* Toast Notification */}
       {toastMessage && (
         <div

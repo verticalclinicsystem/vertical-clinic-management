@@ -4,21 +4,27 @@ import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 interface CustomDatePickerProps {
   value: string;
   onChange: (value: string) => void;
+  minDate?: string; // YYYY-MM-DD
+  maxDate?: string; // YYYY-MM-DD
   id?: string;
   placeholder?: string;
   className?: string;
   style?: React.CSSProperties;
   disabled?: boolean;
+  align?: 'left' | 'right' | 'auto';
 }
 
 export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   value,
   onChange,
+  minDate,
+  maxDate,
   id,
   placeholder = 'Select Date',
   className = '',
   style,
-  disabled = false
+  disabled = false,
+  align = 'auto'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => {
@@ -55,21 +61,31 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
   };
 
+  const formatDateStr = (y: number, m: number, d: number) => {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+
+  const isDateDisabled = (day: number) => {
+    const dateStr = formatDateStr(year, month, day);
+    if (minDate && dateStr < minDate) return true;
+    if (maxDate && dateStr > maxDate) return true;
+    return false;
+  };
+
   const handleSelectDay = (day: number) => {
-    const y = viewDate.getFullYear();
-    const m = String(viewDate.getMonth() + 1).padStart(2, '0');
-    const d = String(day).padStart(2, '0');
-    onChange(`${y}-${m}-${d}`);
+    if (isDateDisabled(day)) return;
+    const dateStr = formatDateStr(year, month, day);
+    onChange(dateStr);
     setIsOpen(false);
   };
 
   const handleToday = () => {
     const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    onChange(`${y}-${m}-${d}`);
-    setViewDate(new Date(y, today.getMonth(), 1));
+    const todayStr = formatDateStr(today.getFullYear(), today.getMonth(), today.getDate());
+    if (minDate && todayStr < minDate) return;
+    if (maxDate && todayStr > maxDate) return;
+    onChange(todayStr);
+    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
     setIsOpen(false);
   };
 
@@ -128,13 +144,13 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
           gap: '8px',
           padding: '10px 14px',
           borderRadius: '8px',
-          border: '1px solid #cbd5e1',
-          background: '#ffffff',
-          color: value ? '#0f172a' : '#94a3b8',
+          border: '1px solid var(--border, #cbd5e1)',
+          background: 'var(--surface, #ffffff)',
+          color: value ? 'var(--ink, #0f172a)' : 'var(--muted, #94a3b8)',
           fontSize: '0.9rem',
           fontWeight: 500,
           cursor: disabled ? 'not-allowed' : 'pointer',
-          boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+          boxShadow: 'var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05))',
           transition: 'all 0.2s',
           outline: 'none',
           justifyContent: 'space-between',
@@ -162,7 +178,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               padding: '2px',
               borderRadius: '50%',
               cursor: 'pointer',
-              color: '#94a3b8',
+              color: 'var(--muted, #94a3b8)',
               transition: 'all 0.15s',
               flexShrink: 0
             }}
@@ -177,13 +193,13 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
-            left: 0,
-            zIndex: 1000,
+            ...(align === 'right' ? { right: 0 } : { left: 0 }),
+            zIndex: 10000,
             width: '300px',
-            background: '#ffffff',
+            background: 'var(--surface, #ffffff)',
             borderRadius: '12px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            border: '1px solid var(--border, #e2e8f0)',
+            boxShadow: 'var(--shadow-xl, 0 10px 25px -5px rgba(0, 0, 0, 0.15))',
             padding: '16px',
             userSelect: 'none'
           }}
@@ -200,10 +216,10 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                 width: '28px',
                 height: '28px',
                 borderRadius: '6px',
-                border: '1px solid #e2e8f0',
-                background: '#ffffff',
+                border: '1px solid var(--border, #e2e8f0)',
+                background: 'var(--surface-2, #ffffff)',
                 cursor: 'pointer',
-                color: '#64748b',
+                color: 'var(--muted, #64748b)',
                 outline: 'none'
               }}
             >
@@ -215,13 +231,13 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                 value={month}
                 onChange={(e) => setViewDate(new Date(year, Number(e.target.value), 1))}
                 style={{
-                  border: '1px solid #cbd5e1',
+                  border: '1px solid var(--border, #cbd5e1)',
                   borderRadius: '6px',
                   padding: '2px 4px',
                   fontSize: '0.82rem',
                   fontWeight: 600,
-                  color: '#1e293b',
-                  background: '#ffffff',
+                  color: 'var(--ink, #1e293b)',
+                  background: 'var(--surface-2, #ffffff)',
                   outline: 'none',
                   cursor: 'pointer'
                 }}
@@ -235,13 +251,13 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                 value={year}
                 onChange={(e) => setViewDate(new Date(Number(e.target.value), month, 1))}
                 style={{
-                  border: '1px solid #cbd5e1',
+                  border: '1px solid var(--border, #cbd5e1)',
                   borderRadius: '6px',
                   padding: '2px 4px',
                   fontSize: '0.82rem',
                   fontWeight: 600,
-                  color: '#1e293b',
-                  background: '#ffffff',
+                  color: 'var(--ink, #1e293b)',
+                  background: 'var(--surface-2, #ffffff)',
                   outline: 'none',
                   cursor: 'pointer'
                 }}
@@ -291,12 +307,21 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
 
               const isSelected = selectedDay === day && selectedMonth === month && selectedYear === year;
               const isToday = new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year;
+              const disabledDay = isDateDisabled(day);
 
               return (
                 <button
                   key={`day-${day}`}
                   type="button"
-                  onClick={() => handleSelectDay(day)}
+                  disabled={disabledDay}
+                  onClick={() => !disabledDay && handleSelectDay(day)}
+                  title={
+                    disabledDay
+                      ? minDate && formatDateStr(year, month, day) < minDate
+                        ? `Cannot select date before ${minDate}`
+                        : `Cannot select date after ${maxDate}`
+                      : undefined
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -307,18 +332,24 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                     border: 'none',
                     fontSize: '0.82rem',
                     fontWeight: isSelected || isToday ? 700 : 500,
-                    cursor: 'pointer',
+                    cursor: disabledDay ? 'not-allowed' : 'pointer',
+                    opacity: disabledDay ? 0.35 : 1,
                     outline: 'none',
                     background: isSelected 
                       ? 'var(--primary-teal, #0d9488)' 
                       : isToday 
-                        ? '#ccfbf1' 
-                        : '#ffffff',
+                        ? 'var(--primary-light, #ccfbf1)' 
+                        : disabledDay
+                          ? 'transparent'
+                          : 'var(--surface, #ffffff)',
                     color: isSelected 
                       ? '#ffffff' 
-                      : isToday 
-                        ? '#0d9488' 
-                        : '#334155',
+                      : disabledDay
+                        ? 'var(--muted, #94a3b8)'
+                        : isToday 
+                          ? 'var(--primary-teal, #0d9488)' 
+                          : 'var(--ink, #334155)',
+                    textDecoration: disabledDay ? 'line-through' : 'none',
                     transition: 'all 0.15s'
                   }}
                 >
@@ -336,32 +367,42 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               alignItems: 'center',
               marginTop: '12px',
               paddingTop: '10px',
-              borderTop: '1px solid #f1f5f9'
+              borderTop: '1px solid var(--border, #f1f5f9)'
             }}
           >
-            <button
-              type="button"
-              onClick={handleToday}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--primary-teal, #0d9488)',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: '4px'
-              }}
-            >
-              Today
-            </button>
+            {(() => {
+              const today = new Date();
+              const todayStr = formatDateStr(today.getFullYear(), today.getMonth(), today.getDate());
+              const isTodayDisabled = Boolean((minDate && todayStr < minDate) || (maxDate && todayStr > maxDate));
+              return (
+                <button
+                  type="button"
+                  disabled={isTodayDisabled}
+                  onClick={handleToday}
+                  title={isTodayDisabled ? 'Today is outside the allowed date range' : undefined}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: isTodayDisabled ? 'var(--muted, #94a3b8)' : 'var(--primary-teal, #0d9488)',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: isTodayDisabled ? 'not-allowed' : 'pointer',
+                    opacity: isTodayDisabled ? 0.45 : 1,
+                    padding: '4px 8px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  Today
+                </button>
+              );
+            })()}
             <button
               type="button"
               onClick={handleClear}
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#64748b',
+                color: 'var(--muted, #64748b)',
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',

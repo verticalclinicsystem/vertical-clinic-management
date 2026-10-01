@@ -7,10 +7,10 @@
   --doc-sidebar-bg: var(--dark-sidebar);
   --doc-sidebar-hover: rgba(22, 185, 212, 0.15);
   --doc-sidebar-active: var(--active-nav);
-  --doc-bg-light: #EAF6FA;
-  --doc-text-dark: #102A43;
-  --doc-text-muted: #58758A;
-  --doc-border: #D6E7ED;
+  --doc-bg-light: var(--bg);
+  --doc-text-dark: var(--ink);
+  --doc-text-muted: var(--muted);
+  --doc-border: var(--border);
 }
 
 .doc-layout {

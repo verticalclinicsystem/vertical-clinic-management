@@ -320,6 +320,7 @@ export const RecepAppointmentsTab: React.FC<RecepAppointmentsTabProps> = ({
                             </label>
                             <CustomDatePicker
                               value={rescheduleDate}
+                              minDate={new Date().toISOString().split('T')[0]}
                               onChange={(date) => {
                                 setRescheduleDate(date);
                                 setRescheduleTime('');
