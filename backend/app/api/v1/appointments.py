@@ -549,3 +549,20 @@ async def broadcast_doctor_delay(
         data={"notified_count": notified_count},
         message=f"Successfully broadcasted delay of {request.delay_minutes} minutes to {notified_count} patients."
     )
+
+
+@router.post("/{appointment_id}/accept-reassign", summary="Accept and confirm a reassigned doctor")
+@router.patch("/{appointment_id}/accept-reassign", summary="Accept and confirm a reassigned doctor")
+async def accept_reassigned_appointment(
+    appointment_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    """Accept reassigned doctor for an appointment currently in reassigned_pending status."""
+    service = AppointmentService(db)
+    appt = await service.accept_reassignment(appointment_id, current_user)
+    return ApiResponse.success(
+        data=to_appointment_out(appt, current_user.role),
+        message="Reassigned doctor accepted and appointment confirmed!"
+    )
+

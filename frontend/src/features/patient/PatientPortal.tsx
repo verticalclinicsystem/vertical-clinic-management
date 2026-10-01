@@ -1081,6 +1081,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                   handleJoinMeeting={handleJoinMeeting}
                   setViewingAppointment={setViewingAppointment}
                   triggerToast={triggerToast}
+                  onRefresh={fetchPortalData}
                 />
               )}
 
