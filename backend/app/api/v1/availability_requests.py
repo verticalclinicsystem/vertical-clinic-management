@@ -27,6 +27,12 @@ router = APIRouter()
 
 # ── 1. POST /doctors/availability-requests/ ───────────────────────────────────
 @router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a schedule change request",
+    include_in_schema=False,
+)
+@router.post(
     "/",
     status_code=status.HTTP_201_CREATED,
     summary="Submit a schedule change request",
@@ -44,7 +50,7 @@ async def create_availability_request(
     req = await service.create_request(current_user.id, request)
     
     # Hydrate doctor name
-    req.doctor_name = current_user.full_name
+    setattr(req, "doctor_name", current_user.full_name)
 
     return ApiResponse.success(
         data=AvailabilityChangeRequestOut.model_validate(req),
@@ -54,6 +60,11 @@ async def create_availability_request(
 
 
 # ── 2. GET /doctors/availability-requests/ ────────────────────────────────────
+@router.get(
+    "",
+    summary="List schedule change requests",
+    include_in_schema=False,
+)
 @router.get(
     "/",
     summary="List schedule change requests",

@@ -39,6 +39,7 @@ import { JitsiMeeting } from '@jitsi/react-sdk';
 import './DoctorPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { DoctorSlotManager } from '../../components/DoctorSlotManager';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 interface DoctorPortalProps {
   onLogout: () => void;
@@ -377,11 +378,8 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [followupAdvised, setFollowupAdvised] = useState<boolean>(false);
   const [followupAfterDays, setFollowupAfterDays] = useState<number>(7);
 
-  // IPD Admission Advised States
+  // IPD Bed Advice State
   const [ipdAdvised, setIpdAdvised] = useState<boolean>(false);
-  const [ipdPreferredCategory, setIpdPreferredCategory] = useState<string>('');
-  const [ipdReason, setIpdReason] = useState<string>('');
-  const [ipdUrgency, setIpdUrgency] = useState<string>('routine');
   const [vitalsWeight, setVitalsWeight] = useState<string>('74');
   const [vitalsSpo2, setVitalsSpo2] = useState<number>(98);
   const [calculatedBmiInfo, setCalculatedBmiInfo] = useState<{ bmi: string; label: string; color: string }>({ bmi: '25.0', label: 'Normal', color: '#16a34a' });
@@ -622,7 +620,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   const fetchMyRequests = async () => {
     try {
-      const res = await api.get('/doctors/availability-requests');
+      const res = await api.get('/doctors/availability-requests/');
       if (res.data?.success) {
         setMyRequests(res.data.data);
       }
@@ -633,6 +631,16 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
   const handleSubmitChangeRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (requestType === 'leave') {
+      if (!reqStartDate || !reqEndDate) {
+        showToast('Please select both start date and end date for your leave.', 'error');
+        return;
+      }
+      if (reqEndDate < reqStartDate) {
+        showToast('End date cannot be earlier than start date.', 'error');
+        return;
+      }
+    }
     if (!reqReason.trim()) {
       showToast('Please provide a reason for the request.', 'error');
       return;
@@ -651,7 +659,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         payload.proposed_end_time = reqEndTime;
       }
 
-      const res = await api.post('/doctors/availability-requests', payload);
+      const res = await api.post('/doctors/availability-requests/', payload);
       if (res.data?.success) {
         showToast('Availability change request submitted successfully!', 'success');
         setIsRequestingChange(false);
@@ -1165,6 +1173,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   // Silence unused variable warnings for IPD round states and helpers
   void ipdBeds;
   void loadingIpdBeds;
+  void ipdCategories;
   void setSelectedBedForRound;
   void fetchHistoryDetails;
   useEffect(() => {
@@ -1848,11 +1857,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           try {
             await api.post('/ipd/admission-requests', {
               patient_id: activeAppt.patient_id,
-              category_id: ipdPreferredCategory || null,
-              reason: ipdReason || diagnosis || 'Advised for IPD admission & monitoring.',
-              urgency: ipdUrgency
+              category_id: null,
+              reason: diagnosis ? `Advised IPD bed. Diagnosis: ${diagnosis}` : 'Advised for IPD bed admission & monitoring.',
+              urgency: 'routine'
             });
-            showToast('IPD Admission request & alert sent to Receptionist!', 'info');
+            showToast('IPD Bed advice sent to Receptionist!', 'info');
           } catch (ipdErr) {
             console.error('Failed to send IPD admission request:', ipdErr);
           }
@@ -1860,9 +1869,6 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
         showToast('Consultation and prescription recorded successfully!', 'success');
         setIpdAdvised(false);
-        setIpdReason('');
-        setIpdPreferredCategory('');
-        setIpdUrgency('routine');
         setActiveAppt(null);
         fetchDashboard();
       }
@@ -2097,6 +2103,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <ThemeToggle />
             <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setIsNotiDropdownOpen(!isNotiDropdownOpen)}
@@ -4538,78 +4545,31 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                           )}
                         </div>
 
-                        {/* 🏥 IPD ADMISSION RECOMMENDATION BLOCK */}
+                        {/* 🛏️ IPD BED ADVICE CHECKBOX BLOCK */}
                         <div style={{
-                          backgroundColor: ipdAdvised ? '#f0fdf4' : '#ffffff',
-                          padding: '14px',
+                          backgroundColor: ipdAdvised ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2, #f8fafc)',
+                          padding: '14px 16px',
                           borderRadius: '8px',
-                          border: ipdAdvised ? '1px solid #86efac' : '1px solid #e2e8f0',
+                          border: ipdAdvised ? '1px solid #10b981' : '1px solid var(--border, #e2e8f0)',
                           display: 'flex',
-                          flexDirection: 'column',
-                          gap: '12px',
-                          marginTop: '12px'
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginTop: '12px',
+                          transition: 'all 0.2s ease'
                         }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: '700', color: ipdAdvised ? '#166534' : '#0f172a' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: '700', color: ipdAdvised ? '#10b981' : 'var(--ink, #0f172a)', margin: 0, userSelect: 'none' }}>
                             <input
                               type="checkbox"
                               checked={ipdAdvised}
                               onChange={(e) => setIpdAdvised(e.target.checked)}
-                              style={{ width: '16px', height: '16px', accentColor: '#059669' }}
+                              style={{ width: '17px', height: '17px', accentColor: '#10b981', cursor: 'pointer' }}
                             />
-                            🏥 Advise IPD Admission (Recommend Hospitalization)?
+                            <span>🛏️ Advised Bed</span>
                           </label>
                           {ipdAdvised && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '24px' }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div>
-                                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                                    Preferred Ward / Category:
-                                  </label>
-                                  <select
-                                    className="doc-input"
-                                    value={ipdPreferredCategory}
-                                    onChange={(e) => setIpdPreferredCategory(e.target.value)}
-                                    style={{ marginBottom: 0, height: '34px', padding: '0 8px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
-                                  >
-                                    <option value="">Any Available Ward</option>
-                                    {ipdCategories.map((c: any) => (
-                                      <option key={c.id} value={c.id}>{c.name} (₹{c.base_charge_24h}/day)</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                                    Urgency Level:
-                                  </label>
-                                  <select
-                                    className="doc-input"
-                                    value={ipdUrgency}
-                                    onChange={(e) => setIpdUrgency(e.target.value)}
-                                    style={{ marginBottom: 0, height: '34px', padding: '0 8px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
-                                  >
-                                    <option value="routine">Routine Admission</option>
-                                    <option value="urgent">Urgent</option>
-                                    <option value="emergency">Emergency / ICU</option>
-                                  </select>
-                                </div>
-                              </div>
-                              <div>
-                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                                  Clinical Reason & Instructions for Receptionist:
-                                </label>
-                                <input
-                                  type="text"
-                                  className="doc-input"
-                                  placeholder="e.g. Severe dehydration, requires 48h IV monitoring & bed assignment..."
-                                  value={ipdReason}
-                                  onChange={(e) => setIpdReason(e.target.value)}
-                                  style={{ marginBottom: 0, fontSize: '0.8rem', height: '34px' }}
-                                />
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: '#15803d', background: '#dcfce7', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-                                🔔 Saving consultation will immediately send a real-time notification alert to <strong>Receptionist</strong> and <strong>Patient</strong> for bed assignment queue.
-                              </div>
-                            </div>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              ✓ Bed suggested (Receptionist notified upon save)
+                            </span>
                           )}
                         </div>
                       </div>
@@ -5356,12 +5316,14 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
           zIndex: 9999
         }}>
           <div style={{
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--surface, #ffffff)',
             borderRadius: '12px',
             width: '100%',
-            maxWidth: '500px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            overflow: 'hidden'
+            maxWidth: '520px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08)',
+            overflow: 'visible',
+            position: 'relative',
+            border: '1px solid var(--doc-border)'
           }}>
             <div style={{
               display: 'flex',
@@ -5369,7 +5331,9 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
               alignItems: 'center',
               padding: '16px 24px',
               borderBottom: '1px solid var(--doc-border)',
-              backgroundColor: '#f8fafc'
+              backgroundColor: 'var(--surface-2, #f8fafc)',
+              borderTopLeftRadius: '12px',
+              borderTopRightRadius: '12px'
             }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: 'var(--doc-text-dark)' }}>
                 Request Schedule Change
@@ -5387,7 +5351,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSubmitChangeRequest} style={{ padding: '24px' }}>
+            <form onSubmit={handleSubmitChangeRequest} style={{ padding: '24px', backgroundColor: 'var(--surface, #ffffff)', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 <div className="doc-form-group">
@@ -5423,14 +5387,30 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>Start Date</label>
                       <CustomDatePicker
                         value={reqStartDate}
-                        onChange={setReqStartDate}
+                        align="left"
+                        minDate={new Date().toISOString().split('T')[0]}
+                        maxDate={reqEndDate || undefined}
+                        onChange={(date) => {
+                          setReqStartDate(date);
+                          if (date && reqEndDate && date > reqEndDate) {
+                            setReqEndDate(date);
+                          }
+                        }}
                       />
                     </div>
                     <div className="doc-form-group">
                       <label className="doc-form-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--doc-text-dark)' }}>End Date</label>
                       <CustomDatePicker
                         value={reqEndDate}
-                        onChange={setReqEndDate}
+                        align="right"
+                        minDate={reqStartDate || new Date().toISOString().split('T')[0]}
+                        onChange={(date) => {
+                          if (reqStartDate && date && date < reqStartDate) {
+                            setReqEndDate(reqStartDate);
+                          } else {
+                            setReqEndDate(date);
+                          }
+                        }}
                       />
                     </div>
                   </div>

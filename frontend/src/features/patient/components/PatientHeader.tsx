@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Menu, Bell, Settings, User, LogOut } from 'lucide-react';
+import { ThemeToggle } from '../../../components/ThemeToggle';
 
 interface PatientHeaderProps {
   screen: string;
@@ -80,6 +81,7 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
       </div>
 
       <div className="topbar-actions">
+        <ThemeToggle />
         <div className="notifications-wrapper" ref={dropdownRef}>
           <button className="topbar-icon-btn" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
             <Bell size={18} />

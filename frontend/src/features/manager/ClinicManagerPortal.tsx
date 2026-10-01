@@ -35,6 +35,7 @@ import {
 import { api } from '../../services/api';
 import './ClinicManagerPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 interface ClinicManagerPortalProps {
   onLogout: () => void;
@@ -1423,6 +1424,8 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
               )}
             </div>
 
+            <ThemeToggle />
+
             <div
               className="topbar-user-profile"
               onClick={() => setIsProfileOpen((prev) => !prev)}
@@ -1978,7 +1981,14 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                       <label>Emergency Absence Date *</label>
                       <CustomDatePicker
                         value={emergencyForm.leave_date}
-                        onChange={(date) => setEmergencyForm({ ...emergencyForm, leave_date: date })}
+                        minDate={new Date().toISOString().split('T')[0]}
+                        onChange={(date) => {
+                          const updated = { ...emergencyForm, leave_date: date };
+                          if (date && emergencyForm.target_reschedule_date && date > emergencyForm.target_reschedule_date) {
+                            updated.target_reschedule_date = date;
+                          }
+                          setEmergencyForm(updated);
+                        }}
                       />
                     </div>
 
@@ -1986,7 +1996,14 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                       <label>Target Reschedule Date (Optional)</label>
                       <CustomDatePicker
                         value={emergencyForm.target_reschedule_date}
-                        onChange={(date) => setEmergencyForm({ ...emergencyForm, target_reschedule_date: date })}
+                        minDate={emergencyForm.leave_date || new Date().toISOString().split('T')[0]}
+                        onChange={(date) => {
+                          if (emergencyForm.leave_date && date && date < emergencyForm.leave_date) {
+                            setEmergencyForm({ ...emergencyForm, target_reschedule_date: emergencyForm.leave_date });
+                          } else {
+                            setEmergencyForm({ ...emergencyForm, target_reschedule_date: date });
+                          }
+                        }}
                       />
                     </div>
                   </div>

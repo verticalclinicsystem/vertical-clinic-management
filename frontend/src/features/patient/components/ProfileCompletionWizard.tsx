@@ -550,6 +550,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     </label>
                     <CustomDatePicker
                       value={dob}
+                      maxDate={new Date().toISOString().split('T')[0]}
                       onChange={setDob}
                     />
                   </div>
@@ -859,14 +860,28 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                     <label>Treatment Start Date</label>
                     <CustomDatePicker
                       value={treatmentSince}
-                      onChange={setTreatmentSince}
+                      maxDate={prescriptionDate || new Date().toISOString().split('T')[0]}
+                      onChange={(date) => {
+                        setTreatmentSince(date);
+                        if (date && prescriptionDate && date > prescriptionDate) {
+                          setPrescriptionDate(date);
+                        }
+                      }}
                     />
                   </div>
                   <div className="form-group">
                     <label>Latest Prescription Date</label>
                     <CustomDatePicker
                       value={prescriptionDate}
-                      onChange={setPrescriptionDate}
+                      minDate={treatmentSince || undefined}
+                      maxDate={new Date().toISOString().split('T')[0]}
+                      onChange={(date) => {
+                        if (treatmentSince && date && date < treatmentSince) {
+                          setPrescriptionDate(treatmentSince);
+                        } else {
+                          setPrescriptionDate(date);
+                        }
+                      }}
                     />
                   </div>
                 </div>

@@ -1,7 +1,8 @@
 .portal-container {
   display: flex;
   min-height: 100vh;
-  background-color: #EAF6FA;
+  background-color: var(--bg);
+  color: var(--ink);
   font-family: var(--font-sans);
 }
 

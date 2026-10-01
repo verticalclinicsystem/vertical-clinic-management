@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './PharmacyPortal.css';
+import { ThemeToggle } from '../../components/ThemeToggle';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 
 interface PharmacyPortalProps {
@@ -580,6 +581,7 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
           </div>
 
           <div className="pharmacy-topbar-right" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <ThemeToggle />
             <button 
               className="pharmacy-icon-btn" 
               onClick={fetchData} 
@@ -1785,14 +1787,28 @@ export const PharmacyPortal: React.FC<PharmacyPortalProps> = ({ onLogout }) => {
                     <label className="pharmacy-label">Start Date *</label>
                     <CustomDatePicker 
                       value={reqStartDate}
-                      onChange={setReqStartDate}
+                      minDate={new Date().toISOString().split('T')[0]}
+                      maxDate={reqEndDate || undefined}
+                      onChange={(date) => {
+                        setReqStartDate(date);
+                        if (date && reqEndDate && date > reqEndDate) {
+                          setReqEndDate(date);
+                        }
+                      }}
                     />
                   </div>
                   <div className="pharmacy-form-group">
                     <label className="pharmacy-label">End Date *</label>
                     <CustomDatePicker 
                       value={reqEndDate}
-                      onChange={setReqEndDate}
+                      minDate={reqStartDate || new Date().toISOString().split('T')[0]}
+                      onChange={(date) => {
+                        if (reqStartDate && date && date < reqStartDate) {
+                          setReqEndDate(reqStartDate);
+                        } else {
+                          setReqEndDate(date);
+                        }
+                      }}
                     />
                   </div>
                   <div className="pharmacy-form-group full-width">

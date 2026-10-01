@@ -14,7 +14,7 @@ class AvailabilityChangeRequestCreate(BaseModel):
     proposed_end_time: str | None = Field(None, description="Proposed end time format HH:MM")
     proposed_start_date: date | None = Field(None, description="Proposed start date")
     proposed_end_date: date | None = Field(None, description="Proposed end date")
-    reason: str = Field(..., min_length=5, description="Doctor's reason or description of the issue")
+    reason: str = Field(..., min_length=1, description="Doctor's reason or description of the issue")
 
 
 class AvailabilityChangeRequestUpdate(BaseModel):

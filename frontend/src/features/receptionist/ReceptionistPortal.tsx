@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { api, getWebSocketUrl } from '../../services/api';
 import AdmitPatientModal from '../../components/AdmitPatientModal';
+import { ThemeToggle } from '../../components/ThemeToggle';
 import { RecepDashboardTab } from './components/RecepDashboardTab';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { RecepAppointmentsTab } from './components/RecepAppointmentsTab';
@@ -2156,6 +2157,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
           </div>
 
           <div className="recep-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <ThemeToggle />
             <div className="notifications-wrapper" ref={notiDropdownRef} style={{ position: 'relative' }}>
               <button 
                 onClick={() => setIsNotiDropdownOpen(!isNotiDropdownOpen)}
@@ -2498,14 +2500,28 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   <label>Start Date</label>
                   <CustomDatePicker 
                     value={reqStartDate}
-                    onChange={setReqStartDate}
+                    minDate={new Date().toISOString().split('T')[0]}
+                    maxDate={reqEndDate || undefined}
+                    onChange={(date) => {
+                      setReqStartDate(date);
+                      if (date && reqEndDate && date > reqEndDate) {
+                        setReqEndDate(date);
+                      }
+                    }}
                   />
                 </div>
                 <div className="form-group">
                   <label>End Date</label>
                   <CustomDatePicker 
                     value={reqEndDate}
-                    onChange={setReqEndDate}
+                    minDate={reqStartDate || new Date().toISOString().split('T')[0]}
+                    onChange={(date) => {
+                      if (reqStartDate && date && date < reqStartDate) {
+                        setReqEndDate(reqStartDate);
+                      } else {
+                        setReqEndDate(date);
+                      }
+                    }}
                   />
                 </div>
                 <div className="form-group full-width">
@@ -2591,6 +2607,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   <label>Date of Birth</label>
                   <CustomDatePicker 
                     value={registerForm.date_of_birth} 
+                    maxDate={new Date().toISOString().split('T')[0]}
                     onChange={date => setRegisterForm({ ...registerForm, date_of_birth: date })}
                   />
                 </div>
@@ -3479,6 +3496,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                         <label style={{ display: 'block', fontWeight: 600, marginBottom: '2px' }}>DOB</label>
                         <CustomDatePicker 
                           value={editPatientForm.date_of_birth || ''} 
+                          maxDate={new Date().toISOString().split('T')[0]}
                           onChange={(date) => setEditPatientForm({ ...editPatientForm, date_of_birth: date })}
                         />
                       </div>
