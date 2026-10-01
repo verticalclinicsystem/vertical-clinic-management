@@ -36,6 +36,7 @@ import { api } from '../../services/api';
 import './ClinicManagerPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { LeaveConflictResolutionModal } from '../../components/LeaveConflictResolutionModal';
 
 interface ClinicManagerPortalProps {
   onLogout: () => void;
@@ -829,6 +830,51 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
       fetchRequests();
     } catch (err: any) {
       showToast('error', err.response?.data?.message || 'Failed to review schedule request.');
+    }
+  };
+
+  // Leave Conflict Resolution Modal State
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [activeConflictRequest, setActiveConflictRequest] = useState<any>(null);
+  const [activeConflictsList, setActiveConflictsList] = useState<any[]>([]);
+  const [conflictDoctorsList, setConflictDoctorsList] = useState<any[]>([]);
+
+  const handleInitiateApprove = async (req: any) => {
+    try {
+      const res = await api.get(`/doctors/availability-requests/${req.id}/conflicts`);
+      const data = res.data?.data;
+      const conflicts = data?.conflicts || [];
+      const doctors = data?.doctors || [];
+
+      if (conflicts.length > 0) {
+        setActiveConflictRequest(data?.request || req);
+        setActiveConflictsList(conflicts);
+        setConflictDoctorsList(doctors);
+        setConflictModalOpen(true);
+      } else {
+        await handleReviewRequest(req.id, 'approve');
+      }
+    } catch (err: any) {
+      console.error('Failed to preview conflicts, approving directly:', err);
+      await handleReviewRequest(req.id, 'approve');
+    }
+  };
+
+  const handleConfirmConflictResolutions = async (resolutions: any[]) => {
+    if (!activeConflictRequest) return;
+    try {
+      const res = await api.post(`/clinic-manager/schedule-requests/${activeConflictRequest.id}/review`, {
+        action: 'approve',
+        response_notes: reviewNotes[activeConflictRequest.id] || '',
+        resolutions,
+      });
+      showToast('success', res.data?.message || 'Leave approved and conflicting appointments resolved!');
+      setConflictModalOpen(false);
+      setActiveConflictRequest(null);
+      fetchRequests();
+    } catch (err: any) {
+      console.error('Failed to resolve schedule conflicts:', err);
+      showToast('error', err.response?.data?.message || 'Failed to resolve appointment conflicts.');
     }
   };
 
@@ -2265,7 +2311,7 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                               <button
                                 type="button"
                                 className="btn-approve"
-                                onClick={() => handleReviewRequest(req.id, 'approve')}
+                                onClick={() => handleInitiateApprove(req)}
                               >
                                 <CheckCircle size={14} /> Approve
                               </button>
@@ -4316,6 +4362,16 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
           </div>
         </div>
       )}
+
+      {/* ── LEAVE CONFLICT RESOLUTION MODAL ── */}
+      <LeaveConflictResolutionModal
+        isOpen={conflictModalOpen}
+        onClose={() => setConflictModalOpen(false)}
+        request={activeConflictRequest}
+        conflicts={activeConflictsList}
+        availableDoctors={conflictDoctorsList}
+        onConfirm={handleConfirmConflictResolutions}
+      />
     </div>
   );
 };

@@ -45,9 +45,13 @@ class ReceptionistOnboardRequest(BaseModel):
     shift_timing: str = "Morning Shift (09:00 - 17:00)"
 
 
+from app.schemas.availability_request import ConflictResolutionItem
+
+
 class ScheduleReviewRequest(BaseModel):
     action: str = Field(..., pattern="^(approve|reject)$")
     response_notes: Optional[str] = None
+    resolutions: Optional[list[ConflictResolutionItem]] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -205,6 +209,7 @@ async def review_schedule_request(
         request_id=request_id,
         action=req.action,
         response_notes=req.response_notes,
+        resolutions=req.resolutions,
     )
 
 
@@ -230,8 +235,8 @@ class StaffEditRequest(BaseModel):
 
 
 class DoctorEmergencyBlockRequest(BaseModel):
-    leave_date: str = Field(..., example="2026-08-06")
-    target_reschedule_date: Optional[str] = Field(None, example="2026-08-07")
+    leave_date: str = Field(..., examples=["2026-08-06"])
+    target_reschedule_date: Optional[str] = Field(None, examples=["2026-08-07"])
 
 
 class BillingReviewRequest(BaseModel):

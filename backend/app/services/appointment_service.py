@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone, timedelta, time as dt_time
 
 from sqlalchemy import select, func, and_, update
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -19,7 +20,8 @@ from app.core.exceptions import (
 from app.core.websocket import manager as ws_manager
 from app.models.appointment import Appointment
 from app.models.branch import Branch
-from app.models.doctor import DoctorSlot
+from app.models.doctor import Doctor, DoctorSlot
+from app.models.patient import Patient
 from app.models.user import User
 from app.repositories.appointment_repo import AppointmentRepository
 from app.repositories.doctor_repo import DoctorRepository
@@ -929,3 +931,65 @@ class AppointmentService:
             logger.warning(f"Failed to broadcast queue update on delay: {ws_err}")
 
         return updated_count
+
+    async def accept_reassignment(self, appointment_id: uuid.UUID, current_user: User) -> Appointment:
+        """Patient or authorized staff confirms and accepts the reassigned doctor for an appointment."""
+        IST = timezone(timedelta(hours=5, minutes=30))
+        stmt = (
+            select(Appointment)
+            .options(
+                joinedload(Appointment.doctor).joinedload(Doctor.user),
+                joinedload(Appointment.patient).joinedload(Patient.user),
+                joinedload(Appointment.branch),
+            )
+            .where(Appointment.id == appointment_id)
+        )
+        res = await self.db.execute(stmt)
+        appt = res.scalar_one_or_none()
+        if not appt:
+            raise BadRequestError("Appointment not found.")
+
+        # Permissions check
+        if current_user.role == "patient":
+            if not appt.patient or appt.patient.user_id != current_user.id:
+                raise PermissionDeniedError("You do not have permission to accept this appointment.")
+        elif current_user.role not in ["admin", "clinic_manager", "receptionist"]:
+            raise PermissionDeniedError("Access denied.")
+
+        if appt.status != "reassigned_pending":
+            raise BadRequestError(f"Appointment is not in reassigned pending status (current status: {appt.status}).")
+
+        appt.status = "confirmed"
+        appt.updated_at = datetime.now(timezone.utc)
+        self.db.add(appt)
+        await self.db.commit()
+
+        # Send notifications
+        noti_service = NotificationService(self.db)
+        doc_name = f"Dr. {appt.doctor.user.full_name}" if appt.doctor and appt.doctor.user else "your doctor"
+        p_user_id = appt.patient.user_id if appt.patient else current_user.id
+        title = "Appointment Confirmed"
+        msg = f"Your appointment with {doc_name} on {appt.appointment_datetime.astimezone(IST).strftime('%Y-%m-%d at %I:%M %p')} is confirmed!"
+        try:
+            await noti_service.send_multichannel_notification(
+                user_id=p_user_id,
+                title=title,
+                message=msg,
+                type="success"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send acceptance notification: {e}")
+
+        if appt.doctor and appt.doctor.user_id:
+            p_name = appt.patient.user.full_name if appt.patient and appt.patient.user else "Patient"
+            try:
+                await noti_service.send_multichannel_notification(
+                    user_id=appt.doctor.user_id,
+                    title="New Reassigned Patient Confirmed",
+                    message=f"Patient {p_name} has accepted appointment reassignment on {appt.appointment_datetime.astimezone(IST).strftime('%Y-%m-%d at %I:%M %p')}.",
+                    type="general"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send notification to new doctor: {e}")
+
+        return appt

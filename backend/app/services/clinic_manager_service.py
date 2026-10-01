@@ -286,55 +286,20 @@ class ClinicManagerService:
         *,
         action: str,  # "approve" or "reject"
         response_notes: str | None = None,
+        resolutions: list[Any] | None = None,
     ) -> dict[str, Any]:
-        """Approve or reject a doctor's schedule change request."""
-        stmt = select(AvailabilityChangeRequest).options(joinedload(AvailabilityChangeRequest.doctor)).where(AvailabilityChangeRequest.id == request_id)
-        res = await self.db.execute(stmt)
-        req = res.scalar_one_or_none()
+        """Approve or reject a doctor's schedule change request with full conflict resolution."""
+        from app.services.availability_request_service import AvailabilityRequestService
+        from app.schemas.availability_request import AvailabilityChangeRequestUpdate
 
-        if not req:
-            raise NotFoundError("Schedule change request not found.")
-
-        if req.status != "pending":
-            raise BadRequestError(f"Request is already {req.status}.")
-
-        if action == "reject":
-            req.status = "rejected"
-            await self.db.commit()
-            return {"id": str(req.id), "status": "rejected", "message": "Request rejected successfully."}
-
-        # Approve logic
-        req.status = "approved"
-
-        doctor = req.doctor
-        if doctor and doctor.availability_metadata:
-            meta: dict[str, Any] = {}
-            if isinstance(doctor.availability_metadata, str):
-                try:
-                    parsed = json.loads(doctor.availability_metadata)
-                    if isinstance(parsed, dict):
-                        meta = parsed
-                except Exception:
-                    meta = {}
-
-            if req.request_type == "leave" and req.proposed_start_date and req.proposed_end_date:
-                existing_leaves = meta.get("leaves")
-                leaves_list: list[dict[str, Any]] = list(existing_leaves) if isinstance(existing_leaves, list) else []
-                leaves_list.append({"start_date": req.proposed_start_date, "end_date": req.proposed_end_date, "reason": req.reason or "Leave"})
-                meta["leaves"] = leaves_list
-
-            elif req.request_type == "lunch_break" and req.proposed_start_time and req.proposed_end_time:
-                meta["lunch_start"] = req.proposed_start_time
-                meta["lunch_end"] = req.proposed_end_time
-
-            elif req.request_type == "teleconsultation" and req.proposed_start_time and req.proposed_end_time:
-                meta["tele_start"] = req.proposed_start_time
-                meta["tele_end"] = req.proposed_end_time
-
-            doctor.availability_metadata = json.dumps(meta)
-
-        await self.db.commit()
-        return {"id": str(req.id), "status": "approved", "message": "Request approved and doctor availability updated."}
+        status = "approved" if action == "approve" else "rejected"
+        update_data = AvailabilityChangeRequestUpdate(
+            status=status,
+            rejection_reason=response_notes,
+            resolutions=resolutions,
+        )
+        service = AvailabilityRequestService(self.db)
+        return await service.update_request_status(request_id, update_data)
 
     async def get_operational_dashboard(self, branch_id: uuid.UUID | None = None) -> dict[str, Any]:
         """

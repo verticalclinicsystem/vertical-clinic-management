@@ -10,6 +10,7 @@ import './AdminPortal.css';
 import { CustomDatePicker } from '../../components/CustomDatePicker';
 import { DoctorSlotManager } from '../../components/DoctorSlotManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { LeaveConflictResolutionModal } from '../../components/LeaveConflictResolutionModal';
 
 interface AdminPortalProps { onLogout: () => void; }
 
@@ -1217,6 +1218,54 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       }
     } catch (e) { console.error(e); }
     setLoading(false);
+  };
+
+  // Leave Conflict Resolution Modal State
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [activeConflictRequest, setActiveConflictRequest] = useState<any>(null);
+  const [activeConflictsList, setActiveConflictsList] = useState<any[]>([]);
+  const [conflictDoctorsList, setConflictDoctorsList] = useState<any[]>([]);
+
+  const handleInitiateApprove = async (req: any) => {
+    try {
+      const res = await api.get(`/doctors/availability-requests/${req.id}/conflicts`);
+      const data = res.data?.data;
+      const conflicts = data?.conflicts || [];
+      const doctors = data?.doctors || [];
+
+      if (conflicts.length > 0) {
+        setActiveConflictRequest(data?.request || req);
+        setActiveConflictsList(conflicts);
+        setConflictDoctorsList(doctors);
+        setConflictModalOpen(true);
+      } else {
+        await handleResolveRequest(req.id, 'approved');
+      }
+    } catch (err: any) {
+      console.error('Failed to preview conflicts, approving directly:', err);
+      await handleResolveRequest(req.id, 'approved');
+    }
+  };
+
+  const handleConfirmConflictResolutions = async (resolutions: any[]) => {
+    if (!activeConflictRequest) return;
+    try {
+      const res = await api.put(`/doctors/availability-requests/${activeConflictRequest.id}`, {
+        status: 'approved',
+        resolutions,
+      });
+      if (res.data?.success) {
+        setConflictModalOpen(false);
+        setActiveConflictRequest(null);
+        await fetchAvailabilityRequests();
+        alert('Leave approved and conflicting appointments resolved!');
+      } else {
+        alert(res.data?.message || 'Failed to update request.');
+      }
+    } catch (err: any) {
+      console.error('Failed to resolve conflicts:', err);
+      alert(err.response?.data?.message || 'Error occurred while resolving conflicts.');
+    }
   };
 
   const handleResolveRequest = async (requestId: string, status: 'approved' | 'rejected') => {
@@ -3186,7 +3235,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                                 <td>
                                   <div style={{ display: 'flex', gap: '8px' }}>
                                     <button
-                                      onClick={() => handleResolveRequest(req.id, 'approved')}
+                                      onClick={() => handleInitiateApprove(req)}
                                       style={{
                                         background: '#10b981',
                                         border: 'none',
@@ -4218,6 +4267,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           </div>
         </div>
       )}
+
+      {/* ── LEAVE CONFLICT RESOLUTION MODAL ── */}
+      <LeaveConflictResolutionModal
+        isOpen={conflictModalOpen}
+        onClose={() => setConflictModalOpen(false)}
+        request={activeConflictRequest}
+        conflicts={activeConflictsList}
+        availableDoctors={conflictDoctorsList}
+        onConfirm={handleConfirmConflictResolutions}
+      />
     </div>
   );
 };
