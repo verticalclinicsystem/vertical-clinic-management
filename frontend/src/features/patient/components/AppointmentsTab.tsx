@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Stethoscope, MapPin, MoreVertical, Clock, Video, Calendar, X, AlertTriangle, Check, ArrowRight } from 'lucide-react';
+import { Stethoscope, MapPin, MoreVertical, Clock, Video, Calendar, X, AlertTriangle, ArrowRight } from 'lucide-react';
 import { CustomDatePicker } from '../../../components/CustomDatePicker';
-import { api } from '../../../services/api';
 
 interface AppointmentsTabProps {
   dashboardData: any;
@@ -19,8 +18,6 @@ interface AppointmentsTabProps {
   onRefresh?: () => void;
 }
 
-
-
 export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   dashboardData,
   appointmentFilter,
@@ -34,30 +31,11 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
   handleJoinMeeting,
   setViewingAppointment,
   triggerToast,
-  onRefresh,
+  onRefresh: _onRefresh,
 }) => {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<string>(appointmentDateFilter || '');
   const [endDate, setEndDate] = useState<string>('');
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
-
-  const handleAcceptReassignment = async (apptId: string) => {
-    setAcceptingId(apptId);
-    try {
-      const res = await api.post(`/appointments/${apptId}/accept-reassign`);
-      if (res.data?.success) {
-        triggerToast('success', 'Doctor reassignment accepted! Your appointment is confirmed.');
-        if (onRefresh) onRefresh();
-      } else {
-        triggerToast('error', res.data?.message || 'Failed to accept reassignment.');
-      }
-    } catch (err: any) {
-      console.error('Accept reassignment error:', err);
-      triggerToast('error', err.response?.data?.message || 'Failed to accept reassignment.');
-    } finally {
-      setAcceptingId(null);
-    }
-  };
 
   const handleStartDateChange = (date: string) => {
     setStartDate(date);
@@ -218,7 +196,8 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <div style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 500 }}>
                       <strong style={{ color: '#d97706' }}>Dr. {prevDocName}</strong> is on approved leave. 
-                      Your appointment on <strong>{formattedDt}</strong> has been reassigned to <strong style={{ color: 'var(--primary-teal, #0d9488)' }}>Dr. {newDocName}</strong>.
+                      We have suggested <strong style={{ color: 'var(--primary-teal, #0d9488)' }}>Dr. {newDocName}</strong> for your consultation (originally scheduled on <strong>{formattedDt}</strong>). 
+                      Please reschedule your appointment to select a convenient date and time slot.
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span>Branch: {reAppt.branch?.name}</span>
@@ -232,44 +211,23 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
                       type="button"
-                      onClick={() => handleAcceptReassignment(reAppt.id)}
-                      disabled={acceptingId === reAppt.id}
+                      onClick={() => openRescheduleModal(reAppt.id, reAppt.doctor_id, reAppt.consultation_type)}
                       style={{
-                        padding: '7px 14px',
-                        backgroundColor: '#10b981',
+                        padding: '7px 16px',
+                        backgroundColor: 'var(--primary-teal, #0d9488)',
                         color: '#ffffff',
                         border: 'none',
                         borderRadius: '6px',
                         fontSize: '0.82rem',
                         fontWeight: 700,
-                        cursor: acceptingId === reAppt.id ? 'not-allowed' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 1px 3px rgba(16, 185, 129, 0.3)'
-                      }}
-                    >
-                      <Check size={14} /> {acceptingId === reAppt.id ? 'Confirming...' : 'Accept & Confirm'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => openRescheduleModal(reAppt.id, reAppt.doctor_id, reAppt.consultation_type)}
-                      style={{
-                        padding: '7px 12px',
-                        backgroundColor: '#f1f5f9',
-                        color: '#334155',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.82rem',
-                        fontWeight: 600,
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px'
+                        gap: '6px',
+                        boxShadow: '0 2px 4px rgba(13, 148, 136, 0.25)'
                       }}
                     >
-                      <Clock size={14} /> Reschedule
+                      <Clock size={14} /> Reschedule Slot
                     </button>
 
                     <button
@@ -373,7 +331,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                     {appt.doctor?.user?.full_name?.toLowerCase().startsWith('dr') ? appt.doctor?.user?.full_name : `Dr. ${appt.doctor?.user?.full_name}`}
                     {isReassignedPending && (
                       <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        <ArrowRight size={11} /> Reassigned from Dr. {appt.previous_doctor?.user?.full_name || appt.previous_doctor?.full_name || 'Original Doctor'}
+                        <ArrowRight size={11} /> Suggested (Dr. {appt.previous_doctor?.user?.full_name || appt.previous_doctor?.full_name || 'Original Doctor'} on leave)
                       </div>
                     )}
                   </td>
@@ -384,7 +342,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   <td>
                     {isReassignedPending ? (
                       <span className="status-pill reassigned-pending" style={{ backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 700 }}>
-                        Action Required
+                        Reschedule Needed
                       </span>
                     ) : (
                       <span className={`status-pill ${appt.status.replace(/_/g, '-')}`}>{appt.status.replace(/[_-]/g, ' ')}</span>
@@ -392,55 +350,30 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   </td>
                   <td>
                     {isReassignedPending ? (
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAcceptReassignment(appt.id);
-                          }}
-                          disabled={acceptingId === appt.id}
-                          style={{
-                            padding: '5px 10px',
-                            backgroundColor: '#10b981',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '0.76rem',
-                            fontWeight: 700,
-                            cursor: acceptingId === appt.id ? 'not-allowed' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                          title="Accept reassigned doctor"
-                        >
-                          <Check size={12} /> {acceptingId === appt.id ? '...' : 'Accept'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openRescheduleModal(appt.id, appt.doctor_id, appt.consultation_type);
-                          }}
-                          style={{
-                            padding: '5px 8px',
-                            backgroundColor: '#f1f5f9',
-                            color: '#334155',
-                            border: '1px solid #cbd5e1',
-                            borderRadius: '6px',
-                            fontSize: '0.76rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                          title="Pick another slot or doctor"
-                        >
-                          <Clock size={12} />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRescheduleModal(appt.id, appt.doctor_id, appt.consultation_type);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: 'var(--primary-teal, #0d9488)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          boxShadow: '0 1px 3px rgba(13, 148, 136, 0.2)'
+                        }}
+                        title="Pick date and time slot"
+                      >
+                        <Clock size={13} /> Reschedule Slot
+                      </button>
                     ) : ['confirmed', 'scheduled', 'rescheduled', 'pending'].includes(appt.status) ? (
                       <div className="action-dropdown-container">
                         <button

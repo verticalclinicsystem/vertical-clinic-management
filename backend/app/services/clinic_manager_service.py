@@ -451,7 +451,12 @@ class ClinicManagerService:
                 if full_name is not None:
                     rec.name = full_name
                 if shift_timing is not None:
-                    rec.shift_timing = shift_timing
+                    if " - " in shift_timing:
+                        parts = shift_timing.split(" - ")
+                        rec.shift_start = parts[0].strip()
+                        rec.shift_end = parts[1].strip()
+                    else:
+                        rec.shift_start = shift_timing
 
         await self.db.commit()
         return {"user_id": str(user.id), "full_name": user.full_name, "message": "Staff details updated successfully."}
@@ -583,7 +588,11 @@ class ClinicManagerService:
 
     async def get_billing_requests(self, branch_id: uuid.UUID | None = None) -> list[dict[str, Any]]:
         """Fetch invoices with discounts or pending manager approval."""
-        stmt = select(Invoice).options(joinedload(Invoice.patient).joinedload(Patient.user)).order_by(Invoice.created_at.desc())
+        stmt = (
+            select(Invoice)
+            .options(joinedload(Invoice.patient).joinedload(Patient.user))
+            .order_by(Invoice.created_at.desc())
+        )
         res = await self.db.execute(stmt)
         invoices = list(res.scalars().all())
 
@@ -592,7 +601,8 @@ class ClinicManagerService:
             p_name = "N/A"
             if inv.patient:
                 p_name = inv.patient.name or (inv.patient.user.full_name if inv.patient.user else "Patient")
-            if float(inv.discount_amount or 0) > 0 or inv.status in ["unpaid", "partially_paid"]:
+            if inv.status in ["pending_approval", "rejected"] or float(inv.discount_amount or 0) > 0 or inv.status in ["unpaid", "partially_paid"]:
+                req_type = "New Bill Approval" if inv.status == "pending_approval" else ("Discount Waiver" if float(inv.discount_amount or 0) > 0 else "Billing Review")
                 out.append({
                     "id": str(inv.id),
                     "invoice_number": inv.invoice_number,
@@ -602,8 +612,12 @@ class ClinicManagerService:
                     "grand_total": float(inv.grand_total or 0),
                     "balance_due": float(inv.balance_due or 0),
                     "status": inv.status,
+                    "request_type": req_type,
                     "created_at": inv.created_at.strftime("%Y-%m-%d %I:%M %p") if inv.created_at else "N/A",
                 })
+
+        # Sort so pending_approval bills appear at the top
+        out.sort(key=lambda x: (0 if x["status"] == "pending_approval" else 1))
         return out
 
     async def review_billing_request(
@@ -613,23 +627,78 @@ class ClinicManagerService:
         action: str,  # "approve" or "reject"
         reason_notes: str | None = None,
     ) -> dict[str, Any]:
-        """Approve or reject a discount/refund billing override."""
-        stmt = select(Invoice).where(Invoice.id == invoice_id)
-        res = await self.db.execute(stmt)
-        inv = res.scalar_one_or_none()
+        """Approve or reject a bill or discount/refund billing override."""
+        from app.repositories.invoice_repo import InvoiceRepository
+        from app.services.billing_service import BillingService
+        from app.services.notification_service import NotificationService
+
+        invoice_repo = InvoiceRepository(self.db)
+        inv = await invoice_repo.get_invoice_with_relations(invoice_id)
         if not inv:
-            raise NotFoundError("Invoice not found.")
+            raise NotFoundError("Invoice / Bill not found.")
+
+        is_draft_bill = (inv.status == "pending_approval" or inv.invoice_number.startswith("BILL-"))
 
         if action == "reject":
-            # Revert discount
-            inv.grand_total = float(inv.total_amount or 0)
-            inv.discount_amount = 0.0
-            inv.balance_due = max(0.0, inv.grand_total - float(inv.amount_paid or 0))
+            if is_draft_bill:
+                inv.status = "rejected"
+            else:
+                # Revert discount override
+                inv.grand_total = float(inv.total_amount or 0)
+                inv.discount_amount = 0.0
+                inv.balance_due = max(0.0, inv.grand_total - float(inv.amount_paid or 0))
             await self.db.commit()
-            return {"id": str(inv.id), "status": "rejected", "message": "Discount override rejected & reverted by Manager."}
+            return {
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "status": "rejected",
+                "message": f"Bill/Invoice {inv.invoice_number} rejected by Manager."
+            }
 
-        await self.db.commit()
-        return {"id": str(inv.id), "status": "approved", "message": "Discount / Refund override approved by Manager."}
+        # Action == "approve"
+        if is_draft_bill:
+            # Generate official Invoice Number (INV-YYYYMMDD-XXXX)
+            official_inv_num = await invoice_repo.get_next_invoice_number()
+            old_bill_num = inv.invoice_number
+            inv.invoice_number = official_inv_num
+            inv.status = "unpaid"
+            await self.db.commit()
+
+            # Multichannel notification to patient
+            noti_service = NotificationService(self.db)
+            try:
+                if inv.patient and inv.patient.user_id:
+                    await noti_service.send_multichannel_notification(
+                        user_id=inv.patient.user_id,
+                        title="Invoice Generated & Approved",
+                        message=f"Your bill ({old_bill_num}) has been approved by Clinic Management. Official Invoice: {official_inv_num} for ₹{float(inv.grand_total):.2f}.",
+                        type="billing"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to notify patient of invoice approval: {e}")
+
+            # Send PDF Email to patient
+            try:
+                billing_service = BillingService(self.db)
+                await billing_service.send_invoice_email_to_patient(inv.id)
+            except Exception as e:
+                logger.warning(f"Failed to auto-email approved invoice: {e}")
+
+            return {
+                "id": str(inv.id),
+                "invoice_number": official_inv_num,
+                "status": "approved",
+                "message": f"Bill approved successfully! Official invoice {official_inv_num} generated and sent to patient."
+            }
+        else:
+            # Discount / Refund override approved
+            await self.db.commit()
+            return {
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "status": "approved",
+                "message": "Discount / Refund override approved by Manager."
+            }
 
     async def create_announcement(
         self,

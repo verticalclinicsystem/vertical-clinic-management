@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
+import { isSlotExpiredOrPast } from '../../../utils/slotUtils';
 
 interface BookingWizardProps {
   bookingStep: number;
@@ -458,10 +459,45 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     })}
 
                     {safeFilteredDoctors.length === 0 && (
-                      <div className="doctor-list-empty-state">
-                        <span>👨‍⚕️</span>
-                        <h4>No clinicians match your filter criteria</h4>
-                        <p>Try resetting filters or searching with a different keyword.</p>
+                      <div
+                        className="doctor-list-empty-state"
+                        style={{
+                          textAlign: 'center',
+                          padding: '44px 20px',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: '12px',
+                          border: '1px dashed #cbd5e1',
+                          margin: '20px 0',
+                        }}
+                      >
+                        <span style={{ fontSize: '2.8rem', display: 'block', marginBottom: '12px' }}>🏥</span>
+                        <h4 style={{ fontSize: '1.15rem', fontWeight: 600, color: '#1e293b', marginBottom: '8px' }}>
+                          {safeDoctors.length === 0
+                            ? `No clinicians assigned to ${safeBranches.find((b: any) => b.id === selectedBranchId)?.name || 'this'} Branch`
+                            : 'No clinicians match your filter criteria'}
+                        </h4>
+                        <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '440px', margin: '0 auto 16px', lineHeight: 1.5 }}>
+                          {safeDoctors.length === 0
+                            ? `There are currently no doctors assigned to this clinic branch. Please choose another branch (such as Bopal Branch) or check back later.`
+                            : 'Try resetting your search query, specialization, or gender filters to see available clinicians.'}
+                        </p>
+                        {safeDoctors.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setBookingStep(1)}
+                            className="btn-secondary"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '8px 18px',
+                              fontSize: '0.875rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ← Select Another Branch
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -528,12 +564,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             const renderSlotButton = (slot: any) => {
               const slotTime = getSlotTime(slot);
               const slotStatus = getSlotStatus(slot);
-              
+              const isPast = isSlotExpiredOrPast(bookingDate, slotTime, slotStatus);
               const isBooked = slotStatus === 'booked';
               const isLunch = slotStatus === 'lunch_break';
               const isTeleOnly = slotStatus === 'tele_only';
               const isInClinicOnly = slotStatus === 'in_clinic_only';
-              const isExpired = slotStatus === 'expired';
+              const isExpired = slotStatus === 'expired' || isPast;
               
               const isDisable = isBooked || isLunch || isTeleOnly || isInClinicOnly || isExpired;
               const isSelected = bookingSlot === slotTime;
@@ -541,7 +577,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               let labelSuffix = '';
               let tooltip = `Book ${formatTimeToAMPM(slotTime)}`;
               
-              if (isBooked) {
+              if (isExpired) {
+                labelSuffix = ' ⏳';
+                tooltip = 'Past time slot (Unavailable)';
+              } else if (isBooked) {
                 labelSuffix = ' 🔒';
                 tooltip = 'This slot is already booked';
               } else if (isLunch) {
@@ -553,16 +592,13 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               } else if (isInClinicOnly) {
                 labelSuffix = ' 🏥';
                 tooltip = 'In-Clinic Only';
-              } else if (isExpired) {
-                labelSuffix = ' ⏳';
-                tooltip = 'Slot Expired';
               }
 
               return (
                 <button
                   key={slotTime || Math.random()}
                   type="button"
-                  className={`slot-item-btn${isSelected ? ' selected' : ''}${isDisable ? ' booked' : ''}`}
+                  className={`slot-item-btn${isSelected ? ' selected' : ''}${isExpired ? ' expired' : isDisable ? ' booked' : ''}`}
                   onClick={() => !isDisable && slotTime && setBookingSlot(slotTime)}
                   disabled={isDisable || !slotTime}
                   title={tooltip}

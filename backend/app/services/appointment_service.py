@@ -202,18 +202,22 @@ class AppointmentService:
             if t in booked_times:
                 status = "booked"
             
-            # Exclude past slots if today by setting them as expired or booked
-            if is_today and not is_testing:
-                slot_hour, slot_min = map(int, t.split(":"))
-                slot_dt = datetime.combine(date_obj, dt_time(slot_hour, slot_min)).replace(tzinfo=IST)
-                # Exclude if slot time is in the past or within 30 mins lead time
-                if slot_dt < current_time_ist:
+            # Exclude past slots if date is in the past or slot has passed today
+            if not is_testing:
+                if date_obj < current_time_ist.date():
                     if status != "booked":
                         status = "expired"
-                elif slot_dt < current_time_ist + timedelta(minutes=30):
-                    if not is_staff:
+                elif is_today:
+                    slot_hour, slot_min = map(int, t.split(":"))
+                    slot_dt = datetime.combine(date_obj, dt_time(slot_hour, slot_min)).replace(tzinfo=IST)
+                    # Exclude if slot time is in the past or within 30 mins lead time
+                    if slot_dt < current_time_ist:
                         if status != "booked":
                             status = "expired"
+                    elif slot_dt < current_time_ist + timedelta(minutes=30):
+                        if not is_staff:
+                            if status != "booked":
+                                status = "expired"
 
             result.append({
                 "time": t,
@@ -547,7 +551,7 @@ class AppointmentService:
         appointment = await self.get_appointment(appointment_id)
 
         # Normalize role to string
-        role_str = str(role.value) if hasattr(role, "value") else str(role)
+        role_str = role.value if hasattr(role, "value") else role
         role_lower = role_str.lower()
 
         # 1. Permission check: patients can only update their own appointments
@@ -588,17 +592,24 @@ class AppointmentService:
                 if is_new_appt_past:
                     if not is_staff or is_db_appt_future:
                         raise BadRequestError("Cannot reschedule to a past date/time.")
-            # Check maximum reschedule limit
-            if not is_staff and appointment.reschedule_count >= 2:
+            is_doctor_leave_reschedule = (appointment.status == "reassigned_pending")
+
+            # Check maximum reschedule limit (exempt if doctor was on leave and patient is picking new slot)
+            if not is_staff and not is_doctor_leave_reschedule and appointment.reschedule_count >= 2:
                 raise BadRequestError("Maximum reschedule limit (2 times) reached.")
 
-            # Not allowed within 2 hours of current scheduled time
+            # Not allowed within 2 hours of current scheduled time (exempt if doctor was on leave)
             appt_time = db_appt_dt
-            if not is_staff and appt_time - now < timedelta(hours=2):
+            if not is_staff and not is_doctor_leave_reschedule and appt_time - now < timedelta(hours=2):
                 raise BadRequestError("Rescheduling is not allowed within 2 hours of the scheduled time.")
 
-            # Increment reschedule count
-            update_data["reschedule_count"] = appointment.reschedule_count + 1
+            # Increment reschedule count only for normal patient reschedules
+            if not is_doctor_leave_reschedule:
+                update_data["reschedule_count"] = appointment.reschedule_count + 1
+
+            # If appointment was pending reassignment/reschedule due to doctor leave, confirm it
+            if is_doctor_leave_reschedule:
+                update_data["status"] = "confirmed"
 
             # Check double booking for the new datetime
             double_booking_stmt = select(Appointment).where(

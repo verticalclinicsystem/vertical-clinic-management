@@ -49,6 +49,7 @@ import { RecepCheckInTab } from './components/RecepCheckInTab';
 import { RecepBedsTab } from './components/RecepBedsTab';
 import { RecepAvailabilityTab } from './components/RecepAvailabilityTab';
 import './ReceptionistPortal.css';
+import { isSlotExpiredOrPast } from '../../utils/slotUtils';
 
 const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
   const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
@@ -684,6 +685,8 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
   const getInvoiceEffectiveStatus = (inv: any) => {
     if (!inv) return 'unpaid';
     if (inv.status === 'cancelled') return 'cancelled';
+    if (inv.status === 'pending_approval') return 'pending_approval';
+    if (inv.status === 'rejected') return 'rejected';
     const bal = typeof inv.balance_due === 'number' ? inv.balance_due : parseFloat(inv.balance_due || 0);
     const paid = typeof inv.amount_paid === 'number' ? inv.amount_paid : parseFloat(inv.amount_paid || 0);
     if (bal <= 0) return 'paid';
@@ -1609,7 +1612,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
       });
 
       if (res.data?.success) {
-        showToast('Invoice generated successfully.', 'success');
+        showToast(res.data?.message || 'Bill submitted for Clinic Manager approval.', 'success');
         setActiveTab('invoices');
         setBillingForm({
           patient_id: '',
@@ -2794,11 +2797,11 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                       {availableSlots
                         .map((slot: any) => {
                           let label = formatTimeToAMPM(slot.time);
-                          const isExpired = slot.status === 'expired';
+                          const isExpired = slot.status === 'expired' || isSlotExpiredOrPast(bookingForm.appointment_date, slot.time, slot.status);
                           if (slot.status === 'booked') {
                             label += ' (Booked)';
                           } else if (isExpired) {
-                            label += ' (Expired)';
+                            label += ' (Expired / Past)';
                           } else if (slot.status === 'lunch_break') {
                             label += ' (Lunch Break)';
                           } else if (slot.status === 'tele_only') {
@@ -3138,15 +3141,27 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--muted)', fontWeight: 600 }}>Invoice Status</div>
                 {(() => {
                   const effStatus = getInvoiceEffectiveStatus(selectedInvoiceForPreview);
+                  const isPending = effStatus === 'pending_approval' || selectedInvoiceForPreview.status === 'pending_approval';
+                  const isRej = effStatus === 'rejected' || selectedInvoiceForPreview.status === 'rejected';
+
                   return (
                     <span className={`badge ${
                       effStatus === 'paid' ? 'badge-completed' :
                       effStatus === 'partially_paid' ? 'badge-confirmed' :
-                      effStatus === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
-                    }`} style={{ marginTop: '4px', display: 'inline-block' }}>
+                      effStatus === 'cancelled' ? 'badge-cancelled' :
+                      isPending ? 'badge-warning' :
+                      isRej ? 'badge-cancelled' : 'badge-pending'
+                    }`} style={{
+                      marginTop: '4px',
+                      display: 'inline-block',
+                      ...(isPending ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 600 } : {}),
+                      ...(isRej ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 600 } : {})
+                    }}>
                       {effStatus === 'paid' ? 'Paid' :
                        effStatus === 'partially_paid' ? 'Partial' :
-                       effStatus === 'cancelled' ? 'Cancelled' : 'Unpaid'}
+                       effStatus === 'cancelled' ? 'Cancelled' :
+                       isPending ? 'Pending Approval' :
+                       isRej ? 'Rejected' : 'Unpaid'}
                     </span>
                   );
                 })()}
@@ -3331,8 +3346,13 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {selectedInvoiceForPreview.balance_due > 0 && (
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {selectedInvoiceForPreview.status === 'pending_approval' && (
+                  <span style={{ fontSize: '0.85rem', color: '#b45309', background: '#fef3c7', padding: '6px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                    ⏳ Awaiting Manager Approval
+                  </span>
+                )}
+                {selectedInvoiceForPreview.balance_due > 0 && selectedInvoiceForPreview.status !== 'pending_approval' && selectedInvoiceForPreview.status !== 'rejected' && (
                   <button 
                     type="button" 
                     className="btn-pay"

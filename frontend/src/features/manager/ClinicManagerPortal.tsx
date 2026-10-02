@@ -2133,8 +2133,9 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                   <table className="custom-table">
                     <thead>
                       <tr>
-                        <th>Invoice Number</th>
+                        <th>Bill / Invoice #</th>
                         <th>Patient Name</th>
+                        <th>Type</th>
                         <th>Subtotal</th>
                         <th>Discount Requested</th>
                         <th>Grand Total</th>
@@ -2143,32 +2144,74 @@ export const ClinicManagerPortal: React.FC<ClinicManagerPortalProps> = ({ onLogo
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredBillingRequests.map((inv) => (
-                        <tr key={inv.id}>
-                          <td><code>{inv.invoice_number}</code></td>
-                          <td><strong>{inv.patient_name}</strong></td>
-                          <td>₹{inv.total_amount}</td>
-                          <td><strong style={{ color: '#ef4444' }}>-₹{inv.discount_amount}</strong></td>
-                          <td><strong>₹{inv.grand_total}</strong></td>
-                          <td><span className="status-tag pending">{inv.status.toUpperCase()}</span></td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                className="btn-approve-sm"
-                                onClick={() => handleReviewBilling(inv.id, 'approve')}
-                              >
-                                <Check size={14} /> Approve Waiver
-                              </button>
-                              <button
-                                className="btn-reject-sm"
-                                onClick={() => handleReviewBilling(inv.id, 'reject')}
-                              >
-                                <XCircle size={14} /> Reject
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredBillingRequests.map((inv) => {
+                        const isPending = inv.status === 'pending_approval';
+                        const isRejected = inv.status === 'rejected';
+
+                        return (
+                          <tr key={inv.id}>
+                            <td><code>{inv.invoice_number}</code></td>
+                            <td><strong>{inv.patient_name}</strong></td>
+                            <td>
+                              <span style={{
+                                fontSize: '0.75rem',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontWeight: 600,
+                                background: isPending ? '#e0e7ff' : '#f1f5f9',
+                                color: isPending ? '#3730a3' : '#475569'
+                              }}>
+                                {inv.request_type || (isPending ? 'New Bill Approval' : 'Discount Waiver')}
+                              </span>
+                            </td>
+                            <td>₹{Number(inv.total_amount || 0).toFixed(2)}</td>
+                            <td>
+                              <strong style={{ color: Number(inv.discount_amount || 0) > 0 ? '#ef4444' : '#64748b' }}>
+                                -₹{Number(inv.discount_amount || 0).toFixed(2)}
+                              </strong>
+                            </td>
+                            <td><strong>₹{Number(inv.grand_total || 0).toFixed(2)}</strong></td>
+                            <td>
+                              {isPending ? (
+                                <span className="status-tag" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 600 }}>
+                                  PENDING APPROVAL
+                                </span>
+                              ) : isRejected ? (
+                                <span className="status-tag" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 600 }}>
+                                  REJECTED
+                                </span>
+                              ) : (
+                                <span className="status-tag" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', fontWeight: 600 }}>
+                                  OFFICIAL INVOICE ({inv.status.toUpperCase()})
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              {isPending ? (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <button
+                                    className="btn-approve-sm"
+                                    onClick={() => handleReviewBilling(inv.id, 'approve')}
+                                    title="Approve bill and issue official invoice to patient"
+                                  >
+                                    <Check size={14} /> Approve &amp; Issue Invoice
+                                  </button>
+                                  <button
+                                    className="btn-reject-sm"
+                                    onClick={() => handleReviewBilling(inv.id, 'reject')}
+                                  >
+                                    <XCircle size={14} /> Reject
+                                  </button>
+                                </div>
+                              ) : isRejected ? (
+                                <span style={{ color: '#ef4444', fontSize: '0.8rem', fontWeight: 600 }}>Bill Rejected</span>
+                              ) : (
+                                <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>Approved &amp; Issued</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

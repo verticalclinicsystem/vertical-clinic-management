@@ -4,6 +4,7 @@ Payment service — handles business logic and validations for clinic payments.
 from __future__ import annotations
 
 import logging
+from typing import Any
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,10 @@ class PaymentService:
         invoice = await self.billing_service.get_invoice(request.invoice_id)
 
         # 2. Validation checks
+        if invoice.status == "pending_approval":
+            raise BadRequestError("Cannot process payment for a bill pending manager approval.")
+        if invoice.status == "rejected":
+            raise BadRequestError("Cannot process payment for a rejected bill.")
         if invoice.status == "cancelled":
             raise BadRequestError("Cannot pay a cancelled invoice.")
         if invoice.status == "paid" or invoice.balance_due <= 0:
@@ -65,7 +70,7 @@ class PaymentService:
         new_amount_paid = float(invoice.amount_paid) + float(payment_amount)
         new_balance_due = max(0.0, float(invoice.grand_total) - new_amount_paid)
 
-        invoice_update_data = {
+        invoice_update_data: dict[str, Any] = {
             "amount_paid": new_amount_paid,
             "balance_due": new_balance_due,
         }

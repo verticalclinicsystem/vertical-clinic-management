@@ -1,6 +1,7 @@
 import React from 'react';
 import { UploadCloud, Clock, Download, Video } from 'lucide-react';
 import { CustomDatePicker } from '../../../components/CustomDatePicker';
+import { isSlotExpiredOrPast } from '../../../utils/slotUtils';
 
 const validateMedicalFile = (file: File): { isValid: boolean; message: string } => {
   const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
@@ -374,24 +375,33 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
 
                 return (
                   <div style={{ marginTop: '16px' }}>
-                    <label className="form-label">Select Available Slot</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label className="form-label" style={{ margin: 0 }}>Select Available Slot</label>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        ⏳ Past &amp; unavailable slots are greyed out
+                      </span>
+                    </div>
                     <div className="slots-grid">
                       {safeRescheduleSlots.map((slot: any) => {
                         const slotTime = typeof slot === 'string' ? slot : (slot?.time || slot?.start_time || slot?.slot_time || '');
                         const slotStatus = typeof slot === 'string' ? 'available' : (slot?.status || (slot?.is_active === false ? 'booked' : 'available'));
                         
+                        const isExpired = isSlotExpiredOrPast(rescheduleDate, slotTime, slotStatus);
                         const isBooked = slotStatus === 'booked';
                         const isLunch = slotStatus === 'lunch_break';
                         const isTeleOnly = slotStatus === 'tele_only';
                         const isInClinicOnly = slotStatus === 'in_clinic_only';
                         
-                        const isDisable = isBooked || isLunch || isTeleOnly || isInClinicOnly;
+                        const isDisable = isBooked || isLunch || isTeleOnly || isInClinicOnly || isExpired;
                         const isSelected = rescheduleSlot === slotTime;
 
                         let labelSuffix = '';
                         let tooltip = `Select ${formatTimeToAMPM(slotTime)}`;
                         
-                        if (isBooked) {
+                        if (isExpired) {
+                          labelSuffix = ' ⏳';
+                          tooltip = 'Past time slot (Unavailable)';
+                        } else if (isBooked) {
                           labelSuffix = ' 🔒';
                           tooltip = 'Already booked';
                         } else if (isLunch) {
@@ -408,7 +418,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                         return (
                           <button
                             key={slotTime || Math.random()}
-                            className={`slot-button${isSelected ? ' selected' : ''}${isDisable ? ' booked' : ''}`}
+                            className={`slot-button${isSelected ? ' selected' : ''}${isExpired ? ' expired' : isDisable ? ' booked' : ''}`}
                             onClick={() => !isDisable && slotTime && setRescheduleSlot(slotTime)}
                             disabled={isDisable || !slotTime}
                             title={tooltip}

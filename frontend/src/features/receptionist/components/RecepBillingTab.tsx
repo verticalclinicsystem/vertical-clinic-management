@@ -418,8 +418,11 @@ export const RecepBillingTab: React.FC<RecepBillingTabProps> = ({
               disabled={submitLoading || !billingForm.patient_id || billingForm.total_amount <= 0}
               style={{ marginTop: '1.5rem' }}
             >
-              {submitLoading ? 'Generating...' : 'Generate & Save Bill'}
+              {submitLoading ? 'Submitting...' : 'Submit Bill for Manager Approval'}
             </button>
+            <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+              ℹ️ Bill will be sent to Clinic Manager. The official invoice will be generated and issued upon manager approval.
+            </p>
           </form>
         </div>
       </div>
@@ -433,7 +436,7 @@ export const RecepBillingTab: React.FC<RecepBillingTabProps> = ({
             <div className="receipt-meta">
               <span>Date: {new Date().toLocaleDateString()}</span>
               <span>
-                Status: <span className="status-unpaid">UNPAID (Pending)</span>
+                Status: <span className="status-unpaid" style={{ color: '#b45309', background: '#fef3c7', padding: '2px 8px', borderRadius: '4px' }}>DRAFT (Awaiting Approval)</span>
               </span>
             </div>
           </div>
