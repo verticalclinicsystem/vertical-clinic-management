@@ -215,6 +215,7 @@ async def get_patient_dashboard(
         page=1,
         limit=50,
         patient_id=patient_id,
+        exclude_pending=True,
     )
 
     # 7. Get balance due
@@ -1091,7 +1092,7 @@ async def get_patient_timeline(
 
     # 4. Fetch Invoices (Bills)
     billing_service = BillingService(db)
-    invoices, _ = await billing_service.list_invoices(page=1, limit=100, patient_id=patient_id)
+    invoices, _ = await billing_service.list_invoices(page=1, limit=100, patient_id=patient_id, exclude_pending=True)
     for inv in invoices:
         timeline.append({
             "event_type": "invoice",
@@ -1244,6 +1245,7 @@ async def get_patient_history_profile(
         page=1,
         limit=50,
         patient_id=patient_id,
+        exclude_pending=True,
     )
 
     # 7. Get balance due

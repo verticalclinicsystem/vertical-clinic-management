@@ -500,17 +500,28 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     setBookingStep(2);
   };
 
+  // Synchronize doctor selection if branch changes/mismatches
+  useEffect(() => {
+    if (selectedBranchId && selectedDoctorId) {
+      const doc = (Array.isArray(doctors) ? doctors : []).find((d: any) => d.id === selectedDoctorId);
+      if (doc && doc.branch_id && doc.branch_id !== selectedBranchId) {
+        setSelectedDoctorId('');
+      }
+    }
+  }, [selectedBranchId, selectedDoctorId, doctors]);
+
   // Auto re-fetch slots when consultationType changes for selected doctor & date
   useEffect(() => {
     if (selectedDoctorId && bookingDate) {
+      const branchParam = selectedBranchId ? `&branch_id=${selectedBranchId}` : '';
       api
         .get(
-          `/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${bookingDate}&consultation_type=${consultationType}`
+          `/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${bookingDate}&consultation_type=${consultationType}${branchParam}`
         )
         .then((res) => setAvailableSlots(extractArrayData(res.data)))
         .catch(() => {});
     }
-  }, [consultationType, selectedDoctorId, bookingDate]);
+  }, [consultationType, selectedDoctorId, bookingDate, selectedBranchId]);
 
   const handleDoctorSelect = async (doctorId: string) => {
     setSelectedDoctorId(doctorId);
@@ -528,8 +539,9 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
 
     if (doctorId && todayStr) {
       try {
+        const branchParam = selectedBranchId ? `&branch_id=${selectedBranchId}` : '';
         const res = await api.get(
-          `/appointments/available-slots?doctor_id=${doctorId}&date=${todayStr}&consultation_type=${consultationType}`
+          `/appointments/available-slots?doctor_id=${doctorId}&date=${todayStr}&consultation_type=${consultationType}${branchParam}`
         );
         setAvailableSlots(extractArrayData(res.data));
       } catch (err: any) {
@@ -543,8 +555,9 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     setBookingSlot('');
     if (selectedDoctorId && date) {
       try {
+        const branchParam = selectedBranchId ? `&branch_id=${selectedBranchId}` : '';
         const res = await api.get(
-          `/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${date}&consultation_type=${consultationType}`
+          `/appointments/available-slots?doctor_id=${selectedDoctorId}&date=${date}&consultation_type=${consultationType}${branchParam}`
         );
         setAvailableSlots(extractArrayData(res.data));
       } catch (err: any) {
@@ -881,7 +894,12 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const safeDoctors = Array.isArray(doctors) ? doctors : [];
   const safeBranches = Array.isArray(branches) ? branches : [];
 
-  const filteredAndSortedDoctors = safeDoctors.filter(doc => {
+  // Filter doctors by selected clinic branch
+  const branchDoctors = selectedBranchId
+    ? safeDoctors.filter((doc: any) => doc.branch_id === selectedBranchId)
+    : safeDoctors;
+
+  const filteredAndSortedDoctors = branchDoctors.filter(doc => {
     const fullName = doc.user?.full_name?.toLowerCase() || '';
     const spec = (doc.specialization || doc.specialty || '').toLowerCase();
     const query = searchQuery.toLowerCase();
@@ -1095,7 +1113,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                   handleBranchSelect={handleBranchSelect}
                   consultationType={consultationType}
                   setConsultationType={setConsultationType}
-                  doctors={doctors}
+                  doctors={branchDoctors}
                   selectedDoctorId={selectedDoctorId}
                   handleDoctorSelect={handleDoctorSelect}
                   filterSpecialty={filterSpecialty}

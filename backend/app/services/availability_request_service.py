@@ -323,7 +323,7 @@ class AvailabilityRequestService:
                                     p_user_id = p_user.id
 
                         if res_item and res_item.action == "reassign" and res_item.new_doctor_id:
-                            # Reassign to Doctor B
+                            # Suggest Doctor B and mark appointment for patient self-reschedule
                             res_doc_b = await self.db.execute(
                                 select(Doctor).options(selectinload(Doctor.user)).where(Doctor.id == res_item.new_doctor_id)
                             )
@@ -333,27 +333,14 @@ class AvailabilityRequestService:
                             appt.doctor_id = res_item.new_doctor_id
                             appt.status = "reassigned_pending"
                             appt.reassigned_at = datetime.now(timezone.utc)
-
-                            target_dt = appt.appointment_datetime
-                            if res_item.new_time:
-                                try:
-                                    nh, nm = map(int, res_item.new_time.strip().split(":"))
-                                    appt_dt_ist = target_dt.astimezone(IST)
-                                    new_dt_ist = appt_dt_ist.replace(hour=nh, minute=nm, second=0, microsecond=0)
-                                    appt.appointment_datetime = new_dt_ist
-                                    target_dt = new_dt_ist
-                                except Exception as parse_e:
-                                    logger.warning(f"Could not parse new time {res_item.new_time}: {parse_e}")
-
                             self.db.add(appt)
 
                             new_doc_name = f"Dr. {new_doc.user.full_name}" if new_doc and new_doc.user and not new_doc.user.full_name.lower().startswith("dr") else (new_doc.user.full_name if new_doc and new_doc.user else "another specialist")
 
-                            title = "Doctor Reassigned — Action Required"
+                            title = "Doctor on Leave — Reschedule with Suggested Doctor"
                             msg = (
-                                f"Dear {p_name}, Dr. {doctor.user.full_name} is on approved leave. Your appointment on "
-                                f"{target_dt.astimezone(IST).strftime('%Y-%m-%d')} has been proposed with {new_doc_name} at "
-                                f"{target_dt.astimezone(IST).strftime('%I:%M %p')}. Please log in to your portal to Accept or Reschedule."
+                                f"Dear {p_name}, Dr. {doctor.user.full_name} is on approved leave. We have suggested {new_doc_name} for your consultation. "
+                                f"Please visit your patient portal and reschedule your appointment to select a convenient date and time slot."
                             )
                             await self.noti_service.send_multichannel_notification(
                                 user_id=p_user_id,
@@ -364,9 +351,9 @@ class AvailabilityRequestService:
 
                             conflicts.append({
                                 "id": str(appt.id),
-                                "appointment_datetime": target_dt.astimezone(IST).isoformat(),
+                                "appointment_datetime": appt.appointment_datetime.astimezone(IST).isoformat(),
                                 "patient_name": p_name,
-                                "action": "reassigned",
+                                "action": "reassigned_pending_reschedule",
                                 "new_doctor_name": new_doc_name
                             })
 

@@ -126,6 +126,9 @@ export const RecepInvoicesTab: React.FC<RecepInvoicesTabProps> = ({
                       <td>
                         {(() => {
                           const effStatus = getInvoiceEffectiveStatus(inv);
+                          const isPendingApproval = effStatus === 'pending_approval' || inv.status === 'pending_approval';
+                          const isRejected = effStatus === 'rejected' || inv.status === 'rejected';
+
                           return (
                             <span
                               className={`badge ${
@@ -135,8 +138,19 @@ export const RecepInvoicesTab: React.FC<RecepInvoicesTabProps> = ({
                                   ? 'badge-confirmed'
                                   : effStatus === 'cancelled'
                                   ? 'badge-cancelled'
+                                  : isPendingApproval
+                                  ? 'badge-warning'
+                                  : isRejected
+                                  ? 'badge-cancelled'
                                   : 'badge-pending'
                               }`}
+                              style={
+                                isPendingApproval
+                                  ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 600 }
+                                  : isRejected
+                                  ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 600 }
+                                  : undefined
+                              }
                             >
                               {effStatus === 'paid'
                                 ? 'Paid'
@@ -144,6 +158,10 @@ export const RecepInvoicesTab: React.FC<RecepInvoicesTabProps> = ({
                                 ? 'Partial'
                                 : effStatus === 'cancelled'
                                 ? 'Cancelled'
+                                : isPendingApproval
+                                ? 'Pending Approval'
+                                : isRejected
+                                ? 'Rejected'
                                 : 'Unpaid'}
                             </span>
                           );
@@ -162,7 +180,7 @@ export const RecepInvoicesTab: React.FC<RecepInvoicesTabProps> = ({
                           >
                             <Eye size={14} /> View Details
                           </button>
-                          {inv.balance_due > 0 && (
+                          {inv.balance_due > 0 && inv.status !== 'pending_approval' && inv.status !== 'rejected' && (
                             <button
                               className="btn-pay"
                               onClick={() => {

@@ -65,15 +65,23 @@ class BillingService:
         self.patient_repo = PatientRepository(db)
         self.noti_service = NotificationService(db)
 
-    async def create_invoice(self, request: InvoiceCreate) -> Invoice:
-        """Create a new invoice for a patient."""
+    async def create_invoice(self, request: InvoiceCreate, creator_role: str | None = None) -> Invoice:
+        """Create a new invoice or draft bill for a patient."""
         # 1. Verify patient exists
         patient = await self.patient_repo.get_by_id(request.patient_id)
         if not patient:
             raise PatientNotFoundError()
 
-        # 2. Generate unique invoice number
-        invoice_number = await self.invoice_repo.get_next_invoice_number()
+        role_str = str(creator_role.value if hasattr(creator_role, "value") else creator_role).lower() if creator_role else ""
+        is_receptionist = (role_str == "receptionist")
+
+        # 2. Generate unique number and initial status
+        if is_receptionist:
+            invoice_number = await self.invoice_repo.get_next_bill_number()
+            initial_status = "pending_approval"
+        else:
+            invoice_number = await self.invoice_repo.get_next_invoice_number()
+            initial_status = "unpaid"
 
         # 3. Calculate totals
         grand_total = max(0.0, request.total_amount - request.discount_amount + request.tax_amount)
@@ -96,29 +104,48 @@ class BillingService:
             "grand_total": grand_total,
             "amount_paid": 0.0,
             "balance_due": grand_total,
-            "status": "unpaid",
+            "status": initial_status,
         }
 
         created = await self.invoice_repo.create(invoice_data)
         await self.db.commit()
-        logger.info(f"Invoice created successfully: {created.invoice_number}")
 
-        # Send Invoice notification to patient
-        try:
-            await self.noti_service.send_multichannel_notification(
-                user_id=patient.user_id,
-                title="Invoice Generated",
-                message=f"A new invoice ({invoice_number}) of {grand_total} has been generated for your clinic visit.",
-                type="billing"
-            )
-        except Exception as e:
-            logger.error(f"Failed to send invoice notification: {e}")
+        if is_receptionist:
+            logger.info(f"Draft Bill created and submitted for Manager Approval: {created.invoice_number}")
+            # Notify Clinic Manager(s)
+            try:
+                from app.models.user import User
+                mgr_stmt = select(User).where(User.role == "clinic_manager")
+                res_mgr = await self.db.execute(mgr_stmt)
+                managers = list(res_mgr.scalars().all())
+                p_name = patient.name or (patient.user.full_name if patient.user else "Patient")
+                for mgr in managers:
+                    await self.noti_service.send_multichannel_notification(
+                        user_id=mgr.id,
+                        title="New Bill Pending Approval",
+                        message=f"A new bill ({invoice_number}) of ₹{grand_total:.2f} for {p_name} has been submitted by Receptionist. Please review and approve to generate official invoice.",
+                        type="billing"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to notify clinic manager for bill {invoice_number}: {e}")
+        else:
+            logger.info(f"Invoice created successfully: {created.invoice_number}")
+            # Send Invoice notification to patient
+            try:
+                await self.noti_service.send_multichannel_notification(
+                    user_id=patient.user_id,
+                    title="Invoice Generated",
+                    message=f"A new invoice ({invoice_number}) of ₹{grand_total:.2f} has been generated for your clinic visit.",
+                    type="billing"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send invoice notification: {e}")
 
-        # Automatically email the beautiful invoice and PDF to the patient
-        try:
-            await self.send_invoice_email_to_patient(created.id)
-        except Exception as e:
-            logger.error(f"Failed to auto-email invoice: {e}")
+            # Automatically email the beautiful invoice and PDF to the patient
+            try:
+                await self.send_invoice_email_to_patient(created.id)
+            except Exception as e:
+                logger.error(f"Failed to auto-email invoice: {e}")
 
         return await self.get_invoice(created.id)
 
@@ -467,6 +494,7 @@ class BillingService:
         limit: int = 20,
         patient_id: uuid.UUID | None = None,
         status: str | None = None,
+        exclude_pending: bool = False,
     ) -> tuple[list[Invoice], int]:
         """Fetch paginated & filtered list of invoices."""
         skip = (page - 1) * limit
@@ -475,6 +503,7 @@ class BillingService:
             limit=limit,
             patient_id=patient_id,
             status=status,
+            exclude_pending=exclude_pending,
         )
 
     async def update_invoice(

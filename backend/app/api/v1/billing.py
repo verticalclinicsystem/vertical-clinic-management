@@ -39,7 +39,7 @@ def invoice_to_out(invoice) -> dict:
     data = InvoiceOut.model_validate(invoice).model_dump()
     
     # Enforce accurate payment status based on real balance_due & amount_paid
-    if data.get("status") != "cancelled":
+    if data.get("status") not in ["cancelled", "pending_approval", "rejected"]:
         bal = float(data.get("balance_due", 0.0))
         paid = float(data.get("amount_paid", 0.0))
         if bal <= 0:
@@ -124,14 +124,15 @@ async def create_invoice(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     """Create a new invoice for a patient visit or consultation."""
-    if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.ADMIN]:
+    if current_user.role not in [UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.PHARMACIST, UserRole.ADMIN, UserRole.CLINIC_MANAGER]:
         raise PermissionDeniedError("Only staff and doctors can create invoices.")
 
     service = BillingService(db)
-    invoice = await service.create_invoice(request)
+    invoice = await service.create_invoice(request, creator_role=current_user.role)
+    msg = "Bill submitted for Clinic Manager approval." if invoice.status == "pending_approval" else "Invoice generated successfully."
     return ApiResponse.success(
         data=invoice_to_out(invoice),
-        message="Invoice generated successfully.",
+        message=msg,
         status_code=status.HTTP_201_CREATED,
     )
 
@@ -149,16 +150,19 @@ async def list_invoices(
     service = BillingService(db)
 
     # Apply RBAC restrictions
+    exclude_pending = False
     if current_user.role == UserRole.PATIENT:
         patient_service = PatientService(db)
         patient = await patient_service.get_patient_by_user_id(current_user.id)
         patient_id = patient.id
+        exclude_pending = True
 
     items, total = await service.list_invoices(
         page=page,
         limit=limit,
         patient_id=patient_id,
         status=status,
+        exclude_pending=exclude_pending,
     )
     pages = (total + limit - 1) // limit
 

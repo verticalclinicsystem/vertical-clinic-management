@@ -7,11 +7,10 @@ import {
   Clock, 
   CheckCircle, 
   XCircle, 
-  ArrowRight,
   ShieldAlert,
-  Loader2
+  Loader2,
+  Sparkles
 } from 'lucide-react';
-import { api } from '../services/api';
 
 export interface ConflictItem {
   id: string; // appointment_id
@@ -56,10 +55,6 @@ interface LeaveConflictResolutionModalProps {
 interface SingleResolutionState {
   action: 'reassign' | 'cancel';
   newDoctorId: string;
-  newTime: string;
-  availableSlots: string[];
-  isOriginalSlotFree: boolean | null;
-  isLoadingSlots: boolean;
   cancelReason: string;
 }
 
@@ -97,84 +92,13 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
       initialMap[conf.id] = {
         action: 'reassign',
         newDoctorId: defaultDoctorId,
-        newTime: conf.time,
-        availableSlots: [],
-        isOriginalSlotFree: null,
-        isLoadingSlots: false,
-        cancelReason: `Doctor ${request?.doctor_name || ''} is on approved leave. Priority rescheduling/refund offered.`,
+        cancelReason: `Doctor ${request?.doctor_name || ''} is on approved leave. Priority rebooking/refund offered.`,
       };
     });
 
     setResolutions(initialMap);
     setSubmitError(null);
-
-    // Fetch slot availability for initial doctors
-    conflicts.forEach((conf) => {
-      if (defaultDoctorId) {
-        checkDoctorSlots(conf.id, defaultDoctorId, conf.date, conf.time);
-      }
-    });
   }, [isOpen, conflicts, availableDoctors]);
-
-  const checkDoctorSlots = async (
-    conflictId: string, 
-    doctorId: string, 
-    dateStr: string, 
-    originalTime: string
-  ) => {
-    if (!doctorId) return;
-
-    setResolutions((prev) => {
-      const curr = prev[conflictId];
-      if (!curr) return prev;
-      return {
-        ...prev,
-        [conflictId]: {
-          ...curr,
-          isLoadingSlots: true,
-        },
-      };
-    });
-
-    try {
-      const res = await api.get('/appointments/available-slots', {
-        params: { doctor_id: doctorId, date: dateStr }
-      });
-      const slots: string[] = res.data?.data || [];
-      const isOriginalAvailable = slots.includes(originalTime);
-
-      setResolutions((prev) => {
-        const curr = prev[conflictId];
-        if (!curr) return prev;
-        return {
-          ...prev,
-          [conflictId]: {
-            ...curr,
-            isLoadingSlots: false,
-            availableSlots: slots,
-            isOriginalSlotFree: isOriginalAvailable,
-            // If original time is free, keep it. Otherwise default to first available slot if available.
-            newTime: isOriginalAvailable ? originalTime : (slots.length > 0 ? slots[0] : ''),
-          },
-        };
-      });
-    } catch (err) {
-      console.error(`Failed to fetch slots for doctor ${doctorId}:`, err);
-      setResolutions((prev) => {
-        const curr = prev[conflictId];
-        if (!curr) return prev;
-        return {
-          ...prev,
-          [conflictId]: {
-            ...curr,
-            isLoadingSlots: false,
-            availableSlots: [],
-            isOriginalSlotFree: false,
-          },
-        };
-      });
-    }
-  };
 
   const handleActionChange = (conflictId: string, action: 'reassign' | 'cancel') => {
     setResolutions((prev) => ({
@@ -186,26 +110,12 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
     }));
   };
 
-  const handleDoctorChange = (conflictId: string, doctorId: string, confDate: string, confTime: string) => {
+  const handleDoctorChange = (conflictId: string, doctorId: string) => {
     setResolutions((prev) => ({
       ...prev,
       [conflictId]: {
         ...prev[conflictId],
         newDoctorId: doctorId,
-        newTime: confTime,
-        isOriginalSlotFree: null,
-      },
-    }));
-
-    checkDoctorSlots(conflictId, doctorId, confDate, confTime);
-  };
-
-  const handleTimeChange = (conflictId: string, time: string) => {
-    setResolutions((prev) => ({
-      ...prev,
-      [conflictId]: {
-        ...prev[conflictId],
-        newTime: time,
       },
     }));
   };
@@ -223,7 +133,6 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
   const handleSubmit = async () => {
     setSubmitError(null);
 
-    // Validation
     const payloadResolutions = [];
     for (const conf of conflicts) {
       const resState = resolutions[conf.id];
@@ -231,11 +140,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
 
       if (resState.action === 'reassign') {
         if (!resState.newDoctorId) {
-          setSubmitError(`Please select a replacement doctor for patient ${conf.patient_name}.`);
-          return;
-        }
-        if (!resState.newTime) {
-          setSubmitError(`Please choose a valid time slot for Dr. reassignment (${conf.patient_name}).`);
+          setSubmitError(`Please select a suggested doctor for patient ${conf.patient_name}.`);
           return;
         }
 
@@ -243,8 +148,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
           appointment_id: conf.id,
           action: 'reassign',
           new_doctor_id: resState.newDoctorId,
-          new_time: resState.newTime,
-          reason: `Reassigned from Dr. ${request?.doctor_name || ''} during approved leave.`,
+          reason: `Doctor ${request?.doctor_name || ''} is on approved leave. Suggested alternate doctor for patient self-reschedule.`,
         });
       } else {
         payloadResolutions.push({
@@ -370,7 +274,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
           <AlertTriangle size={18} style={{ flexShrink: 0 }} />
           <span>
             <strong>{conflicts.length} booked appointment(s)</strong> clash with this leave request. 
-            Choose to reassign each patient to an available doctor or cancel the appointment. The reassigned slot will be <strong>held</strong> until the patient accepts or reschedules.
+            Select a suggested doctor for each patient (or cancel). The patient will be notified to open their portal and pick their own convenient time slot.
           </span>
         </div>
 
@@ -388,11 +292,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
           {conflicts.map((conf, index) => {
             const resState = resolutions[conf.id] || {
               action: 'reassign',
-              newDoctorId: '',
-              newTime: conf.time,
-              availableSlots: [],
-              isOriginalSlotFree: null,
-              isLoadingSlots: false,
+              newDoctorId: availableDoctors.length > 0 ? availableDoctors[0].id : '',
               cancelReason: ''
             };
 
@@ -467,7 +367,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
                 {/* Resolution Action Toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingTop: '4px' }}>
                   <label style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--secondary-text, #64748b)' }}>
-                    Resolution Action:
+                    Action:
                   </label>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -489,7 +389,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
                         transition: 'all 0.15s ease'
                       }}
                     >
-                      <UserCheck size={14} /> Reassign to Doctor B
+                      <UserCheck size={14} /> Suggest Alternate Doctor
                     </button>
                     <button
                       type="button"
@@ -515,7 +415,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
                   </div>
                 </div>
 
-                {/* Sub-Panel: REASSIGN DOCTOR */}
+                {/* Sub-Panel: SUGGEST DOCTOR */}
                 {resState.action === 'reassign' && (
                   <div 
                     style={{
@@ -528,155 +428,52 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
                       gap: '12px'
                     }}
                   >
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-                      {/* Doctor Select */}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--secondary-text, #64748b)' }}>
-                          Assign To Doctor:
-                        </label>
-                        <select
-                          value={resState.newDoctorId}
-                          onChange={(e) => handleDoctorChange(conf.id, e.target.value, conf.date, conf.time)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid var(--border, #cbd5e1)',
-                            backgroundColor: 'var(--surface-1, #f8fafc)',
-                            color: 'var(--primary-text, #0f172a)',
-                            fontSize: '0.88rem',
-                            fontWeight: 500
-                          }}
-                        >
-                          {availableDoctors.length === 0 && (
-                            <option value="">No alternative doctors available in branch</option>
-                          )}
-                          {availableDoctors.map((doc) => (
-                            <option key={doc.id} value={doc.id}>
-                              {doc.name} — {doc.specialization || doc.department || 'Clinician'}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Time Slot Check & Selection */}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--secondary-text, #64748b)' }}>
-                          Time Slot with Doctor B:
-                        </label>
-                        {resState.isLoadingSlots ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', color: 'var(--secondary-text, #64748b)', padding: '8px 0' }}>
-                            <Loader2 size={16} className="animate-spin" /> Checking slot availability…
-                          </div>
-                        ) : resState.isOriginalSlotFree ? (
-                          /* Original 1:00 PM is free */
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div 
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#dcfce7',
-                                color: '#166534',
-                                border: '1px solid #bbf7d0',
-                                padding: '6px 12px',
-                                borderRadius: '8px',
-                                fontSize: '0.84rem',
-                                fontWeight: 600
-                              }}
-                            >
-                              <CheckCircle size={15} />
-                              {formatTime12h(conf.time)} is available! (Held for patient)
-                            </div>
-                            {/* Option to customize time slot even if original is free */}
-                            {resState.availableSlots.length > 1 && (
-                              <select
-                                value={resState.newTime}
-                                onChange={(e) => handleTimeChange(conf.id, e.target.value)}
-                                style={{
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid var(--border, #cbd5e1)',
-                                  backgroundColor: 'var(--surface-1, #f8fafc)',
-                                  fontSize: '0.82rem'
-                                }}
-                                title="Pick another available slot if preferred"
-                              >
-                                {resState.availableSlots.map((s) => (
-                                  <option key={s} value={s}>
-                                    {formatTime12h(s)} {s === conf.time ? '(Original)' : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        ) : resState.availableSlots.length > 0 ? (
-                          /* Original time is booked; let manager pick an available time! */
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div 
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#fef3c7',
-                                color: '#92400e',
-                                border: '1px solid #fde68a',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '0.78rem',
-                                fontWeight: 600
-                              }}
-                            >
-                              <AlertTriangle size={13} />
-                              {formatTime12h(conf.time)} is booked for Dr. {selectedDoc?.name || 'B'}! Select alternate:
-                            </div>
-                            <select
-                              value={resState.newTime}
-                              onChange={(e) => handleTimeChange(conf.id, e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '7px 10px',
-                                borderRadius: '8px',
-                                border: '1px solid #f59e0b',
-                                backgroundColor: '#fffbeb',
-                                color: '#92400e',
-                                fontSize: '0.86rem',
-                                fontWeight: 600
-                              }}
-                            >
-                              {resState.availableSlots.map((slot) => (
-                                <option key={slot} value={slot}>
-                                  Available at {formatTime12h(slot)}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          /* No slots free for this doctor on that day */
-                          <div 
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              backgroundColor: '#fee2e2',
-                              color: '#991b1b',
-                              border: '1px solid #fecaca',
-                              padding: '6px 12px',
-                              borderRadius: '8px',
-                              fontSize: '0.82rem',
-                              fontWeight: 600
-                            }}
-                          >
-                            <XCircle size={15} />
-                            No available slots for this doctor on {conf.date}. Please pick another doctor or cancel.
-                          </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--secondary-text, #64748b)' }}>
+                        Suggested Replacement Doctor:
+                      </label>
+                      <select
+                        value={resState.newDoctorId}
+                        onChange={(e) => handleDoctorChange(conf.id, e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border, #cbd5e1)',
+                          backgroundColor: 'var(--surface-1, #f8fafc)',
+                          color: 'var(--primary-text, #0f172a)',
+                          fontSize: '0.88rem',
+                          fontWeight: 500
+                        }}
+                      >
+                        {availableDoctors.length === 0 && (
+                          <option value="">No alternative doctors available in branch</option>
                         )}
-                      </div>
+                        {availableDoctors.map((doc) => (
+                          <option key={doc.id} value={doc.id}>
+                            {doc.name} — {doc.specialization || doc.department || 'Specialist'}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div style={{ fontSize: '0.78rem', color: 'var(--secondary-text, #64748b)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <ArrowRight size={13} color="var(--primary-teal, #0d9488)" />
-                      Patient will be notified via email &amp; in-app card to accept Dr. {selectedDoc?.name || 'B'} at {formatTime12h(resState.newTime)} or choose a different time/doctor.
+                    <div 
+                      style={{ 
+                        fontSize: '0.82rem', 
+                        color: '#0f766e', 
+                        backgroundColor: '#f0fdfa',
+                        border: '1px solid #ccfbf1',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px' 
+                      }}
+                    >
+                      <Sparkles size={16} color="var(--primary-teal, #0d9488)" style={{ flexShrink: 0 }} />
+                      <span>
+                        <strong>Dr. {selectedDoc?.name || 'Selected Doctor'}</strong> will be suggested to {conf.patient_name}. The patient will receive a notification to visit their portal and select their own convenient date &amp; time slot.
+                      </span>
                     </div>
                   </div>
                 )}
@@ -711,7 +508,7 @@ export const LeaveConflictResolutionModal: React.FC<LeaveConflictResolutionModal
                       }}
                     />
                     <span style={{ fontSize: '0.76rem', color: '#b91c1c' }}>
-                      Appointment will be marked cancelled. Patient will receive an instant cancellation email with refund/rebooking details.
+                      Appointment will be marked cancelled. Patient will receive an instant notification to book an alternate appointment.
                     </span>
                   </div>
                 )}
