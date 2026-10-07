@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Clock,
+  Calendar,
   Plus,
   Trash2,
   Copy,
@@ -169,6 +170,26 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'warning' } | null>(null);
   const [detectedConflicts, setDetectedConflicts] = useState<any[] | null>(null);
 
+  // Scheduling mode: 'weekly' (Day of Week) vs 'date_month' (Specific Date & Month)
+  const [scheduleMode, setScheduleMode] = useState<'weekly' | 'date_month'>('weekly');
+
+  // Date-Month Overrides state
+  const [dateOverrides, setDateOverrides] = useState<Array<{
+    id: string;
+    date: string;
+    type: 'custom' | 'blocked';
+    start_time?: string;
+    end_time?: string;
+    slot_duration_minutes?: number;
+    reason?: string;
+  }>>([]);
+  const [overrideDateInput, setOverrideDateInput] = useState<string>('');
+  const [overrideTypeInput, setOverrideTypeInput] = useState<'custom' | 'blocked'>('blocked');
+  const [overrideStartInput, setOverrideStartInput] = useState<string>('09:00');
+  const [overrideEndInput, setOverrideEndInput] = useState<string>('13:00');
+  const [overrideDurationInput] = useState<number>(30);
+  const [overrideReasonInput, setOverrideReasonInput] = useState<string>('');
+
   // Selected Day tab (0=Mon...6=Sun, or -1 for All Days)
   const [selectedDayTab, setSelectedDayTab] = useState<number>(0);
 
@@ -195,14 +216,29 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
     setTimeout(() => setToastMessage(null), 5000);
   };
 
-  // Fetch slots from API
+  // Fetch slots and availability metadata from API
   const fetchSlots = async () => {
     if (!doctorId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/doctors/${doctorId}/slots`);
-      if (res.data && res.data.success) {
+      const [res, docRes] = await Promise.all([
+        api.get(`/doctors/${doctorId}/slots`).catch(() => null),
+        api.get(`/doctors/${doctorId}`).catch(() => null),
+      ]);
+
+      if (docRes?.data?.data?.availability_metadata) {
+        try {
+          const parsed = JSON.parse(docRes.data.data.availability_metadata);
+          if (Array.isArray(parsed.date_overrides)) {
+            setDateOverrides(parsed.date_overrides);
+          }
+        } catch (e) {
+          console.error('Error parsing availability metadata:', e);
+        }
+      }
+
+      if (res?.data && res.data.success) {
         const rawSlots: any[] = res.data.data || [];
         if (rawSlots.length > 0) {
           const grouped: Record<number, any[]> = {};
@@ -239,6 +275,32 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
       setLoading(false);
     }
   };
+
+  const handleAddDateOverride = () => {
+    if (!overrideDateInput) {
+      showToast('Please select a specific date.', 'error');
+      return;
+    }
+    const newOv = {
+      id: `${overrideDateInput}-${Date.now()}`,
+      date: overrideDateInput,
+      type: overrideTypeInput,
+      start_time: overrideTypeInput === 'custom' ? overrideStartInput : undefined,
+      end_time: overrideTypeInput === 'custom' ? overrideEndInput : undefined,
+      slot_duration_minutes: overrideTypeInput === 'custom' ? overrideDurationInput : undefined,
+      reason: overrideTypeInput === 'blocked' ? (overrideReasonInput || 'Unavailable') : (overrideReasonInput || 'Custom Schedule'),
+    };
+    setDateOverrides((prev) => [...prev.filter((o) => o.date !== overrideDateInput), newOv]);
+    setOverrideDateInput('');
+    setOverrideReasonInput('');
+    showToast(`Date override for ${overrideDateInput} added!`, 'success');
+  };
+
+  const handleRemoveDateOverride = (id: string) => {
+    setDateOverrides((prev) => prev.filter((o) => o.id !== id));
+    showToast('Date override removed.', 'success');
+  };
+
 
   useEffect(() => {
     fetchSlots();
@@ -471,8 +533,14 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
         }
       });
 
-      const res = await api.post(`/doctors/${doctorId}/slots`, payload);
-      if (res.data && res.data.success) {
+      const [res] = await Promise.all([
+        api.post(`/doctors/${doctorId}/slots`, payload),
+        api.put(`/doctors/${doctorId}`, {
+          availability_metadata: JSON.stringify({ date_overrides: dateOverrides })
+        }).catch(() => null)
+      ]);
+
+      if (res && res.data && res.data.success) {
         const conflicts = res.data.meta?.conflicts || [];
         if (conflicts.length > 0) {
           setDetectedConflicts(conflicts);
@@ -481,12 +549,13 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
             'warning'
           );
         } else {
-          showToast('Schedule & time slots updated successfully!', 'success');
+          showToast('Schedule & Date Overrides saved successfully!', 'success');
         }
         if (onSaved) onSaved();
       } else {
-        setError(res.data?.message || 'Failed to save slots.');
+        setError(res?.data?.message || 'Failed to save slots.');
       }
+
     } catch (err: any) {
       console.error('Error saving doctor slots:', err);
       const detail = err.response?.data?.message || err.response?.data?.detail;
@@ -849,21 +918,182 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
           </div>
         ) : (
           <div>
-            {/* Day Selector Tabs + Global Mode */}
-            <div
-              style={{
-                display: 'flex',
-                gap: '8px',
-                alignItems: 'center',
-                borderBottom: '1px solid #e2e8f0',
-                paddingBottom: '16px',
-                marginBottom: '24px',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginRight: '4px' }}>
-                Select Day:
-              </span>
+            {/* Primary Schedule Mode Switcher */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', backgroundColor: '#f1f5f9', padding: '5px', borderRadius: '12px', width: 'fit-content' }}>
+              <button
+                type="button"
+                onClick={() => setScheduleMode('weekly')}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: scheduleMode === 'weekly' ? '#0b7894' : 'transparent',
+                  color: scheduleMode === 'weekly' ? '#ffffff' : '#475569',
+                  fontWeight: scheduleMode === 'weekly' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Clock size={15} /> Weekly Days Schedule
+              </button>
+              <button
+                type="button"
+                onClick={() => setScheduleMode('date_month')}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: scheduleMode === 'date_month' ? '#0b7894' : 'transparent',
+                  color: scheduleMode === 'date_month' ? '#ffffff' : '#475569',
+                  fontWeight: scheduleMode === 'date_month' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Calendar size={15} /> Specific Date & Month Overrides ({dateOverrides.length})
+              </button>
+            </div>
+
+            {/* MODE 2: SPECIFIC DATE & MONTH OVERRIDES PANEL */}
+            {scheduleMode === 'date_month' && (
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px', marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calendar size={18} color="#0b7894" /> Specific Date & Month Availability & Leave Overrides
+                </h4>
+                <p style={{ margin: '0 0 16px 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  Set specific dates/months for special shift timings or mark full-day leave/vacation.
+                </p>
+
+                {/* Date Picker Form */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Select Date & Month</label>
+                    <input
+                      type="date"
+                      value={overrideDateInput}
+                      onChange={(e) => setOverrideDateInput(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Override Type</label>
+                    <select
+                      value={overrideTypeInput}
+                      onChange={(e: any) => setOverrideTypeInput(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    >
+                      <option value="blocked">🔴 Blocked / Full Day Leave</option>
+                      <option value="custom">🟢 Custom Working Hours</option>
+                    </select>
+                  </div>
+
+                  {overrideTypeInput === 'custom' && (
+                    <>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Start Time</label>
+                        <input
+                          type="time"
+                          value={overrideStartInput}
+                          onChange={(e) => setOverrideStartInput(e.target.value)}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>End Time</label>
+                        <input
+                          type="time"
+                          value={overrideEndInput}
+                          onChange={(e) => setOverrideEndInput(e.target.value)}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Reason / Notes</label>
+                    <input
+                      type="text"
+                      placeholder={overrideTypeInput === 'blocked' ? 'e.g. Conference, Medical Leave' : 'e.g. Special Evening Shift'}
+                      value={overrideReasonInput}
+                      onChange={(e) => setOverrideReasonInput(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={handleAddDateOverride}
+                      style={{ width: '100%', padding: '9px 14px', backgroundColor: '#0b7894', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <Plus size={16} /> Add Date Override
+                    </button>
+                  </div>
+                </div>
+
+                {/* Date Overrides List */}
+                {dateOverrides.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '0.85rem', border: '1px dashed #cbd5e1', borderRadius: '8px' }}>
+                    No date-month overrides added yet. Pick a date above to set custom working hours or full-day leave.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
+                    {dateOverrides.map((ov) => {
+                      const dObj = new Date(ov.date + 'T00:00:00');
+                      const formattedDateStr = isNaN(dObj.getTime()) ? ov.date : dObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                      return (
+                        <div key={ov.id} style={{ padding: '12px 14px', borderRadius: '10px', border: ov.type === 'blocked' ? '1px solid #fecdd3' : '1px solid #bbf7d0', backgroundColor: ov.type === 'blocked' ? '#fff1f2' : '#f0fdf4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b' }}>{formattedDateStr}</div>
+                            <div style={{ fontSize: '0.78rem', color: ov.type === 'blocked' ? '#e11d48' : '#16a34a', fontWeight: 600, marginTop: '2px' }}>
+                              {ov.type === 'blocked' ? '🔴 Full Day Leave' : `🟢 ${ov.start_time} - ${ov.end_time}`}
+                            </div>
+                            {ov.reason && <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{ov.reason}</div>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDateOverride(ov.id)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                            title="Remove Override"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MODE 1: WEEKLY DAY SELECTOR TABS */}
+            {scheduleMode === 'weekly' && (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '8px',
+                    alignItems: 'center',
+                    borderBottom: '1px solid #e2e8f0',
+                    paddingBottom: '16px',
+                    marginBottom: '24px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginRight: '4px' }}>
+                    Select Day:
+                  </span>
+
               {WEEKDAYS.map((w) => {
                 const dayObj = schedule.find((d) => d.weekday === w.weekday);
                 const isActive = dayObj?.is_active ?? false;
@@ -1421,6 +1651,8 @@ export const DoctorSlotManager: React.FC<DoctorSlotManagerProps> = ({
                   );
                 })}
             </div>
+            </>
+            )}
 
             {/* Bottom Save Bar */}
             <div

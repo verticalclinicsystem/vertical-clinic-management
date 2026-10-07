@@ -74,6 +74,31 @@ class DoctorService:
             if not branch:
                 raise BranchNotFoundError()
 
+        # Handle user-level fields if provided (email, full_name, phone)
+        user_updates = {}
+        if "email" in update_data and update_data["email"]:
+            new_email = update_data.pop("email").strip()
+            stmt = select(User).where(User.email == new_email, User.id != doctor.user_id)
+            res = await self.db.execute(stmt)
+            if res.scalar_one_or_none():
+                raise BadRequestError("Email address is already in use by another account.")
+            user_updates["email"] = new_email
+
+        if "full_name" in update_data:
+            val = update_data.pop("full_name")
+            if val:
+                user_updates["full_name"] = val.strip()
+
+        if "phone" in update_data:
+            val = update_data.pop("phone")
+            if val:
+                user_updates["phone"] = val.strip()
+
+        if user_updates and doctor.user:
+            for k, v in user_updates.items():
+                setattr(doctor.user, k, v)
+            self.db.add(doctor.user)
+
         updated_doctor = await self.doctor_repo.update(doctor, update_data)
         await self.db.commit()
         logger.info(f"Doctor profile updated: {updated_doctor.id}")

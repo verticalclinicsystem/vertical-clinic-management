@@ -14,6 +14,7 @@ interface Doctor {
     full_name: string;
   };
   specialization: string;
+  branch_id?: string | null;
 }
 
 interface ProfileCompletionWizardProps {
@@ -649,7 +650,9 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
                       onChange={(e) => setPreferredDoctorId(e.target.value)}
                     >
                       <option value="">Select Doctor</option>
-                      {doctors.map((d) => (
+                      {doctors
+                        .filter((d) => !preferredBranchId || !d.branch_id || d.branch_id === preferredBranchId)
+                        .map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.user?.full_name} ({d.specialization})
                         </option>

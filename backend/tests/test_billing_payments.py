@@ -335,3 +335,127 @@ async def test_calculate_pending_charges_with_prescriptions(client: AsyncClient)
     assert presc_item["notes"] == "Take with warm water"
 
 
+@pytest.mark.asyncio
+async def test_receptionist_bill_approval_and_invoice_issuance(client: AsyncClient):
+    """
+    Verify:
+    1. Receptionist creates bill -> generates draft BILL-YYYYMMDD-XXXX with status pending_approval.
+    2. Patient endpoints do not list pending_approval bills.
+    3. Payment attempt on pending_approval bill is rejected.
+    4. Clinic Manager retrieves billing requests and sees the pending bill.
+    5. Clinic Manager reviews and approves the bill -> converts to official INV-YYYYMMDD-XXXX with status unpaid.
+    6. Payment can now be recorded on the official invoice.
+    """
+    # 1. Login receptionist
+    login_recep = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "receptionist@verticalclinic.com", "password": "Receptionist@123"},
+    )
+    assert login_recep.status_code == 200
+    token_recep = login_recep.json()["data"]["access_token"]
+    recep_headers = {"Authorization": f"Bearer {token_recep}"}
+
+    # 2. Login patient
+    login_pat = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "patient@verticalclinic.com", "password": "Patient@verticalclinic.com"},
+    )
+    assert login_pat.status_code == 200
+    token_pat = login_pat.json()["data"]["access_token"]
+    pat_headers = {"Authorization": f"Bearer {token_pat}"}
+    pat_profile = await client.get("/api/v1/patients/me", headers=pat_headers)
+    patient_id = pat_profile.json()["data"]["id"]
+
+    # 3. Login admin (for manager approval endpoints)
+    login_admin = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": "admin@verticalclinic.com", "password": "Admin@verticalclinic.com"},
+    )
+    assert login_admin.status_code == 200
+    token_admin = login_admin.json()["data"]["access_token"]
+    admin_headers = {"Authorization": f"Bearer {token_admin}"}
+
+    # 4. Receptionist generates bill
+    bill_res = await client.post(
+        "/api/v1/billing/",
+        json={
+            "patient_id": patient_id,
+            "total_amount": 1200.0,
+            "discount_amount": 0.0,
+            "tax_amount": 0.0,
+        },
+        headers=recep_headers,
+    )
+    assert bill_res.status_code == 201
+    bill_data = bill_res.json()["data"]
+    assert bill_data["status"] == "pending_approval"
+    assert bill_data["invoice_number"].startswith("BILL-")
+    bill_id = bill_data["id"]
+    draft_num = bill_data["invoice_number"]
+
+    # 5. Patient listing invoices does NOT include pending_approval bill
+    pat_invoices_res = await client.get("/api/v1/billing/", headers=pat_headers)
+    assert pat_invoices_res.status_code == 200
+    pat_inv_ids = [inv["id"] for inv in pat_invoices_res.json()["data"]["items"]]
+    assert bill_id not in pat_inv_ids
+
+    # 6. Payment on pending_approval bill must fail
+    fail_payment = await client.post(
+        "/api/v1/payments/",
+        json={
+            "invoice_id": bill_id,
+            "amount": 500.0,
+            "payment_method": "cash",
+        },
+        headers=recep_headers,
+    )
+    assert fail_payment.status_code == 400
+    err_msg = fail_payment.json().get("message") or fail_payment.json().get("detail", "")
+    assert "pending manager approval" in err_msg.lower()
+
+    # 7. Manager gets billing requests -> sees pending draft bill
+    manager_reqs = await client.get("/api/v1/clinic-manager/billing-requests", headers=admin_headers)
+    assert manager_reqs.status_code == 200
+    manager_bills = manager_reqs.json()
+    matching_req = next((b for b in manager_bills if b["id"] == bill_id), None)
+    assert matching_req is not None
+    assert matching_req["status"] == "pending_approval"
+
+    # 8. Manager approves bill -> issues official INV-...
+    approve_res = await client.post(
+        f"/api/v1/clinic-manager/billing-requests/{bill_id}/review",
+        json={"action": "approve", "reason_notes": "Approved by Manager"},
+        headers=admin_headers,
+    )
+    assert approve_res.status_code == 200
+    approve_data = approve_res.json()
+    assert approve_data["status"] == "approved"
+    official_num = approve_data["invoice_number"]
+    assert official_num.startswith("INV-")
+    assert official_num != draft_num
+
+    # 9. Fetch invoice details -> status is now "unpaid" and invoice_number is official
+    inv_details = await client.get(f"/api/v1/billing/{bill_id}", headers=recep_headers)
+    assert inv_details.status_code == 200
+    assert inv_details.json()["data"]["status"] == "unpaid"
+    assert inv_details.json()["data"]["invoice_number"] == official_num
+
+    # 10. Payment on the approved invoice now succeeds
+    success_payment = await client.post(
+        "/api/v1/payments/",
+        json={
+            "invoice_id": bill_id,
+            "amount": 1200.0,
+            "payment_method": "cash",
+        },
+        headers=recep_headers,
+    )
+    assert success_payment.status_code == 201
+    assert success_payment.json()["data"]["payment_status"] == "completed"
+
+    # Verify invoice is now paid
+    final_inv = await client.get(f"/api/v1/billing/{bill_id}", headers=recep_headers)
+    assert final_inv.json()["data"]["status"] == "paid"
+    assert final_inv.json()["data"]["balance_due"] == 0.0
+
+

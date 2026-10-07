@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalendarPlus, Users, X, Clock, Trash2 } from 'lucide-react';
 import { CustomDatePicker } from '../../../components/CustomDatePicker';
+import { isSlotExpiredOrPast } from '../../../utils/slotUtils';
 
 interface RecepAppointmentsTabProps {
   calendarDate: string;
@@ -406,7 +407,7 @@ export const RecepAppointmentsTab: React.FC<RecepAppointmentsTabProps> = ({
                                 <option value="">-- Select Time Slot --</option>
                                 {rescheduleSlots.map((s) => {
                                   let label = formatTimeToAMPM(s.time);
-                                  const isExpired = s.status === 'expired';
+                                  const isExpired = s.status === 'expired' || isSlotExpiredOrPast(rescheduleDate, s.time, s.status);
                                   if (s.status === 'booked') {
                                     label += ' (Booked)';
                                   } else if (isExpired) {

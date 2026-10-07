@@ -47,6 +47,7 @@ class InvoiceRepository(BaseRepository[Invoice]):
         limit: int = 20,
         patient_id: uuid.UUID | None = None,
         status: str | None = None,
+        exclude_pending: bool = False,
     ) -> tuple[list[Invoice], int]:
         """Fetch paginated & filtered invoices."""
         filters = []
@@ -54,6 +55,8 @@ class InvoiceRepository(BaseRepository[Invoice]):
             filters.append(Invoice.patient_id == patient_id)
         if status:
             filters.append(Invoice.status == status)
+        elif exclude_pending:
+            filters.append(Invoice.status.notin_(["pending_approval", "rejected"]))
 
         stmt = (
             select(Invoice)
@@ -65,16 +68,17 @@ class InvoiceRepository(BaseRepository[Invoice]):
                 joinedload(Invoice.treatment_plan).selectinload(TreatmentPlan.procedures),
                 joinedload(Invoice.admission).joinedload(Admission.bed).joinedload(Bed.category)
             )
-            .where(and_(*filters) if filters else True)
-            .order_by(Invoice.created_at.desc())
-            .offset(skip)
-            .limit(limit)
         )
+        if filters:
+            stmt = stmt.where(and_(*filters))
+        stmt = stmt.order_by(Invoice.created_at.desc()).offset(skip).limit(limit)
         
         result = await self.db.execute(stmt)
         items = list(result.unique().scalars().all())
 
-        count_stmt = select(func.count(Invoice.id)).where(and_(*filters) if filters else True)
+        count_stmt = select(func.count(Invoice.id))
+        if filters:
+            count_stmt = count_stmt.where(and_(*filters))
         count_result = await self.db.execute(count_stmt)
         total = count_result.scalar_one()
 
@@ -93,6 +97,17 @@ class InvoiceRepository(BaseRepository[Invoice]):
         
         seq_num = count + 1
         return f"INV-{today_str}-{seq_num:04d}"
+
+    async def get_next_bill_number(self) -> str:
+        """Generate a sequential draft bill number: BILL-YYYYMMDD-XXXX."""
+        today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        stmt = select(func.count(Invoice.id)).where(
+            Invoice.invoice_number.like(f"BILL-{today_str}-%")
+        )
+        result = await self.db.execute(stmt)
+        count = result.scalar_one()
+        seq_num = count + 1
+        return f"BILL-{today_str}-{seq_num:04d}"
 
     async def get_total_balance_due(self, patient_id: uuid.UUID) -> float:
         """Fetch total outstanding balance due for a patient."""
