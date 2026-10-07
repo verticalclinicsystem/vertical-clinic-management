@@ -177,7 +177,7 @@
 /* Topbar */
 .doc-topbar {
   height: 70px;
-  background-color: #ffffff;
+  background-color: var(--surface, #ffffff);
   border-bottom: 1px solid var(--doc-border);
   display: flex;
   align-items: center;
@@ -256,7 +256,7 @@
 }
 
 .doc-stat-card {
-  background-color: #ffffff;
+  background-color: var(--surface, #ffffff);
   border-radius: 12px;
   border: 1px solid var(--doc-border);
   padding: 20px;
@@ -287,7 +287,7 @@
 
 /* Card */
 .doc-card {
-  background-color: #ffffff;
+  background-color: var(--surface, #ffffff);
   border-radius: 12px;
   border: 1px solid var(--doc-border);
   padding: 24px;
@@ -423,7 +423,7 @@
   font-size: 0.88rem;
   outline: none;
   transition: border-color 0.2s;
-  background-color: #ffffff;
+  background-color: var(--surface-2, #ffffff);
 }
 
 .doc-input:focus,

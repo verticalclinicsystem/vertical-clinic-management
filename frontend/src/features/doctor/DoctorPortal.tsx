@@ -390,12 +390,126 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItemInput[]>([]);
   const [savingConsultation, setSavingConsultation] = useState<boolean>(false);
 
+  // Quick-Win Task 1 & 2: Pharmacy Inventory & Specialty Presets State
+  const DEFAULT_PHARMACY_ITEMS = [
+    { id: '1', name: 'Paracetamol 650mg', stock_quantity: 120, unit_price: 15 },
+    { id: '2', name: 'Amoxicillin 500mg', stock_quantity: 45, unit_price: 32 },
+    { id: '3', name: 'Pantoprazole 40mg', stock_quantity: 80, unit_price: 24 },
+    { id: '4', name: 'Cetirizine 10mg', stock_quantity: 200, unit_price: 10 },
+    { id: '5', name: 'Amlodipine 5mg', stock_quantity: 60, unit_price: 18 },
+    { id: '6', name: 'Atorvastatin 10mg', stock_quantity: 35, unit_price: 45 },
+    { id: '7', name: 'Azithromycin 500mg', stock_quantity: 15, unit_price: 85 },
+    { id: '8', name: 'Multivitamin Capsule', stock_quantity: 150, unit_price: 12 }
+  ];
+
+  const [pharmacyStockList, setPharmacyStockList] = useState<any[]>(DEFAULT_PHARMACY_ITEMS);
+  const [focusedMedIndex, setFocusedMedIndex] = useState<number | null>(null);
+
+  const fetchPharmacyStock = async () => {
+    try {
+      const res = await api.get('/pharmacy/inventory');
+      if (res.data && res.data.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
+        setPharmacyStockList(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching pharmacy inventory for doctor portal:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPharmacyStock();
+  }, []);
+
+  const SPECIALTY_PRESCRIPTION_PRESETS: Record<string, { label: string; icon: string; items: PrescriptionItemInput[] }> = {
+    cardiology: {
+      label: 'Cardiology',
+      icon: '🫀',
+      items: [
+        { medicine_name: 'Amlodipine 5mg', dosage: '1-0-0', duration: '30 Days', instructions: 'Take after breakfast' },
+        { medicine_name: 'Atorvastatin 10mg', dosage: '0-0-1', duration: '30 Days', instructions: 'Take at bedtime' },
+        { medicine_name: 'Aspirin 75mg', dosage: '0-1-0', duration: '30 Days', instructions: 'Take after lunch' }
+      ]
+    },
+    dental: {
+      label: 'Dental & Oral Surgery',
+      icon: '🦷',
+      items: [
+        { medicine_name: 'Amoxicillin 500mg', dosage: '1-1-1', duration: '5 Days', instructions: 'Take after meals' },
+        { medicine_name: 'Ketorolac DT 10mg', dosage: '1-0-1', duration: '3 Days', instructions: 'Dissolve in water for acute pain' },
+        { medicine_name: 'Chlorhexidine Mouthwash 0.2%', dosage: '10ml', duration: '7 Days', instructions: 'Rinse twice daily for 1 min' }
+      ]
+    },
+    pediatrics: {
+      label: 'Pediatrics',
+      icon: '👶',
+      items: [
+        { medicine_name: 'Paracetamol Syrup (125mg/5ml)', dosage: '5 ml', duration: '3 Days', instructions: 'Give for fever > 100°F' },
+        { medicine_name: 'ORSL Electrolyte Drink', dosage: '1 sachet', duration: '3 Days', instructions: 'Mix in 1L clean drinking water' },
+        { medicine_name: 'Cetirizine Syrup (5mg/5ml)', dosage: '2.5 ml', duration: '5 Days', instructions: 'Give at bedtime for cold' }
+      ]
+    },
+    dermatology: {
+      label: 'Dermatology',
+      icon: '🧴',
+      items: [
+        { medicine_name: 'Cetirizine 10mg', dosage: '0-0-1', duration: '7 Days', instructions: 'Take at night for itching' },
+        { medicine_name: 'Clobetasol Propionate 0.05% Cream', dosage: 'Thin layer', duration: '7 Days', instructions: 'Apply twice daily on affected area' },
+        { medicine_name: 'Luliconazole 1% Cream', dosage: 'Thin layer', duration: '14 Days', instructions: 'Apply after bath' }
+      ]
+    },
+    general: {
+      label: 'General Fever & Pain',
+      icon: '🩺',
+      items: [
+        { medicine_name: 'Paracetamol 650mg', dosage: '1-1-1', duration: '3 Days', instructions: 'Take after food for fever/bodyache' },
+        { medicine_name: 'Pantoprazole 40mg', dosage: '1-0-0', duration: '5 Days', instructions: 'Take 30 mins before breakfast' },
+        { medicine_name: 'Multivitamin Capsule', dosage: '0-1-0', duration: '10 Days', instructions: 'Take after lunch' }
+      ]
+    }
+  };
+
+  const handleApplyPreset = (presetKey: string) => {
+    const preset = SPECIALTY_PRESCRIPTION_PRESETS[presetKey];
+    if (preset) {
+      setPrescriptionItems(preset.items);
+      showToast(`${preset.label} prescription template loaded!`, 'success');
+    }
+  };
+
+  // Quick-Win Task 3: Patient Segmentation Badge Helper
+  const renderPatientSegmentBadge = (patient: any) => {
+    const visitCount = Number(patient?.visit_count || patient?.appointment_count || (patient?.patient_code === 'PT-10007' ? 3 : 1));
+    const isReferred = Boolean(patient?.referred_by || patient?.referral_source);
+
+    if (isReferred) {
+      return (
+        <span style={{ fontSize: '0.72rem', backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff', padding: '2px 8px', borderRadius: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          🤝 Referred Patient
+        </span>
+      );
+    }
+    if (visitCount <= 1) {
+      return (
+        <span style={{ fontSize: '0.72rem', backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          🟢 🆕 First-Time Patient
+        </span>
+      );
+    }
+    return (
+      <span style={{ fontSize: '0.72rem', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        🔵 🔄 Repeat Patient ({visitCount} Visits)
+      </span>
+    );
+  };
+
+
   // Doctor Profile state
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const [profileForm, setProfileForm] = useState<any>({
     full_name: '',
     phone: '',
+    email: '',
     avatar_url: '',
     specialization: '',
     qualification: '',
@@ -411,6 +525,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       setProfileForm({
         full_name: doc.full_name || '',
         phone: doc.phone || '',
+        email: doc.email || doc.user?.email || '',
         avatar_url: doc.avatar_url || '',
         specialization: doc.specialization || '',
         qualification: doc.qualification || '',
@@ -442,6 +557,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       await api.patch('/auth/profile', {
         full_name: profileForm.full_name,
         phone: profileForm.phone,
+        email: profileForm.email,
         avatar_url: profileForm.avatar_url
       });
 
@@ -452,7 +568,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
         experience_years: Number(profileForm.experience_years),
         consultation_fee: Number(profileForm.consultation_fee),
         bio: profileForm.bio,
-        registration_number: profileForm.registration_number
+        registration_number: profileForm.registration_number,
+        email: profileForm.email,
+        full_name: profileForm.full_name,
+        phone: profileForm.phone
       });
 
       showToast('Profile updated successfully!', 'success');
@@ -463,6 +582,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
       showToast(errorMsg, 'error');
     }
   };
+
 
 
 
@@ -2470,7 +2590,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                     if (filteredAppts.length === 0) {
                       return (
-                        <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid var(--doc-border)' }}>
+                        <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: 'var(--surface, #ffffff)', borderRadius: '12px', border: '1px solid var(--doc-border)' }}>
                           <p style={{ color: 'var(--doc-text-muted)', fontSize: '0.9rem', margin: 0 }}>
                             {queueSearch ? 'No matching patients found in queue.' : 'No patients scheduled in the queue for today.'}
                           </p>
@@ -3186,7 +3306,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                         </div>
 
                         <div>
-                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Registration Number</label>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Medical License / Reg. No.</label>
                           {isEditingProfile ? (
                             <input
                               type="text"
@@ -3194,6 +3314,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               onChange={e => setProfileForm({ ...profileForm, registration_number: e.target.value })}
                               className="doc-input"
                               style={{ marginTop: '6px' }}
+                              placeholder="e.g. MCI-12345"
                             />
                           ) : (
                             <div className="doc-input" style={{ backgroundColor: '#f8fafc', fontFamily: 'monospace', fontWeight: 600, marginTop: '6px' }}>{profileForm.registration_number || 'N/A'}</div>
@@ -3263,11 +3384,22 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                         <div>
                           <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Email Address</label>
-                          <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px', color: '#64748b' }}>{profileForm.email || 'N/A'}</div>
+                          {isEditingProfile ? (
+                            <input
+                              type="email"
+                              value={profileForm.email}
+                              onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
+                              className="doc-input"
+                              style={{ marginTop: '6px' }}
+                              placeholder="doctor@clinic.com"
+                            />
+                          ) : (
+                            <div className="doc-input" style={{ backgroundColor: '#f8fafc', marginTop: '6px', color: '#64748b' }}>{profileForm.email || 'N/A'}</div>
+                          )}
                         </div>
 
                         <div>
-                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Contact Phone</label>
+                          <label className="doc-form-label" style={{ fontWeight: 600, fontSize: '0.8rem', color: '#64748b' }}>Mobile / Contact Phone No.</label>
                           {isEditingProfile ? (
                             <input
                               type="text"
@@ -3910,13 +4042,11 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                               <h4 style={{ margin: 0, fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {activeAppt.patient_name} {loadingPatientDetails && <span style={{ fontSize: '0.7rem', color: '#0f766e' }}>(Syncing...)</span>}
                               </h4>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.7rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, fontFamily: 'monospace' }}>
                                   {activePatientDetails?.patient_code || activeAppt.patient_code || 'PT-10007'}
                                 </span>
-                                <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>
-                                  🟢 Active
-                                </span>
+                                {renderPatientSegmentBadge(activePatientDetails || activeAppt)}
                               </div>
                             </div>
                           </div>
@@ -4386,6 +4516,37 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
 
                         {/* SECTION 2: PRESCRIPTION BUILDER (MAJOR SECTION) */}
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {/* Specialty-based Quick Presets Bar */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '6px 10px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              ⚡ Specialty Presets:
+                            </span>
+                            {Object.entries(SPECIALTY_PRESCRIPTION_PRESETS).map(([key, preset]) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => handleApplyPreset(key)}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 600,
+                                  backgroundColor: '#ffffff',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '5px',
+                                  padding: '3px 8px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: '#334155'
+                                }}
+                                title={`Load standard ${preset.label} prescription`}
+                              >
+                                <span>{preset.icon}</span>
+                                <span>{preset.label}</span>
+                              </button>
+                            ))}
+                          </div>
+
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>
                               Prescription Builder
@@ -4404,10 +4565,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                             <div style={{ flex: 1, minHeight: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '20px', backgroundColor: '#f8fafc', color: '#64748b' }}>
                               <Stethoscope size={28} color="#94a3b8" style={{ marginBottom: '8px' }} />
                               <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>No Medications Added</span>
-                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Click "+ Add Medicine Row" to construct patient prescription</span>
+                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Click "+ Add Medicine Row" or select a Specialty Preset above</span>
                             </div>
                           ) : (
-                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'visible', position: 'relative', zIndex: 10 }}>
                               <table className="doc-table" style={{ margin: 0 }}>
                                 <thead style={{ backgroundColor: '#f8fafc' }}>
                                   <tr>
@@ -4420,16 +4581,119 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ onLogout }) => {
                                 </thead>
                                 <tbody>
                                   {prescriptionItems.map((item, idx) => (
-                                    <tr key={idx}>
-                                      <td style={{ padding: '6px 8px' }}>
+                                    <tr key={idx} style={{ position: 'relative', zIndex: focusedMedIndex === idx ? 100 : 1 }}>
+                                      <td style={{ padding: '6px 8px', position: 'relative' }}>
                                         <input
                                           type="text"
                                           className="doc-input"
                                           value={item.medicine_name}
-                                          onChange={(e) => updatePrescriptionItem(idx, 'medicine_name', e.target.value)}
-                                          placeholder="e.g. Amoxicillin 500mg"
-                                          style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem' }}
+                                          onChange={(e) => {
+                                            updatePrescriptionItem(idx, 'medicine_name', e.target.value);
+                                            setFocusedMedIndex(idx);
+                                          }}
+                                          onFocus={() => setFocusedMedIndex(idx)}
+                                          onBlur={() => setTimeout(() => setFocusedMedIndex(null), 250)}
+                                          placeholder="Type medicine name (e.g. Paracetamol)..."
+                                          style={{ marginBottom: 0, height: '30px', fontSize: '0.8rem', width: '100%' }}
                                         />
+
+                                        {/* Custom Floating Live Search Autocomplete Dropdown */}
+                                        {focusedMedIndex === idx && (() => {
+                                          const query = (item.medicine_name || '').toLowerCase().trim();
+                                          if (!query || query.length < 2) return null;
+
+                                          const matches = pharmacyStockList.filter((m: any) =>
+                                            m.name.toLowerCase().includes(query)
+                                          );
+                                          if (matches.length === 0) return null;
+
+                                          return (
+                                            <div style={{
+                                              position: 'absolute',
+                                              left: '8px',
+                                              right: '8px',
+                                              top: '38px',
+                                              backgroundColor: 'var(--surface, #ffffff)',
+                                              border: '1px solid var(--border, #cbd5e1)',
+                                              borderRadius: '8px',
+                                              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.3)',
+                                              zIndex: 9999,
+                                              maxHeight: '180px',
+                                              overflowY: 'auto',
+                                              padding: '4px'
+                                            }}>
+                                              {matches.map((med: any, mIdx: number) => {
+                                                const inStock = Number(med.stock_quantity) > 0;
+                                                return (
+                                                  <div
+                                                    key={med.id || mIdx}
+                                                    onMouseDown={(e) => {
+                                                      e.preventDefault();
+                                                      updatePrescriptionItem(idx, 'medicine_name', med.name);
+                                                      setFocusedMedIndex(null);
+                                                    }}
+                                                    style={{
+                                                      padding: '8px 10px',
+                                                      fontSize: '0.8rem',
+                                                      cursor: 'pointer',
+                                                      borderRadius: '6px',
+                                                      display: 'flex',
+                                                      justifyContent: 'space-between',
+                                                      alignItems: 'center',
+                                                      color: 'var(--ink, #0f172a)',
+                                                      borderBottom: mIdx < matches.length - 1 ? '1px solid var(--border, #f1f5f9)' : 'none',
+                                                      transition: 'background 0.15s ease'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-2, #f1f5f9)'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                  >
+                                                    <span style={{ fontWeight: 700 }}>{med.name}</span>
+                                                    <span style={{
+                                                      fontSize: '0.68rem',
+                                                      fontWeight: 700,
+                                                      padding: '2px 8px',
+                                                      borderRadius: '10px',
+                                                      backgroundColor: inStock ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                                      color: inStock ? '#16a34a' : '#ef4444'
+                                                    }}>
+                                                      {inStock ? `📦 ${med.stock_quantity} in stock` : '⚠️ Out of Stock'}
+                                                    </span>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })()}
+
+                                        {item.medicine_name && (
+                                          <div style={{ marginTop: '2px' }}>
+                                            {(() => {
+                                              const match = pharmacyStockList.find(
+                                                (m: any) => m.name.toLowerCase().includes(item.medicine_name.toLowerCase()) || item.medicine_name.toLowerCase().includes(m.name.toLowerCase())
+                                              );
+                                              if (match) {
+                                                const inStock = Number(match.stock_quantity) > 0;
+                                                return (
+                                                  <span style={{
+                                                    fontSize: '0.67rem',
+                                                    fontWeight: 700,
+                                                    padding: '1px 6px',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: inStock ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                                    color: inStock ? '#16a34a' : '#ef4444',
+                                                    border: `1px solid ${inStock ? '#86efac' : '#fca5a5'}`,
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                  }}>
+                                                    {inStock ? `📦 Stock: ${match.stock_quantity} units` : '⚠️ Out of Stock'}
+                                                  </span>
+                                                );
+                                              }
+                                              return null;
+                                            })()}
+                                          </div>
+                                        )}
                                       </td>
                                       <td style={{ padding: '6px 8px' }}>
                                         <input

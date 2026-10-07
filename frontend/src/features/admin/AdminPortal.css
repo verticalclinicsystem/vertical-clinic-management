@@ -350,7 +350,7 @@
 }
 
 .admin-stat-card {
-  background-color: #ffffff;
+  background-color: var(--surface, #ffffff);
   border-radius: 12px;
   border: 1px solid var(--admin-border);
   padding: 20px;
@@ -423,7 +423,7 @@
 }
 
 .admin-card {
-  background-color: #ffffff;
+  background-color: var(--surface, #ffffff);
   border-radius: 12px;
   border: 1px solid var(--admin-border);
   padding: 24px;

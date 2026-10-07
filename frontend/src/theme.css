@@ -201,9 +201,13 @@ body.dark-theme {
 /* ── 6. CARDS, PANELS & CONTAINERS ── */
 [data-theme="dark"] .portal-card,
 [data-theme="dark"] .admin-card,
+[data-theme="dark"] .admin-stat-card,
+[data-theme="dark"] .doc-card,
 [data-theme="dark"] .doc-stat-card,
 [data-theme="dark"] .stat-card,
 [data-theme="dark"] .recep-card,
+[data-theme="dark"] .recep-checkin-patient-card,
+[data-theme="dark"] .pharmacy-card,
 [data-theme="dark"] .manager-card,
 [data-theme="dark"] .doctor-slot-manager-card,
 [data-theme="dark"] .billing-card,
@@ -217,16 +221,23 @@ body.dark-theme {
 [data-theme="dark"] .profile-card,
 [data-theme="dark"] .dashboard-section,
 [data-theme="dark"] .ipd-bed-card,
-[data-theme="dark"] .teleconsult-card {
+[data-theme="dark"] .teleconsult-card,
+[data-theme="dark"] .admin-kanban-column,
+[data-theme="dark"] .admin-kanban-card,
+[data-theme="dark"] .admin-workflow-col,
+[data-theme="dark"] .admin-workflow-card {
   background-color: var(--surface) !important;
   border-color: var(--border) !important;
   color: var(--ink) !important;
   box-shadow: var(--shadow-card) !important;
 }
 
+[data-theme="dark"] .admin-stat-val,
 [data-theme="dark"] .doc-stat-val,
 [data-theme="dark"] .stat-number,
-[data-theme="dark"] .stat-value {
+[data-theme="dark"] .stat-value,
+[data-theme="dark"] .admin-card-title,
+[data-theme="dark"] .admin-stat-label {
   color: var(--ink) !important;
 }
 
@@ -241,11 +252,14 @@ body.dark-theme {
 [data-theme="dark"] input[type="search"],
 [data-theme="dark"] select,
 [data-theme="dark"] textarea,
+[data-theme="dark"] option,
 [data-theme="dark"] .form-input,
 [data-theme="dark"] .doc-input,
 [data-theme="dark"] .recep-input,
 [data-theme="dark"] .manager-input,
 [data-theme="dark"] .admin-input,
+[data-theme="dark"] .admin-search-input,
+[data-theme="dark"] .admin-branch-select,
 [data-theme="dark"] .topbar-search-input,
 [data-theme="dark"] .topbar-search-box input {
   background-color: var(--surface-2) !important;
@@ -462,28 +476,42 @@ body.dark-theme {
 /* ── 13. SAFETY OVERRIDES FOR HARDCODED INLINE STYLES ── */
 /* Catches inline #ffffff / white backgrounds */
 [data-theme="dark"] [style*="background-color: rgb(255, 255, 255)"],
+[data-theme="dark"] [style*="background-color:#ffffff"],
 [data-theme="dark"] [style*="background-color: #ffffff"],
+[data-theme="dark"] [style*="background-color:#fff"],
 [data-theme="dark"] [style*="background-color: #fff"],
 [data-theme="dark"] [style*="backgroundColor: rgb(255, 255, 255)"],
 [data-theme="dark"] [style*="backgroundColor: #ffffff"],
 [data-theme="dark"] [style*="backgroundColor: #fff"],
 [data-theme="dark"] [style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] [style*="background:#ffffff"],
 [data-theme="dark"] [style*="background: #ffffff"],
-[data-theme="dark"] [style*="background: #fff"] {
+[data-theme="dark"] [style*="background:#fff"],
+[data-theme="dark"] [style*="background: #fff"],
+[data-theme="dark"] [style*="background: white"],
+[data-theme="dark"] [style*="background-color: white"] {
   background-color: var(--surface) !important;
+  color: var(--ink) !important;
 }
 
 /* Catches inline light backgrounds (e.g. #f8fafc, #F1F8FA, #EAF6FA) */
 [data-theme="dark"] [style*="background-color: rgb(248, 250, 252)"],
+[data-theme="dark"] [style*="background-color:#f8fafc"],
 [data-theme="dark"] [style*="background-color: #f8fafc"],
+[data-theme="dark"] [style*="background-color: rgb(241, 245, 249)"],
+[data-theme="dark"] [style*="background-color:#f1f5f9"],
+[data-theme="dark"] [style*="background-color: #f1f5f9"],
 [data-theme="dark"] [style*="background-color: #F1F8FA"],
-[data-theme="dark"] [style*="background-color: #f1f8fa"],
 [data-theme="dark"] [style*="background-color: #EAF6FA"],
-[data-theme="dark"] [style*="background-color: #eaf6fa"],
 [data-theme="dark"] [style*="backgroundColor: #f8fafc"],
-[data-theme="dark"] [style*="backgroundColor: #F1F8FA"],
-[data-theme="dark"] [style*="backgroundColor: #EAF6FA"] {
+[data-theme="dark"] [style*="background: rgb(248, 250, 252)"],
+[data-theme="dark"] [style*="background:#f8fafc"],
+[data-theme="dark"] [style*="background: #f8fafc"],
+[data-theme="dark"] [style*="background: rgb(241, 245, 249)"],
+[data-theme="dark"] [style*="background:#f1f5f9"],
+[data-theme="dark"] [style*="background: #f1f5f9"] {
   background-color: var(--surface-2) !important;
+  color: var(--ink) !important;
 }
 
 /* Catches inline dark text colors (e.g. #102A43, #1e293b, #0f172a) so they stay readable */
@@ -493,7 +521,11 @@ body.dark-theme {
 [data-theme="dark"] [style*="color: rgb(30, 41, 59)"],
 [data-theme="dark"] [style*="color: #1e293b"],
 [data-theme="dark"] [style*="color: rgb(15, 23, 42)"],
-[data-theme="dark"] [style*="color: #0f172a"] {
+[data-theme="dark"] [style*="color: #0f172a"],
+[data-theme="dark"] [style*="color: rgb(51, 65, 85)"],
+[data-theme="dark"] [style*="color: #334155"],
+[data-theme="dark"] [style*="color: rgb(17, 24, 39)"],
+[data-theme="dark"] [style*="color: #111827"] {
   color: var(--ink) !important;
 }
 
@@ -503,6 +535,7 @@ body.dark-theme {
 [data-theme="dark"] [style*="color: #58758a"],
 [data-theme="dark"] [style*="color: rgb(100, 116, 139)"],
 [data-theme="dark"] [style*="color: #64748b"],
+[data-theme="dark"] [style*="color: rgb(71, 85, 105)"],
 [data-theme="dark"] [style*="color: #475569"] {
   color: var(--muted) !important;
 }
@@ -516,6 +549,29 @@ body.dark-theme {
 [data-theme="dark"] [style*="borderColor: #e2e8f0"],
 [data-theme="dark"] [style*="borderColor: #D6E7ED"] {
   border-color: var(--border) !important;
+}
+
+/* Secondary Buttons & Switches in Dark Mode */
+[data-theme="dark"] .admin-btn-secondary,
+[data-theme="dark"] .doc-btn-secondary,
+[data-theme="dark"] .recep-btn-secondary,
+[data-theme="dark"] .pharmacy-btn-secondary,
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .admin-btn-switch {
+  background-color: var(--surface-2) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--border) !important;
+}
+
+[data-theme="dark"] .admin-btn-secondary:hover,
+[data-theme="dark"] .doc-btn-secondary:hover,
+[data-theme="dark"] .recep-btn-secondary:hover,
+[data-theme="dark"] .pharmacy-btn-secondary:hover,
+[data-theme="dark"] .btn-secondary:hover,
+[data-theme="dark"] .admin-btn-switch:hover {
+  background-color: var(--surface-3) !important;
+  color: var(--bright-cyan) !important;
+  border-color: var(--bright-cyan) !important;
 }
 
 /* ── 14. PRESERVE ACCENTED STATUS PILLS & BADGES ── */

@@ -72,6 +72,9 @@ class DoctorUpdate(BaseModel):
     is_available: bool | None = None
     branch_id: uuid.UUID | None = None
     availability_metadata: str | None = None
+    email: str | None = None
+    full_name: str | None = None
+    phone: str | None = None
 
 
 class DoctorOut(DoctorBase):
