@@ -1577,10 +1577,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
           {activeTab === 'dashboard' && (
             <>
               {/* Branch Selection & Quick Actions Bar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', background: '#ffffff', padding: '14px 20px', borderRadius: '12px', border: '1px solid var(--admin-border)', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: 'var(--surface, #ffffff)', padding: '14px 20px', borderRadius: '12px', border: '1px solid var(--admin-border)', flexWrap: 'wrap', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Building size={18} style={{ color: 'var(--admin-primary)' }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>Location Filter:</span>
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--ink, #1e293b)' }}>Location Filter:</span>
                   <select
                     value={selectedDashboardBranch}
                     onChange={(e) => {
@@ -1591,11 +1591,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     style={{
                       padding: '6px 14px',
                       borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
+                      border: '1px solid var(--border, #cbd5e1)',
                       fontSize: '0.88rem',
                       fontWeight: 600,
-                      color: '#0f172a',
-                      background: '#f8fafc',
+                      color: 'var(--ink, #0f172a)',
+                      backgroundColor: 'var(--surface-2, #f8fafc)',
                       cursor: 'pointer',
                       outline: 'none'
                     }}

@@ -63,7 +63,7 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="AI-Powered Multi-Branch Clinic Management System API",
-        docs_url="/docs" if not settings.is_production else None,
+        docs_url=None,
         redoc_url="/redoc" if not settings.is_production else None,
         openapi_url="/openapi.json" if not settings.is_production else None,
         openapi_tags=openapi_tags,
@@ -88,6 +88,19 @@ def create_app() -> FastAPI:
     import os
     os.makedirs("static/uploads", exist_ok=True)
     app.mount("/static", StaticFiles(directory="static"), name="static")
+
+    if not settings.is_production:
+        from fastapi.openapi.docs import get_swagger_ui_html
+
+        @app.get("/docs", include_in_schema=False)
+        async def custom_swagger_ui_html():
+            return get_swagger_ui_html(
+                openapi_url=app.openapi_url,
+                title=app.title + " - Swagger UI",
+                oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+                swagger_js_url="/static/swagger/swagger-ui-bundle.js",
+                swagger_css_url="/static/swagger/swagger-ui.css",
+            )
 
     # Serve uploads locally in development or as fallback
     target_dir = settings.UPLOAD_DIR if settings.STORAGE_BACKEND == "local" else "static/uploads"

@@ -90,7 +90,20 @@ export const RecepCheckInTab: React.FC<RecepCheckInTabProps> = ({
                         .toUpperCase() || 'PT'}
                     </div>
                     <div className="patient-details">
-                      <span className="patient-name">{p?.user?.full_name || 'N/A'}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span className="patient-name">{p?.user?.full_name || 'N/A'}</span>
+                        {(() => {
+                          const visitCount = Number(p?.visit_count || p?.appointment_count || 1);
+                          const isReferred = Boolean(p?.referred_by || p?.referral_source);
+                          if (isReferred) {
+                            return <span style={{ fontSize: '0.66rem', backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>🤝 Referred</span>;
+                          }
+                          if (visitCount <= 1) {
+                            return <span style={{ fontSize: '0.66rem', backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>🟢 First-Time</span>;
+                          }
+                          return <span style={{ fontSize: '0.66rem', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>🔵 Repeat</span>;
+                        })()}
+                      </div>
                       <span className="patient-code-phone">
                         {p?.patient_code} &middot; {p?.user?.phone || '—'}
                       </span>
