@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Clock, CheckSquare, Square, AlertCircle, MessageSquare } from 'lucide-react';
+import { api } from '../../../services/api';
 import { ChatDrawerModal } from './ChatDrawerModal';
 
 interface TeleconsultationTabProps {
@@ -32,13 +33,136 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
   setScreen,
 }) => {
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [activeFromApi, setActiveFromApi] = useState<any>(null);
+  const [pastFromApi, setPastFromApi] = useState<any[]>([]);
+  const [, setTick] = useState<number>(0);
+
+  // Poll active and past teleconsultations every 8 seconds
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTele = async () => {
+      try {
+        const [activeRes, pastRes] = await Promise.all([
+          api.get('/teleconsultations/active').catch(() => null),
+          api.get('/teleconsultations/past').catch(() => null),
+        ]);
+        if (!isMounted) return;
+        const activeData = activeRes?.data?.data ?? (activeRes?.data?.id ? activeRes.data : null);
+        if (activeData) {
+          setActiveFromApi(activeData);
+        }
+        const pastData = pastRes?.data?.data ?? (Array.isArray(pastRes?.data) ? pastRes.data : []);
+        if (Array.isArray(pastData)) {
+          setPastFromApi(pastData);
+        }
+      } catch (e) {
+        console.error('Error polling teleconsultation data:', e);
+      }
+    };
+
+    fetchTele();
+    const interval = setInterval(() => {
+      fetchTele();
+      setTick(t => t + 1);
+    }, 8000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const normalizeConsultation = (item: any) => {
+    if (!item) return null;
+    const docName = item.doctor_name || item.doctor?.user?.full_name || 'Dr. Specialist';
+    const specialty = item.specialty || item.doctor?.specialization || 'Consultant';
+    
+    const apptDtStr = item.appointment_datetime || item.scheduled_datetime;
+    let timeLeftMinutes = item.time_left_minutes;
+    let isExpired = !!item.is_expired;
+    let isOngoing = !!item.is_ongoing;
+    let canJoin = !!item.can_join || !!item.meeting_link;
+    let scheduledTimeStr = item.scheduled_time;
+
+    if (apptDtStr) {
+      const apptTime = new Date(apptDtStr).getTime();
+      const now = Date.now();
+      const diffMinutes = Math.round((apptTime - now) / 60000);
+      timeLeftMinutes = diffMinutes;
+
+      scheduledTimeStr = new Date(apptDtStr).toLocaleString('en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+
+      // Call is joinable if:
+      // 1. Within 15 minutes before scheduled start time
+      // 2. OR ongoing / in consultation
+      // 3. OR up to 45 minutes after start time
+      // 4. OR backend says can_join
+      if (item.status === 'in_consultation') {
+        canJoin = true;
+        isOngoing = true;
+      } else if (item.status === 'completed' || item.status === 'cancelled') {
+        canJoin = false;
+        isExpired = true;
+      } else if (diffMinutes <= 15 && diffMinutes >= -45) {
+        canJoin = true;
+        if (diffMinutes <= 0) {
+          isOngoing = true;
+        }
+      } else if (diffMinutes < -45) {
+        isExpired = true;
+      }
+    } else {
+      if (item.can_join !== undefined) {
+        canJoin = Boolean(item.can_join);
+      }
+      if (item.is_ongoing !== undefined) {
+        isOngoing = Boolean(item.is_ongoing);
+      } else if (timeLeftMinutes !== undefined && timeLeftMinutes <= 0 && timeLeftMinutes >= -45) {
+        isOngoing = true;
+      }
+    }
+
+    return {
+      ...item,
+      doctor_name: docName,
+      specialty,
+      scheduled_time: scheduledTimeStr || item.scheduled_time || `${item.date || ''} ${item.time || ''}`,
+      time_left_minutes: timeLeftMinutes,
+      can_join: canJoin,
+      is_ongoing: isOngoing,
+      is_expired: isExpired,
+    };
+  };
 
   const allConsultations: any[] = [];
-  if (activeTele) {
-    allConsultations.push({ ...activeTele, status: activeTele.status && activeTele.status !== 'completed' ? activeTele.status : 'scheduled' });
+  const primaryActive = activeFromApi || activeTele;
+  if (primaryActive) {
+    const norm = normalizeConsultation(primaryActive);
+    if (norm) allConsultations.push(norm);
   }
-  if (pastTeles && pastTeles.length > 0) {
-    allConsultations.push(...pastTeles);
+
+  if (activeTele && activeTele.id !== activeFromApi?.id) {
+    const norm = normalizeConsultation(activeTele);
+    if (norm && !allConsultations.some(c => c.id === norm.id)) {
+      allConsultations.push(norm);
+    }
+  }
+
+  const combinedPast = [...(pastFromApi || []), ...(pastTeles || [])];
+  const seenIds = new Set(allConsultations.map(c => c?.id).filter(Boolean));
+  for (const p of combinedPast) {
+    if (p && p.id && !seenIds.has(p.id)) {
+      seenIds.add(p.id);
+      const norm = normalizeConsultation(p);
+      if (norm) allConsultations.push(norm);
+    }
   }
 
   const currentSelectedId = selectedTeleId || allConsultations[0]?.id;
@@ -321,18 +445,42 @@ export const TeleconsultationTab: React.FC<TeleconsultationTabProps> = ({
                 disabled={!selectedItem.can_join || !isMandatoryComplete}
                 style={{
                   cursor: (selectedItem.can_join && isMandatoryComplete) ? 'pointer' : 'not-allowed',
-                  opacity: (selectedItem.can_join && isMandatoryComplete) ? 1 : 0.55,
-                  backgroundColor: (selectedItem.can_join && isMandatoryComplete) ? 'var(--primary, #0ea5e9)' : '#94a3b8',
+                  opacity: (selectedItem.can_join && isMandatoryComplete) ? 1 : 0.6,
+                  backgroundColor: (selectedItem.can_join && isMandatoryComplete)
+                    ? (selectedItem.is_ongoing ? '#10b981' : 'var(--primary-teal, #0c6e8c)')
+                    : '#94a3b8',
+                  boxShadow: (selectedItem.can_join && isMandatoryComplete)
+                    ? '0 4px 14px rgba(16, 185, 129, 0.35)'
+                    : 'none',
                   position: 'relative',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
+                  fontSize: '0.94rem',
+                  fontWeight: 700,
+                  padding: '12px 20px',
+                  borderRadius: '10px',
+                  transition: 'all 0.2s ease',
+                  border: 'none',
+                  color: '#ffffff'
                 }}
                 title={!isMandatoryComplete ? 'Please complete all required pre-consultation checklist items to enable' : ''}
               >
-                <Video size={16} /> 
-                {(!isMandatoryComplete && selectedItem.can_join) ? '🔒 Complete Checklist to Join' : 'Join Video Consultation'}
+                <Video size={18} /> 
+                {!selectedItem.can_join ? (
+                  selectedItem.is_expired
+                    ? '⚠️ Session Expired'
+                    : selectedItem.time_left_minutes !== undefined && selectedItem.time_left_minutes > 0
+                      ? `Starts in ${selectedItem.time_left_minutes} mins (Opens 15m prior)`
+                      : 'Room Opens 15m Before Call'
+                ) : !isMandatoryComplete ? (
+                  '🔒 Complete Checklist to Join'
+                ) : selectedItem.is_ongoing ? (
+                  '🟢 Join Live Video Consultation'
+                ) : (
+                  'Join Video Consultation'
+                )}
               </button>
 
               {/* Direct Messaging Drawer Button */}

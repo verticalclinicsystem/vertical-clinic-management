@@ -22,6 +22,14 @@ class PatientUserMinOut(BaseModel):
 class PatientMinOut(BaseModel):
     id: uuid.UUID
     patient_code: str
+    gender: str | None = None
+    date_of_birth: datetime | None = None
+    blood_group: str | None = None
+    height: str | None = None
+    weight: str | None = None
+    allergies: str | None = None
+    chronic_conditions: str | None = None
+    is_profile_completed: bool = False
     user: PatientUserMinOut | None = None
 
     class Config:

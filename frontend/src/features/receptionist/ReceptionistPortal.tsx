@@ -1168,6 +1168,29 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
     }
   };
 
+  const handleIntakeAndCheckIn = async (appointmentId: string, patientId: string, intakeData: any) => {
+    try {
+      // 1. Save clinical intake to patient profile
+      await api.put(`/patients/${patientId}`, {
+        blood_group: intakeData.blood_group || null,
+        height: intakeData.height || null,
+        weight: intakeData.weight || null,
+        allergies: intakeData.allergies || 'None',
+        chronic_conditions: intakeData.chronic_conditions || 'None',
+        is_profile_completed: true,
+      });
+
+      // 2. Check in appointment to waiting queue
+      const res = await api.patch(`/appointments/${appointmentId}/check-in`);
+      if (res.data?.success) {
+        showToast('Clinical intake saved & patient added to waiting queue!', 'success');
+        await fetchPortalData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error saving intake and checking in.', 'error');
+    }
+  };
+
   const handleUndoCheckIn = (appt: any) => {
     setUndoCheckInAppt(appt);
     setUndoReason('accidental');
@@ -2439,6 +2462,7 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                   setSelectedApptForCheckIn={setSelectedApptForCheckIn}
                   getLocalApptTime={getLocalApptTime}
                   handleCheckIn={handleCheckIn}
+                  handleIntakeAndCheckIn={handleIntakeAndCheckIn}
                   formatDocName={formatDocName}
                 />
               )}
@@ -4190,6 +4214,22 @@ export const ReceptionistPortal: React.FC<ReceptionistPortalProps> = ({ onLogout
                                         title="View Report"
                                       >
                                         <Eye size={13} /> View
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const url = report.file_url?.startsWith('http') ? report.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${report.file_url}`;
+                                          const link = document.createElement('a');
+                                          link.href = url;
+                                          link.target = '_blank';
+                                          link.download = report.report_name || 'report';
+                                          link.click();
+                                        }}
+                                        className="recep-btn-secondary"
+                                        style={{ padding: '6px 10px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        title="Download Report"
+                                      >
+                                        <Download size={13} /> Download
                                       </button>
                                       <button
                                         type="button"

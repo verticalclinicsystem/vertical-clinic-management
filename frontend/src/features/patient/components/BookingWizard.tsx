@@ -531,7 +531,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               return 'available';
             };
 
-            const availableSlotsCount = safeAvailableSlots.filter((s: any) => getSlotStatus(s) === 'available').length;
+            const availableSlotsCount = safeAvailableSlots.filter((s: any) => {
+              const t = getSlotTime(s);
+              const st = getSlotStatus(s);
+              return st === 'available' && !isSlotExpiredOrPast(bookingDate, t, st);
+            }).length;
 
             const formatFriendlyDate = (dateStr: string) => {
               if (!dateStr) return '';
@@ -675,10 +679,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                         type="button"
                         className="calendar-today-btn"
                         onClick={() => {
-                          const todayStr = new Date().toISOString().split('T')[0];
+                          const now = new Date();
+                          const yyyy = now.getFullYear();
+                          const mm = String(now.getMonth() + 1).padStart(2, '0');
+                          const dd = String(now.getDate()).padStart(2, '0');
+                          const todayStr = `${yyyy}-${mm}-${dd}`;
                           handleDateChange(todayStr);
-                          setCalendarViewMonth(new Date().getMonth());
-                          setCalendarViewYear(new Date().getFullYear());
+                          setCalendarViewMonth(now.getMonth());
+                          setCalendarViewYear(now.getFullYear());
                         }}
                       >
                         Today

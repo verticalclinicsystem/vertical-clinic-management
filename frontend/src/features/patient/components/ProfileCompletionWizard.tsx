@@ -23,6 +23,7 @@ interface ProfileCompletionWizardProps {
   doctors: Doctor[];
   onComplete: () => void;
   onLogout: () => void;
+  onSkip?: () => void;
   triggerToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
@@ -55,6 +56,7 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
   doctors,
   onComplete,
   onLogout,
+  onSkip,
   triggerToast,
 }) => {
   const [step, setStep] = useState<number>(1);
@@ -484,6 +486,28 @@ export const ProfileCompletionWizard: React.FC<ProfileCompletionWizardProps> = (
             >
               ⚡ Auto-Fill Demo Clinical Data
             </button>
+            {onSkip && (
+              <button
+                type="button"
+                onClick={onSkip}
+                style={{
+                  fontSize: '0.82rem',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#f1f5f9',
+                  color: '#334155',
+                  border: '1px solid #cbd5e1',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                Skip for Now →
+              </button>
+            )}
             <button className="wizard-logout-btn" onClick={onLogout}>
               🚪 Sign Out
             </button>

@@ -1,5 +1,21 @@
 import React from 'react';
-import { UploadCloud, Clock, Download, Video } from 'lucide-react';
+import { 
+  UploadCloud, 
+  Clock, 
+  Download, 
+  Video, 
+  Stethoscope, 
+  Pill, 
+  ClipboardList, 
+  Activity, 
+  Heart, 
+  Thermometer, 
+  MapPin, 
+  Calendar, 
+  CalendarRange, 
+  CheckCircle2, 
+  X 
+} from 'lucide-react';
 import { CustomDatePicker } from '../../../components/CustomDatePicker';
 import { isSlotExpiredOrPast } from '../../../utils/slotUtils';
 
@@ -173,7 +189,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
   timeline,
   dashboardData,
   setViewingInvoice,
-  triggerToast,
+  triggerToast: _triggerToast,
 
   viewingInvoice,
   patientProfile: _patientProfile,
@@ -186,6 +202,45 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
   const [isFetchingPdf, setIsFetchingPdf] = React.useState<boolean>(false);
   const [fetchError, setFetchError] = React.useState<string | null>(null);
+  const [visitTab, setVisitTab] = React.useState<'overview' | 'summary' | 'prescriptions'>('overview');
+
+  React.useEffect(() => {
+    if (viewingHistoryEvent) {
+      setVisitTab('overview');
+    }
+  }, [viewingHistoryEvent]);
+
+  // Lock body scroll when any modal is open
+  const isAnyModalOpen = Boolean(
+    rescheduleApptId ||
+    cancelApptId ||
+    viewingPrescription ||
+    showBookingConfirm ||
+    showUploadModal ||
+    viewingReport ||
+    viewingAppointment ||
+    viewingHistoryEvent ||
+    viewingInvoice ||
+    conflictAppt
+  );
+
+  React.useEffect(() => {
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+      document.body.style.overflow = 'hidden';
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+
+      return () => {
+        document.body.style.overflow = originalOverflow || '';
+        document.body.style.paddingRight = originalPaddingRight || '';
+      };
+    }
+  }, [isAnyModalOpen]);
 
   React.useEffect(() => {
     if (!viewingReport || !viewingReport.file_url) {
@@ -985,9 +1040,9 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                 </div>
                 <div>
                   <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Status</label>
-                  <p style={{ margin: '4px 0 0' }}>
-                    <span className={`status-pill ${viewingAppointment.status.replace(/_/g, '-')}`}>{viewingAppointment.status.replace(/[_-]/g, ' ')}</span>
-                  </p>
+                    <span className={`status-pill ${viewingAppointment.status.replace(/_/g, '-')}`}>
+                      {['no_show', 'no-show', 'not-show', 'not_show'].includes(viewingAppointment.status) ? 'Missed Visit' : viewingAppointment.status.replace(/[_-]/g, ' ')}
+                    </span>
                 </div>
                 <div>
                   <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Type</label>
@@ -1043,106 +1098,500 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
       {/* ── MODAL: VIEW HISTORY VISIT DETAILS ── */}
       {viewingHistoryEvent && (() => {
         const eventDate = new Date(viewingHistoryEvent.datetime).toDateString();
-        const rxMatch = timeline.find(event =>
-          event.event_type === 'prescription' &&
+        const rxFromTimeline = timeline.find(event =>
+          (event.event_type === 'prescription' || event.event_type === 'rx') &&
           new Date(event.datetime).toDateString() === eventDate
         );
-        const billMatch = timeline.find(event =>
-          event.event_type === 'invoice' &&
-          new Date(event.datetime).toDateString() === eventDate
+        const rxFromDashboard = dashboardData?.prescriptions?.find((p: any) =>
+          (p.consultation_id && String(p.consultation_id) === String(viewingHistoryEvent.details?.consultation_id)) ||
+          new Date(p.created_at).toDateString() === eventDate
         );
+
+        // Extract medicines from visit details or matching prescriptions
+        let medicines: any[] = [];
+        if (Array.isArray(viewingHistoryEvent.details?.medicines) && viewingHistoryEvent.details.medicines.length > 0) {
+          medicines = viewingHistoryEvent.details.medicines;
+        } else if (Array.isArray(rxFromTimeline?.details?.medicines) && rxFromTimeline.details.medicines.length > 0) {
+          medicines = rxFromTimeline.details.medicines;
+        } else if (Array.isArray(rxFromTimeline?.details?.medications) && rxFromTimeline.details.medications.length > 0) {
+          medicines = rxFromTimeline.details.medications;
+        } else if (Array.isArray(rxFromTimeline?.details?.items) && rxFromTimeline.details.items.length > 0) {
+          medicines = rxFromTimeline.details.items;
+        } else if (Array.isArray(rxFromDashboard?.items) && rxFromDashboard.items.length > 0) {
+          medicines = rxFromDashboard.items.map((i: any) => ({
+            name: i.medicine_name || i.name,
+            dosage: i.dosage,
+            duration: i.duration || (i.duration_days ? `${i.duration_days} Days` : ''),
+            instructions: i.instructions
+          }));
+        }
+
+        const docName = viewingHistoryEvent.details?.doctor_name 
+          ? (viewingHistoryEvent.details.doctor_name.toLowerCase().startsWith('dr') 
+              ? viewingHistoryEvent.details.doctor_name 
+              : `Dr. ${viewingHistoryEvent.details.doctor_name}`)
+          : viewingHistoryEvent.title;
+        const specialty = viewingHistoryEvent.details?.specialization || 'Clinical Physician';
+        const branchName = viewingHistoryEvent.details?.branch_name || 'Clinic';
+        const diagnosis = viewingHistoryEvent.details?.diagnosis || viewingHistoryEvent.description || 'Clinical Assessment & Follow-up';
+        const symptoms = viewingHistoryEvent.details?.symptoms;
+        const notes = viewingHistoryEvent.details?.notes;
+        const vitalsBp = viewingHistoryEvent.details?.vitals_bp;
+        const vitalsPulse = viewingHistoryEvent.details?.vitals_pulse;
+        const vitalsTemp = viewingHistoryEvent.details?.vitals_temperature;
+        const hasVitals = Boolean(vitalsBp || vitalsPulse || vitalsTemp);
+        const followupAdvised = viewingHistoryEvent.details?.followup_advised;
+        const followupDays = viewingHistoryEvent.details?.followup_after_days;
+
+        const formattedDate = new Date(viewingHistoryEvent.datetime).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        });
+        const formattedTime = new Date(viewingHistoryEvent.datetime).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
 
         return (
-          <div className="modal-overlay" style={{ zIndex: 1100 }}>
-            <div className="modal-card" style={{ maxWidth: '650px', width: '95%' }}>
-              <header className="modal-header">
-                <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)' }}>Medical History Visit Details</h3>
-                <button onClick={() => setViewingHistoryEvent(null)} style={{ fontSize: '1.5rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>&times;</button>
+          <div 
+            className="modal-overlay" 
+            style={{ zIndex: 1100, overscrollBehavior: 'contain' }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setViewingHistoryEvent(null);
+            }}
+          >
+            <div 
+              className="modal-card" 
+              style={{ maxWidth: '680px', width: '95%', maxHeight: '90vh', overscrollBehavior: 'contain' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <header className="modal-header" style={{ padding: '16px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ 
+                    width: '38px', 
+                    height: '38px', 
+                    borderRadius: '10px', 
+                    backgroundColor: '#e0f2fe', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    color: '#0284c7' 
+                  }}>
+                    <Stethoscope size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0f172a' }}>
+                      Medical History Visit Details
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                      Clinical summary, vitals, and prescribed medications
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setViewingHistoryEvent(null)} 
+                  style={{ 
+                    fontSize: '1.4rem', 
+                    background: 'none', 
+                    border: 'none', 
+                    cursor: 'pointer', 
+                    color: '#94a3b8',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '4px',
+                    borderRadius: '6px',
+                    transition: 'color 0.2s'
+                  }}
+                  aria-label="Close"
+                >
+                  <X size={20} />
+                </button>
               </header>
-              <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Doctor</label>
-                    <p style={{ margin: '4px 0 0', fontWeight: 600 }}>{viewingHistoryEvent.title}</p>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Visit Date</label>
-                    <p style={{ margin: '4px 0 0' }}>{new Date(viewingHistoryEvent.datetime).toLocaleString()}</p>
-                  </div>
-                </div>
 
-                <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Diagnosis / Medical Summary</label>
-                  <div style={{ padding: '12px', background: 'var(--surface-2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: 'var(--primary)' }}>
-                      {viewingHistoryEvent.details?.diagnosis || viewingHistoryEvent.description || 'No diagnosis recorded.'}
-                    </p>
-                  </div>
-                </div>
-
-                {viewingHistoryEvent.details?.symptoms && (
+              {/* Sub-header Doctor & Visit Banner */}
+              <div style={{ padding: '14px 22px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Recorded Symptoms</label>
-                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--ink)' }}>{viewingHistoryEvent.details.symptoms}</p>
-                  </div>
-                )}
-
-                {viewingHistoryEvent.details?.notes && (
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Clinical Instructions &amp; Recommendations</label>
-                    <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                      "{viewingHistoryEvent.details.notes}"
-                    </p>
-                  </div>
-                )}
-
-                {rxMatch && (
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '8px' }}>💊 Prescribed Medications</label>
-                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <p style={{ margin: '0 0 8px', fontSize: '0.82rem', color: 'var(--muted)' }}>
-                        Prescription Code: {(rxMatch.details?.prescription_id || rxMatch.id)?.substring(0, 8).toUpperCase()}
-                      </p>
-                      <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.88rem' }}>
-                        {(rxMatch.details?.medicines || rxMatch.details?.medications || rxMatch.details?.items)?.map((med: any, idx: number) => (
-                          <li key={idx} style={{ marginBottom: '4px' }}>
-                            <strong>{med.name || med.medicine_name}</strong> - {med.dosage} ({med.duration || `${med.duration_days} Days`})
-                            {med.instructions && <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Instructions: {med.instructions}</span>}
-                          </li>
-                        ))}
-                      </ul>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
+                        {docName}
+                      </span>
+                      <span style={{ 
+                        fontSize: '0.72rem', 
+                        fontWeight: 600, 
+                        backgroundColor: '#e0f2fe', 
+                        color: '#0369a1', 
+                        padding: '2px 8px', 
+                        borderRadius: '6px' 
+                      }}>
+                        {specialty}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '0.78rem', color: '#64748b' }}>
+                      <MapPin size={12} /> {branchName}
                     </div>
                   </div>
-                )}
 
-                {billMatch && (
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: '8px' }}>💳 Associated Billing Invoice</label>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <div>
-                        <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600 }}>{billMatch.title}</p>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--muted)' }}>Amount: {billMatch.description}</p>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '5px', 
+                      fontSize: '0.8rem', 
+                      fontWeight: 600, 
+                      color: '#334155',
+                      backgroundColor: '#ffffff',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0'
+                    }}>
+                      <Calendar size={13} color="#0284c7" /> {formattedDate} • {formattedTime}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Section Navigation Tabs */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setVisitTab('overview')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: 'none',
+                      backgroundColor: visitTab === 'overview' ? '#0284c7' : '#ffffff',
+                      color: visitTab === 'overview' ? '#ffffff' : '#64748b',
+                      borderWidth: visitTab === 'overview' ? 0 : '1px',
+                      borderStyle: 'solid',
+                      borderColor: '#cbd5e1',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <ClipboardList size={13} /> Complete Overview
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVisitTab('summary')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: 'none',
+                      backgroundColor: visitTab === 'summary' ? '#0284c7' : '#ffffff',
+                      color: visitTab === 'summary' ? '#ffffff' : '#64748b',
+                      borderWidth: visitTab === 'summary' ? 0 : '1px',
+                      borderStyle: 'solid',
+                      borderColor: '#cbd5e1',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Stethoscope size={13} /> Summary &amp; Vitals
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVisitTab('prescriptions')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: 'none',
+                      backgroundColor: visitTab === 'prescriptions' ? '#0d9488' : '#ffffff',
+                      color: visitTab === 'prescriptions' ? '#ffffff' : '#0f766e',
+                      borderWidth: visitTab === 'prescriptions' ? 0 : '1px',
+                      borderStyle: 'solid',
+                      borderColor: '#99f6e4',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Pill size={13} /> Prescriptions ({medicines.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="modal-body" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+                
+                {/* ── SECTION 1: CLINICAL SUMMARY (Diagnosis, Symptoms, Vitals) ── */}
+                {(visitTab === 'overview' || visitTab === 'summary') && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {/* Diagnosis */}
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                        Diagnosis / Medical Assessment
+                      </span>
+                      <div style={{ 
+                        padding: '12px 16px', 
+                        backgroundColor: '#f0fdf4', 
+                        borderRadius: '10px', 
+                        border: '1.5px solid #bbf7d0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                      }}>
+                        <CheckCircle2 size={18} color="#16a34a" />
+                        <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#166534' }}>
+                          {diagnosis}
+                        </span>
                       </div>
-                      <button
-                        onClick={() => {
-                          const fullBill = dashboardData?.bills?.find((b: any) => b.id === billMatch.id);
-                          if (fullBill) {
-                            setViewingInvoice(fullBill);
-                          } else {
-                            triggerToast('error', 'Invoice details not loaded.');
-                          }
-                        }}
-                        className="btn-secondary"
-                        style={{ fontSize: '0.75rem', padding: '6px 12px' }}
-                      >
-                        View Full Invoice
-                      </button>
                     </div>
+
+                    {/* Symptoms */}
+                    {symptoms && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                          Recorded Symptoms Reported
+                        </span>
+                        <div style={{ padding: '10px 14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <p style={{ margin: 0, fontSize: '0.88rem', color: '#1e293b' }}>
+                            {symptoms}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recorded Vitals */}
+                    {hasVitals && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                          Recorded Patient Vitals
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                          {vitalsBp && (
+                            <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Heart size={16} color="#ef4444" />
+                              <div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>Blood Pressure</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>{vitalsBp} mmHg</div>
+                              </div>
+                            </div>
+                          )}
+                          {vitalsPulse && (
+                            <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Activity size={16} color="#0284c7" />
+                              <div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>Pulse Rate</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>{vitalsPulse} bpm</div>
+                              </div>
+                            </div>
+                          )}
+                          {vitalsTemp && (
+                            <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Thermometer size={16} color="#f59e0b" />
+                              <div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>Body Temp</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>{vitalsTemp} °F</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Doctor Clinical Notes / Advice */}
+                    {notes && (
+                      <div>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                          Doctor's Clinical Notes &amp; Advice
+                        </span>
+                        <div style={{ 
+                          padding: '12px 14px', 
+                          backgroundColor: '#f8fafc', 
+                          borderRadius: '8px', 
+                          borderLeft: '4px solid #0284c7', 
+                          borderTop: '1px solid #e2e8f0', 
+                          borderRight: '1px solid #e2e8f0', 
+                          borderBottom: '1px solid #e2e8f0' 
+                        }}>
+                          <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontStyle: 'italic', lineHeight: 1.55 }}>
+                            "{notes}"
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Follow-up Note */}
+                    {followupAdvised && (
+                      <div style={{ 
+                        padding: '10px 14px', 
+                        backgroundColor: '#fdf2f8', 
+                        border: '1px solid #fbcfe8', 
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <CalendarRange size={16} color="#db2777" />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#9d174d' }}>
+                          Follow-up consultation advised {followupDays ? `in ${followupDays} days` : 'as recommended by doctor'}.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Divider between sections in Overview mode */}
+                {visitTab === 'overview' && (
+                  <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '4px 0' }} />
+                )}
+
+                {/* ── SECTION 2: PRESCRIPTIONS & MEDICATIONS (Rx) ── */}
+                {(visitTab === 'overview' || visitTab === 'prescriptions') && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span style={{ 
+                        fontSize: '0.76rem', 
+                        color: '#0f766e', 
+                        textTransform: 'uppercase', 
+                        fontWeight: 800, 
+                        letterSpacing: '0.5px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <Pill size={14} color="#0d9488" /> Prescribed Medications ({medicines.length})
+                      </span>
+
+                      {medicines.length > 0 && (
+                        <span style={{ 
+                          fontSize: '0.72rem', 
+                          backgroundColor: '#f0fdfa', 
+                          color: '#0f766e', 
+                          padding: '2px 8px', 
+                          borderRadius: '6px',
+                          border: '1px solid #ccfbf1',
+                          fontWeight: 600
+                        }}>
+                          Rx Active
+                        </span>
+                      )}
+                    </div>
+
+                    {medicines.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {medicines.map((med: any, idx: number) => (
+                          <div 
+                            key={idx} 
+                            style={{ 
+                              padding: '12px 14px', 
+                              backgroundColor: '#ffffff', 
+                              borderRadius: '10px', 
+                              border: '1.5px solid #99f6e4',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-start',
+                              flexWrap: 'wrap',
+                              gap: '10px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                              <div style={{ 
+                                width: '28px', 
+                                height: '28px', 
+                                borderRadius: '7px', 
+                                backgroundColor: '#ccfbf1', 
+                                color: '#0f766e', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                fontSize: '0.78rem', 
+                                fontWeight: 800,
+                                flexShrink: 0
+                              }}>
+                                Rx
+                              </div>
+                              <div>
+                                <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#0f766e' }}>
+                                  {med.name || med.medicine_name}
+                                </h5>
+                                {med.instructions && (
+                                  <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                                    <strong style={{ color: '#334155' }}>Instructions:</strong> {med.instructions}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              {med.dosage && (
+                                <span style={{ 
+                                  fontSize: '0.75rem', 
+                                  backgroundColor: '#f0fdfa', 
+                                  color: '#0f766e', 
+                                  border: '1px solid #99f6e4', 
+                                  padding: '3px 8px', 
+                                  borderRadius: '6px',
+                                  fontWeight: 600
+                                }}>
+                                  {med.dosage}
+                                </span>
+                              )}
+                              {med.duration && (
+                                <span style={{ 
+                                  fontSize: '0.75rem', 
+                                  backgroundColor: '#f1f5f9', 
+                                  color: '#475569', 
+                                  border: '1px solid #e2e8f0', 
+                                  padding: '3px 8px', 
+                                  borderRadius: '6px',
+                                  fontWeight: 600
+                                }}>
+                                  {med.duration}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ 
+                        padding: '18px', 
+                        backgroundColor: '#f8fafc', 
+                        borderRadius: '10px', 
+                        border: '1px dashed #cbd5e1', 
+                        textAlign: 'center' 
+                      }}>
+                        <Pill size={24} color="#94a3b8" style={{ margin: '0 auto 6px', display: 'block' }} />
+                        <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: '#475569' }}>
+                          No medications prescribed for this visit
+                        </p>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                          Standard consultation and clinical evaluation were conducted without prescription drugs.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-              <footer className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
-                <button onClick={() => setViewingHistoryEvent(null)} className="btn-primary" style={{ fontSize: '0.85rem' }}>Close</button>
+
+              <footer className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', padding: '12px 22px', backgroundColor: '#f8fafc' }}>
+                <button 
+                  onClick={() => setViewingHistoryEvent(null)} 
+                  className="btn-primary" 
+                  style={{ fontSize: '0.88rem', padding: '8px 20px', borderRadius: '8px' }}
+                >
+                  Close
+                </button>
               </footer>
             </div>
           </div>
@@ -1163,7 +1612,9 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
                   <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--primary)' }}>{viewingInvoice.invoice_number}</h4>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Issued: {new Date(viewingInvoice.created_at || viewingInvoice.due_date).toLocaleDateString()}</span>
                 </div>
-                <span className={`status-pill ${viewingInvoice.status}`}>{viewingInvoice.status}</span>
+                <span className={`status-pill ${viewingInvoice.status}`}>
+                  {viewingInvoice.status === 'paid' ? '✓ Paid' : (viewingInvoice.status === 'partially_paid' ? '⏳ Partially Paid' : '⚠️ Unpaid')}
+                </span>
               </div>
 
               {/* Items Breakdown Table */}
@@ -1244,7 +1695,7 @@ export const PatientModals: React.FC<PatientModalsProps> = ({
             </div>
             <footer className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
               <button
-                onClick={() => downloadPdf(`/billing/${viewingInvoice.id}/pdf`, `Invoice_${viewingInvoice.invoice_number}.pdf`)}
+                onClick={() => downloadPdf(`/billing/${viewingInvoice.id}/download-pdf`, `Invoice_${viewingInvoice.invoice_number}.pdf`)}
                 className="btn-secondary"
                 style={{ fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >

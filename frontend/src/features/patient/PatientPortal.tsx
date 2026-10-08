@@ -112,6 +112,32 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     consultation_preference: 'in_person'
   });
 
+  // Profile completion flow state: 'prompt' | 'wizard' | 'dashboard'
+  const [profileChoice, setProfileChoice] = useState<'prompt' | 'wizard' | 'dashboard'>(() => {
+    return (sessionStorage.getItem('patient_profile_flow') as 'prompt' | 'wizard' | 'dashboard') || 'prompt';
+  });
+
+  const handleSkipProfileToDashboard = () => {
+    setProfileChoice('dashboard');
+    sessionStorage.setItem('patient_profile_flow', 'dashboard');
+  };
+
+  const handleOpenProfileWizard = () => {
+    setProfileChoice('wizard');
+    sessionStorage.setItem('patient_profile_flow', 'wizard');
+  };
+
+  useEffect(() => {
+    const isWelcomeModalOpen = Boolean(patientProfile && !patientProfile.is_profile_completed && profileChoice === 'prompt');
+    if (isWelcomeModalOpen || isGlobalVideoModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow || '';
+      };
+    }
+  }, [patientProfile, profileChoice, isGlobalVideoModalOpen]);
+
   // Booking Wizard State
   const [bookingStep, setBookingStep] = useState<number>(() => {
     const val = localStorage.getItem('booking_wizard_step');
@@ -320,17 +346,24 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
       const dashData = dashRes.data?.data || dashRes.data;
       setDashboardData(dashData);
 
-      // Check if doctor has started the teleconsultation early
-      const tele = dashData?.upcoming_appointments?.find((a: any) => a.consultation_type === 'teleconsultation');
-      if (tele && tele.can_join && !isGlobalVideoModalOpen) {
-        setDoctorReadyNotification({
-          appointmentId: tele.id,
-          doctorName: tele.doctor?.user?.full_name || tele.doctor_name || 'Clinician',
-          specialty: tele.doctor?.specialization || tele.specialty || 'General Physician'
-        });
-        setGlobalVideoAppt(tele);
-      } else {
-        setDoctorReadyNotification(null);
+      // Check active teleconsultation status and upcoming calls
+      try {
+        const activeRes = await api.get('/teleconsultations/active').catch(() => null);
+        const activeTele = activeRes?.data?.data || activeRes?.data;
+        if (activeTele && activeTele.can_join && !isGlobalVideoModalOpen) {
+          if (activeTele.is_ongoing || (activeTele.time_left_minutes !== undefined && activeTele.time_left_minutes <= 15)) {
+            setDoctorReadyNotification({
+              appointmentId: activeTele.id,
+              doctorName: activeTele.doctor_name || 'Clinician',
+              specialty: activeTele.specialty || 'General Physician'
+            });
+            setGlobalVideoAppt(activeTele);
+          }
+        } else {
+          setDoctorReadyNotification(null);
+        }
+      } catch (teleErr) {
+        console.debug('Error checking active teleconsultation:', teleErr);
       }
       setStatistics(statsRes.data?.data || statsRes.data);
       setTimeline(extractArrayData(timelineRes.data));
@@ -357,6 +390,62 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   useEffect(() => {
     fetchPortalData();
   }, []);
+
+  // Periodic poll for incoming teleconsultation call signal and live active status
+  useEffect(() => {
+    let isMounted = true;
+    const pollIncomingAndActive = async () => {
+      try {
+        const [incomingRes, activeRes] = await Promise.all([
+          api.get('/teleconsultations/check-incoming-call').catch(() => null),
+          api.get('/teleconsultations/active').catch(() => null)
+        ]);
+        if (!isMounted) return;
+
+        const incoming = incomingRes?.data?.data || incomingRes?.data;
+        if (incoming && incoming.has_incoming_call && !isGlobalVideoModalOpen) {
+          setDoctorReadyNotification({
+            appointmentId: incoming.appointment_id,
+            doctorName: incoming.caller_name || 'your doctor',
+            specialty: ''
+          });
+          setGlobalVideoAppt({
+            id: incoming.appointment_id,
+            doctor_name: incoming.caller_name || 'Doctor',
+            specialty: ''
+          });
+          return;
+        }
+
+        const active = activeRes?.data?.data || activeRes?.data;
+        if (active && active.can_join && !isGlobalVideoModalOpen) {
+          if (active.is_ongoing || (active.time_left_minutes !== undefined && active.time_left_minutes <= 15)) {
+            setDoctorReadyNotification((prev: any) => {
+              if (prev && prev.appointmentId === active.id) return prev;
+              return {
+                appointmentId: active.id,
+                doctorName: active.doctor_name || 'Clinician',
+                specialty: active.specialty || ''
+              };
+            });
+            setGlobalVideoAppt((prev: any) => {
+              if (prev && prev.id === active.id) return prev;
+              return active;
+            });
+          }
+        }
+      } catch (e) {
+        // silent polling failure
+      }
+    };
+
+    pollIncomingAndActive();
+    const interval = setInterval(pollIncomingAndActive, 6000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isGlobalVideoModalOpen]);
 
   // Real-time WebSocket Queue Update
   useEffect(() => {
@@ -429,6 +518,13 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     };
   }, []);
 
+  const getLocalDateString = (d: Date = new Date()): string => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const handleBookFollowup = (followup: any) => {
     setSelectedBranchId(followup.branch_id || '');
     setSelectedDoctorId(followup.doctor_id || '');
@@ -436,22 +532,22 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     setConsultationType('in_person');
     setBookingSlot('');
     
+    const todayStr = getLocalDateString(new Date());
     let targetDate = followup.recommended_date ? followup.recommended_date.split('T')[0] : '';
     if (targetDate) {
-      const parsedTarget = new Date(targetDate);
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      if (parsedTarget < today) {
-        targetDate = today.toISOString().split('T')[0];
+      if (targetDate < todayStr) {
+        targetDate = todayStr;
       }
     } else {
-      targetDate = new Date().toISOString().split('T')[0];
+      targetDate = todayStr;
     }
     
     setBookingDate(targetDate);
-    const d = new Date(targetDate);
-    setCalendarViewMonth(d.getMonth());
-    setCalendarViewYear(d.getFullYear());
+    const parts = targetDate.split('-');
+    if (parts.length === 3) {
+      setCalendarViewYear(parseInt(parts[0], 10));
+      setCalendarViewMonth(parseInt(parts[1], 10) - 1);
+    }
     
     localStorage.setItem('booking_selected_branch_id', followup.branch_id || '');
     localStorage.setItem('booking_selected_doctor_id', followup.doctor_id || '');
@@ -551,6 +647,11 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   };
 
   const handleDateChange = async (date: string) => {
+    const todayStr = getLocalDateString(new Date());
+    if (date < todayStr) {
+      triggerToast('error', 'Cannot select past dates.');
+      return;
+    }
     setBookingDate(date);
     setBookingSlot('');
     if (selectedDoctorId && date) {
@@ -570,8 +671,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayStr = getLocalDateString(new Date());
 
     const prevMonthDays = new Date(year, month, 0).getDate();
 
@@ -580,25 +680,23 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     for (let i = firstDay - 1; i >= 0; i--) {
       const pDay = prevMonthDays - i;
       const d = new Date(year, month - 1, pDay);
+      const dateString = getLocalDateString(d);
       days.push({
         day: pDay,
         isCurrentMonth: false,
-        isPast: d < today,
-        dateString: d.toISOString().split('T')[0]
+        isPast: dateString < todayStr,
+        dateString
       });
     }
 
     for (let i = 1; i <= daysInMonth; i++) {
       const d = new Date(year, month, i);
-      const yearStr = year.toString();
-      const monthStr = (month + 1).toString().padStart(2, '0');
-      const dayStr = i.toString().padStart(2, '0');
-      const dateString = `${yearStr}-${monthStr}-${dayStr}`;
+      const dateString = getLocalDateString(d);
 
       days.push({
         day: i,
         isCurrentMonth: true,
-        isPast: d < today,
+        isPast: dateString < todayStr,
         dateString
       });
     }
@@ -607,11 +705,12 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
     const remainingCells = (7 - (totalCells % 7)) % 7;
     for (let i = 1; i <= remainingCells; i++) {
       const d = new Date(year, month + 1, i);
+      const dateString = getLocalDateString(d);
       days.push({
         day: i,
         isCurrentMonth: false,
-        isPast: false,
-        dateString: d.toISOString().split('T')[0]
+        isPast: dateString < todayStr,
+        dateString
       });
     }
 
@@ -843,31 +942,21 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const handleSaveProfile = async () => {
     setIsLoading(true);
     try {
-      const compiledChronicConditions = JSON.stringify({
-        chronicDiseases: profileForm.chronic_diseases || 'None',
-        highRiskFlags: profileForm.high_risk_flags || 'None',
-        specialCondition: profileForm.special_condition || 'None',
-        disability: profileForm.disability || 'None',
-      });
-
-      const payload = {
-        ...profileForm,
-        chronic_conditions: compiledChronicConditions,
-        is_profile_completed: true,
+      const payload: any = {
+        phone: profileForm.phone || undefined,
+        height: profileForm.height || undefined,
+        weight: profileForm.weight || undefined,
+        emergency_contact_name: profileForm.emergency_contact_name || undefined,
+        emergency_contact_phone: profileForm.emergency_contact_phone || undefined,
+        address: profileForm.address || undefined,
       };
-
-      // Remove temporary frontend properties
-      delete payload.chronic_diseases;
-      delete payload.high_risk_flags;
-      delete payload.special_condition;
-      delete payload.disability;
 
       const res = await api.patch('/patients/me', payload);
       setPatientProfile(res.data?.data || res.data);
-      triggerToast('success', 'Profile updated successfully!');
+      triggerToast('success', 'Personal contact details updated successfully!');
       setIsEditingProfile(false);
     } catch (err: any) {
-      triggerToast('error', getErrorMessage(err, 'Failed to update profile.'));
+      triggerToast('error', getErrorMessage(err, 'Failed to update contact details.'));
     } finally {
       setIsLoading(false);
     }
@@ -876,11 +965,14 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
   const handleJoinMeeting = async (appointmentId: string) => {
     const upcoming = dashboardData?.upcoming_appointments || [];
     const today = dashboardData?.today_appointments || [];
+    const past = dashboardData?.past_appointments || [];
     const appt = upcoming.find((a: any) => a.id === appointmentId) || 
-                 today.find((a: any) => a.id === appointmentId);
+                 today.find((a: any) => a.id === appointmentId) ||
+                 past.find((a: any) => a.id === appointmentId) ||
+                 (globalVideoAppt?.id === appointmentId ? globalVideoAppt : null);
                  
-    const docName = appt?.doctor?.user?.full_name || appt?.doctor_name || 'Doctor';
-    const spec = appt?.doctor?.specialization || appt?.specialty || 'Specialist';
+    const docName = appt?.doctor?.user?.full_name || appt?.doctor_name || globalVideoAppt?.doctor_name || 'Doctor';
+    const spec = appt?.doctor?.specialization || appt?.specialty || globalVideoAppt?.specialty || 'Specialist';
 
     setGlobalVideoAppt({
       id: appointmentId,
@@ -1016,17 +1108,177 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
         </div>
       )}
 
-      {patientProfile && !patientProfile.is_profile_completed ? (
+      {patientProfile && !patientProfile.is_profile_completed && profileChoice === 'wizard' ? (
         <ProfileCompletionWizard
           patientProfile={patientProfile}
           branches={branches}
           doctors={doctors}
-          onComplete={fetchPortalData}
+          onComplete={() => {
+            setProfileChoice('dashboard');
+            sessionStorage.removeItem('patient_profile_flow');
+            fetchPortalData();
+          }}
           onLogout={onLogout}
+          onSkip={handleSkipProfileToDashboard}
           triggerToast={triggerToast}
         />
       ) : (
         <>
+          {/* Welcome Prompt Modal: When user has not made a choice yet */}
+          {patientProfile && !patientProfile.is_profile_completed && profileChoice === 'prompt' && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '20px',
+            }}>
+              <div style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '20px',
+                maxWidth: '500px',
+                width: '100%',
+                padding: '34px 28px',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)',
+                textAlign: 'center',
+                border: '1px solid #e2e8f0',
+              }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '18px',
+                  backgroundColor: '#e0f2fe',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.9rem',
+                  margin: '0 auto 16px',
+                  boxShadow: '0 8px 16px rgba(14, 165, 233, 0.15)',
+                }}>
+                  🩺
+                </div>
+
+                <span style={{
+                  display: 'inline-block',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.8px',
+                  color: '#0284c7',
+                  backgroundColor: '#f0f9ff',
+                  padding: '3px 12px',
+                  borderRadius: '999px',
+                  marginBottom: '10px',
+                  border: '1px solid #bae6fd'
+                }}>
+                  Vertical Clinic
+                </span>
+
+                <h2 style={{
+                  fontSize: '1.4rem',
+                  fontWeight: 800,
+                  color: '#0f172a',
+                  margin: '0 0 8px 0',
+                }}>
+                  Welcome, {patientProfile.user?.full_name || 'Patient'}!
+                </h2>
+
+                <p style={{
+                  fontSize: '0.9rem',
+                  color: '#475569',
+                  lineHeight: 1.5,
+                  margin: '0 0 20px 0'
+                }}>
+                  Would you like to complete your clinical health profile now?
+                </p>
+
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  textAlign: 'left',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  marginBottom: '22px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>🛡️</span>
+                    <span style={{ fontSize: '0.84rem', color: '#334155' }}>
+                      <strong>Allergies & Alerts:</strong> Prevents harmful drug reactions.
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>⚡</span>
+                    <span style={{ fontSize: '0.84rem', color: '#334155' }}>
+                      <strong>Faster Consultation:</strong> Doctors have your history before visit.
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>🏥</span>
+                    <span style={{ fontSize: '0.84rem', color: '#334155' }}>
+                      <strong>Front-Desk Support:</strong> Receptionist can also assist during check-in.
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleOpenProfileWizard}
+                    style={{
+                      width: '100%',
+                      padding: '12px 18px',
+                      backgroundColor: '#0284c7',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '12px',
+                      fontSize: '0.92rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)',
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#0369a1')}
+                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#0284c7')}
+                  >
+                    Yes, Complete Profile →
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSkipProfileToDashboard}
+                    style={{
+                      width: '100%',
+                      padding: '11px 18px',
+                      backgroundColor: '#ffffff',
+                      color: '#475569',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '12px',
+                      fontSize: '0.88rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f8fafc';
+                      e.currentTarget.style.borderColor = '#94a3b8';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = '#ffffff';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                    }}
+                  >
+                    Skip for Now / Direct to Dashboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <PatientSidebar
             screen={screen}
             setScreen={setScreen}
@@ -1081,6 +1333,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                   triggerToast={triggerToast}
                   followups={followups}
                   handleBookFollowup={handleBookFollowup}
+                  onOpenProfileWizard={handleOpenProfileWizard}
                 />
               )}
 
@@ -1219,14 +1472,18 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
                   startEditingProfile={startEditingProfile}
                   handleSaveProfile={handleSaveProfile}
                   getInitials={getInitials}
+                  onOpenProfileWizard={handleOpenProfileWizard}
                 />
               )}
 
               {/* ── SCREEN: TELECONSULTATION ── */}
               {screen === 'teleconsultation' && (
                 <TeleconsultationTab
-                  activeTele={dashboardData?.upcoming_appointments?.find((a: any) => a.consultation_type === 'teleconsultation')}
-                  pastTeles={dashboardData?.past_teleconsultations || []}
+                  activeTele={
+                    dashboardData?.today_appointments?.find((a: any) => a.consultation_type === 'teleconsultation') ||
+                    dashboardData?.upcoming_appointments?.find((a: any) => a.consultation_type === 'teleconsultation')
+                  }
+                  pastTeles={(dashboardData?.past_appointments || []).filter((a: any) => a.consultation_type === 'teleconsultation')}
                   selectedTeleId={selectedTeleId}
                   setSelectedTeleId={setSelectedTeleId}
                   checklist={checklist}
@@ -1350,7 +1607,7 @@ export const PatientPortal: React.FC<PatientPortalProps> = ({ onLogout }) => {
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   onClick={() => {
-                    setIsGlobalVideoModalOpen(true);
+                    handleJoinMeeting(doctorReadyNotification.appointmentId);
                     setDoctorReadyNotification(null);
                   }}
                   style={{

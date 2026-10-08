@@ -1039,25 +1039,54 @@ async def get_patient_timeline(
 
     timeline = []
 
-    # 1. Fetch Consultations (Visits)
+    # 1. Fetch Consultations (Visits with bundled medications & vitals)
     consult_service = ConsultationService(db)
     consults, _ = await consult_service.list_consultations(page=1, limit=100, patient_id=patient_id)
+    consult_presc_ids = set()
+
     for c in consults:
+        medicines = []
+        for p in c.prescriptions:
+            consult_presc_ids.add(p.id)
+            for item in p.items:
+                medicines.append({
+                    "name": item.medicine_name,
+                    "dosage": item.dosage,
+                    "duration": item.duration,
+                    "instructions": item.instructions
+                })
+
+        doc_name = c.doctor.user.full_name if c.doctor and c.doctor.user else "Doctor"
+        specialty = c.doctor.specialization if c.doctor else "General Physician"
+        branch_name = c.branch.name if c.branch else "Clinic"
+
         timeline.append({
             "event_type": "visit",
-            "title": f"Consultation with Dr. {c.doctor.user.full_name if c.doctor and c.doctor.user else 'Doctor'}",
+            "title": f"Consultation with Dr. {doc_name}",
             "datetime": c.consultation_datetime.isoformat(),
             "details": {
-                "diagnosis": c.diagnosis,
+                "consultation_id": str(c.id),
+                "doctor_name": doc_name,
+                "specialization": specialty,
+                "branch_name": branch_name,
+                "diagnosis": c.diagnosis or "Clinical Examination",
                 "symptoms": c.symptoms,
                 "notes": c.notes,
+                "medicines": medicines,
+                "vitals_bp": c.vitals_bp,
+                "vitals_pulse": c.vitals_pulse,
+                "vitals_temperature": c.vitals_temperature,
+                "followup_advised": c.followup_advised,
+                "followup_after_days": c.followup_after_days,
             }
         })
 
-    # 2. Fetch Prescriptions
+    # 2. Standalone Prescriptions (only if issued without an associated consultation)
     presc_service = PrescriptionService(db)
     prescs, _ = await presc_service.list_prescriptions(page=1, limit=100, patient_id=patient_id)
     for p in prescs:
+        if p.id in consult_presc_ids:
+            continue
         timeline.append({
             "event_type": "prescription",
             "title": f"Prescription Issued by Dr. {p.doctor.user.full_name if p.doctor and p.doctor.user else 'Doctor'}",
@@ -1075,38 +1104,7 @@ async def get_patient_timeline(
             }
         })
 
-    # 3. Fetch Reports
-    report_service = MedicalReportService(db)
-    reports = await report_service.get_reports_by_user_id(current_user.id)
-    for r in reports:
-        timeline.append({
-            "event_type": "report",
-            "title": f"Medical Report Uploaded: {r.report_name}",
-            "datetime": r.uploaded_at.isoformat(),
-            "details": {
-                "report_id": str(r.id),
-                "report_type": r.report_type,
-                "file_url": r.file_url
-            }
-        })
-
-    # 4. Fetch Invoices (Bills)
-    billing_service = BillingService(db)
-    invoices, _ = await billing_service.list_invoices(page=1, limit=100, patient_id=patient_id, exclude_pending=True)
-    for inv in invoices:
-        timeline.append({
-            "event_type": "invoice",
-            "title": f"Invoice Generated - {inv.invoice_number}",
-            "datetime": inv.created_at.isoformat(),
-            "details": {
-                "invoice_id": str(inv.id),
-                "total_amount": float(inv.total_amount),
-                "balance_due": float(inv.balance_due),
-                "status": inv.status
-            }
-        })
-
-    # 5. Fetch Follow-up Recommendations
+    # 3. Fetch Follow-up Recommendations
     stmt = (
         select(Appointment)
         .where(
@@ -1164,7 +1162,7 @@ async def get_patient_timeline(
             unique_timeline.append(event)
 
     # Sort timeline by datetime descending
-    unique_timeline.sort(key=lambda x: x["datetime"], reverse=True)
+    unique_timeline.sort(key=lambda x: str(x["datetime"]), reverse=True)
 
     return ApiResponse.success(
         data=unique_timeline,

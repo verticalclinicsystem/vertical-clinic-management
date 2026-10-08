@@ -457,6 +457,7 @@ async def update_invoice(
 
 
 @router.get("/{invoice_id}/download-pdf", summary="Download invoice PDF file")
+@router.get("/{invoice_id}/pdf", summary="Download invoice PDF file (alias)", include_in_schema=False)
 async def download_invoice_pdf(
     invoice_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],

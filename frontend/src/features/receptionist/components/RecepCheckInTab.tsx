@@ -12,6 +12,7 @@ interface RecepCheckInTabProps {
   setSelectedApptForCheckIn: (appt: any) => void;
   getLocalApptTime: (dateStr: string) => string;
   handleCheckIn: (apptId: string) => void;
+  handleIntakeAndCheckIn?: (apptId: string, patientId: string, intakeData: any) => Promise<void>;
   formatDocName: (name: string) => string;
 }
 
@@ -26,8 +27,26 @@ export const RecepCheckInTab: React.FC<RecepCheckInTabProps> = ({
   setSelectedApptForCheckIn,
   getLocalApptTime,
   handleCheckIn,
+  handleIntakeAndCheckIn,
   formatDocName,
 }) => {
+  const [intakeBloodGroup, setIntakeBloodGroup] = React.useState<string>('O+');
+  const [intakeHeight, setIntakeHeight] = React.useState<string>('');
+  const [intakeWeight, setIntakeWeight] = React.useState<string>('');
+  const [intakeAllergies, setIntakeAllergies] = React.useState<string>('');
+  const [intakeChronic, setIntakeChronic] = React.useState<string>('');
+  const [isSubmittingIntake, setIsSubmittingIntake] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (selectedApptForCheckIn?.patient) {
+      const p = selectedApptForCheckIn.patient;
+      setIntakeBloodGroup(p.blood_group || 'O+');
+      setIntakeHeight(p.height || '');
+      setIntakeWeight(p.weight || '');
+      setIntakeAllergies(p.allergies && p.allergies !== 'None' ? p.allergies : '');
+      setIntakeChronic(p.chronic_conditions && p.chronic_conditions !== 'None' ? p.chronic_conditions : '');
+    }
+  }, [selectedApptForCheckIn?.id]);
   return (
     <div className="recep-checkin-container">
       {/* Left Column: Search & Patient List */}
@@ -90,7 +109,24 @@ export const RecepCheckInTab: React.FC<RecepCheckInTabProps> = ({
                         .toUpperCase() || 'PT'}
                     </div>
                     <div className="patient-details">
-                      <span className="patient-name">{p?.user?.full_name || 'N/A'}</span>
+                      <span className="patient-name">
+                        {p?.user?.full_name || 'N/A'}
+                        {!p?.is_profile_completed && appt.status !== 'completed' && appt.status !== 'in_consultation' && appt.status !== 'In Consultation' && (
+                          <span style={{
+                            marginLeft: '6px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            backgroundColor: '#fffbeb',
+                            color: '#b45309',
+                            border: '1px solid #fde68a',
+                            borderRadius: '4px',
+                            padding: '1px 5px',
+                            display: 'inline-block'
+                          }}>
+                            Intake Pending
+                          </span>
+                        )}
+                      </span>
                       <span className="patient-code-phone">
                         {p?.patient_code} &middot; {p?.user?.phone || '—'}
                       </span>
@@ -262,15 +298,198 @@ export const RecepCheckInTab: React.FC<RecepCheckInTabProps> = ({
                     <div className="checked-in-status-box">
                       <CheckCircle size={20} /> Checked In & Added to Queue
                     </div>
+                  ) : !appt.patient?.is_profile_completed ? (
+                    <div style={{
+                      margin: '14px 0',
+                      padding: '14px',
+                      backgroundColor: '#fffbeb',
+                      border: '1.5px solid #fde68a',
+                      borderRadius: '12px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>📋</span>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#92400e', fontWeight: 700 }}>
+                            Front-Desk Clinical Intake (Profile Incomplete)
+                          </h4>
+                          <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#b45309' }}>
+                            Patient has not filled clinical profile online. Record vitals & alerts before sending to doctor.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#78350f', marginBottom: '2px' }}>
+                            Blood Group
+                          </label>
+                          <select
+                            value={intakeBloodGroup}
+                            onChange={(e) => setIntakeBloodGroup(e.target.value)}
+                            style={{ width: '100%', padding: '5px 6px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+                          >
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="Unknown">Unknown</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#78350f', marginBottom: '2px' }}>
+                            Height (cm)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 172"
+                            value={intakeHeight}
+                            onChange={(e) => setIntakeHeight(e.target.value)}
+                            style={{ width: '100%', padding: '5px 6px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#78350f', marginBottom: '2px' }}>
+                            Weight (kg)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 68"
+                            value={intakeWeight}
+                            onChange={(e) => setIntakeWeight(e.target.value)}
+                            style={{ width: '100%', padding: '5px 6px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#78350f' }}>Known Allergies</label>
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            {['No Known Allergies', 'Penicillin', 'Sulfa'].map((chip) => (
+                              <button
+                                key={chip}
+                                type="button"
+                                onClick={() => setIntakeAllergies(chip)}
+                                style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: '4px', border: '1px solid #d97706', backgroundColor: '#fef3c7', color: '#92400e', cursor: 'pointer' }}
+                              >
+                                +{chip}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="e.g. Penicillin, Sulfa, None"
+                          value={intakeAllergies}
+                          onChange={(e) => setIntakeAllergies(e.target.value)}
+                          style={{ width: '100%', padding: '5px 8px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+                        />
+                      </div>
+
+                      <div style={{ marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#78350f' }}>Chronic Conditions</label>
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            {['None', 'Diabetes', 'Hypertension'].map((chip) => (
+                              <button
+                                key={chip}
+                                type="button"
+                                onClick={() => setIntakeChronic(chip)}
+                                style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: '4px', border: '1px solid #d97706', backgroundColor: '#fef3c7', color: '#92400e', cursor: 'pointer' }}
+                              >
+                                +{chip}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="e.g. Diabetes, Hypertension, None"
+                          value={intakeChronic}
+                          onChange={(e) => setIntakeChronic(e.target.value)}
+                          style={{ width: '100%', padding: '5px 8px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          type="button"
+                          disabled={isSubmittingIntake}
+                          onClick={async () => {
+                            if (!handleIntakeAndCheckIn || !appt.patient) return;
+                            setIsSubmittingIntake(true);
+                            try {
+                              await handleIntakeAndCheckIn(appt.id, appt.patient.id, {
+                                blood_group: intakeBloodGroup,
+                                height: intakeHeight,
+                                weight: intakeWeight,
+                                allergies: intakeAllergies || 'No Known Allergies',
+                                chronic_conditions: intakeChronic || 'None',
+                              });
+                            } finally {
+                              setIsSubmittingIntake(false);
+                            }
+                          }}
+                          className="recep-btn-primary"
+                          style={{
+                            flex: 1,
+                            padding: '10px 14px',
+                            fontSize: '0.86rem',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <UserCheck size={16} /> {isSubmittingIntake ? 'Saving...' : 'Save Intake & Check In'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCheckIn(appt.id)}
+                          style={{
+                            padding: '10px 12px',
+                            fontSize: '0.8rem',
+                            border: '1px solid #cbd5e1',
+                            backgroundColor: '#ffffff',
+                            borderRadius: '8px',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                            fontWeight: 600
+                          }}
+                          title="Skip intake and check-in directly"
+                        >
+                          Skip Intake
+                        </button>
+                      </div>
+                    </div>
                   ) : (
                     <>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: '8px',
+                        margin: '12px 0',
+                        fontSize: '0.82rem',
+                        color: '#166534'
+                      }}>
+                        <span>✓ Clinical Profile Complete ({appt.patient?.blood_group || 'Blood Group on file'}, Allergies: {appt.patient?.allergies || 'None'})</span>
+                      </div>
                       <p className="detail-notice">
                         Once checked in, the patient will be added to the queue and the doctor will be
                         notified automatically.
                       </p>
                       <button
                         className="recep-btn-primary full-width"
-                        style={{ marginTop: '1.5rem' }}
+                        style={{ marginTop: '1rem' }}
                         onClick={() => handleCheckIn(appt.id)}
                       >
                         <UserCheck size={18} /> Check In Patient

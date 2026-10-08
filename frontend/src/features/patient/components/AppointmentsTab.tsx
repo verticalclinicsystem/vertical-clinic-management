@@ -344,6 +344,22 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                       <span className="status-pill reassigned-pending" style={{ backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 700 }}>
                         Reschedule Needed
                       </span>
+                    ) : ['no_show', 'no-show', 'not-show', 'not_show'].includes(appt.status) ? (
+                      <span
+                        className="status-pill no-show"
+                        style={{
+                          backgroundColor: '#f1f5f9',
+                          color: '#475569',
+                          border: '1px solid #cbd5e1',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="The scheduled appointment time passed without clinic attendance"
+                      >
+                        <Clock size={11} /> Missed Visit
+                      </span>
                     ) : (
                       <span className={`status-pill ${appt.status.replace(/_/g, '-')}`}>{appt.status.replace(/[_-]/g, ' ')}</span>
                     )}
@@ -375,14 +391,53 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                         <Clock size={13} /> Reschedule Slot
                       </button>
                     ) : ['confirmed', 'scheduled', 'rescheduled', 'pending'].includes(appt.status) ? (
-                      <div className="action-dropdown-container">
-                        <button
-                          className={`dropdown-trigger ${activeDropdownId === appt.id ? 'active' : ''}`}
-                          onClick={() => setActiveDropdownId(activeDropdownId === appt.id ? null : appt.id)}
-                          title="Actions"
-                        >
-                          <MoreVertical size={16} />
-                        </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {appt.consultation_type === 'teleconsultation' && (() => {
+                          const apptTime = new Date(appt.appointment_datetime).getTime();
+                          const diffMins = Math.round((apptTime - Date.now()) / (60 * 1000));
+                          const isJoinable = diffMins <= 15 && diffMins >= -60;
+                          const isLive = diffMins <= 0;
+
+                          if (!isJoinable) return null;
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleJoinMeeting(appt.id);
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: isLive ? '#10b981' : 'var(--primary-teal, #0d9488)',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                boxShadow: isLive ? '0 0 10px rgba(16, 185, 129, 0.4)' : '0 1px 3px rgba(13, 148, 136, 0.2)',
+                                transition: 'all 0.2s ease',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={isLive ? "Live now - click to join call" : "Call window open - click to join lobby"}
+                            >
+                              <Video size={13} /> {isLive ? 'Join Now (Live)' : 'Join Call'}
+                            </button>
+                          );
+                        })()}
+
+                        <div className="action-dropdown-container">
+                          <button
+                            className={`dropdown-trigger ${activeDropdownId === appt.id ? 'active' : ''}`}
+                            onClick={() => setActiveDropdownId(activeDropdownId === appt.id ? null : appt.id)}
+                            title="Actions"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
                         {activeDropdownId === appt.id && (() => {
                           const isLimitReached = (appt.reschedule_count || 0) >= 2;
                           const apptTime = new Date(appt.appointment_datetime).getTime();
@@ -430,6 +485,7 @@ export const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                           );
                         })()}
                       </div>
+                    </div>
                     ) : (
                       <span className="action-muted-text">—</span>
                     )}

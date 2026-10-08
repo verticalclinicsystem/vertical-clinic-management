@@ -13,6 +13,7 @@ interface DashboardTabProps {
   triggerToast: (type: 'success' | 'error' | 'info', message: string) => void;
   followups?: any[];
   handleBookFollowup?: (followup: any) => void;
+  onOpenProfileWizard?: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -27,6 +28,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   triggerToast,
   followups = [],
   handleBookFollowup,
+  onOpenProfileWizard,
 }) => {
   const activeFollowups = followups.filter((f: any) => f.status === 'recommended');
 
@@ -34,6 +36,68 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="dashboard-grid">
+      {/* Incomplete Profile Alert Banner */}
+      {patientProfile && !patientProfile.is_profile_completed && (
+        <div style={{
+          gridColumn: '1 / -1',
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(249, 115, 22, 0.08) 100%)',
+          border: '1.5px solid rgba(245, 158, 11, 0.35)',
+          borderRadius: '16px',
+          padding: '18px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '16px',
+          boxShadow: '0 4px 15px rgba(245, 158, 11, 0.08)',
+          marginBottom: '20px',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              background: 'rgba(245, 158, 11, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.35rem',
+              flexShrink: 0
+            }}>
+              📋
+            </div>
+            <div>
+              <h4 style={{ margin: '0 0 4px 0', fontSize: '1.02rem', fontWeight: 800, color: '#92400e' }}>
+                Clinical Health Profile Incomplete
+              </h4>
+              <p style={{ margin: 0, fontSize: '0.86rem', color: '#78350f', lineHeight: '1.4' }}>
+                Fill in your allergies, chronic conditions, and past history for accurate clinical care, or our front-desk will assist you during check-in.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onOpenProfileWizard?.()}
+            style={{
+              padding: '10px 18px',
+              backgroundColor: '#d97706',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              fontSize: '0.88rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(217, 119, 6, 0.25)',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#b45309')}
+            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#d97706')}
+          >
+            Complete Profile Now →
+          </button>
+        </div>
+      )}
+
       {/* Follow-up Recommendation Alert */}
       {activeFollowups.length > 0 && (
         <div style={{
@@ -224,7 +288,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                      <span className={`status-pill ${appt.status.replace(/_/g, '-')}`}>{appt.status.replace(/[_-]/g, ' ')}</span>
+                      <span className={`status-pill ${appt.status.replace(/_/g, '-')}`}>
+                        {['no_show', 'no-show', 'not-show', 'not_show'].includes(appt.status) ? 'Missed Visit' : appt.status.replace(/[_-]/g, ' ')}
+                      </span>
                       {['confirmed', 'rescheduled'].includes(appt.status) && (() => {
                         const isLimitReached = (appt.reschedule_count || 0) >= 2;
                         const apptTime = new Date(appt.appointment_datetime).getTime();
